@@ -33,9 +33,9 @@ def _build_request(url: str, api_key: str | None, message: str) -> urllib.reques
     payload = json.dumps({"message": message}).encode("utf-8")
     headers = {"Content-Type": "application/json"}
     if api_key:
-        if "\r" in api_key or "\n" in api_key:
+        if any(ord(char) < 32 or ord(char) == 127 for char in api_key):
             raise SystemExit(
-                "CODEX_API_KEY must not contain newline or carriage return characters."
+                "CODEX_API_KEY must not contain control characters."
             )
         headers["Authorization"] = "Bearer " + api_key
     return urllib.request.Request(url=url, data=payload, headers=headers, method="POST")
@@ -68,11 +68,18 @@ def main() -> int:
     request = _build_request(url=url, api_key=api_key, message=message)
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            body = response.read().decode("utf-8", errors="replace")
+            try:
+                body = response.read().decode("utf-8", errors="strict")
+            except UnicodeDecodeError:
+                print("Response body is not valid UTF-8.", file=sys.stderr)
+                return 1
             print(body)
             return 0
     except urllib.error.HTTPError as exc:
-        details = exc.read().decode("utf-8", errors="replace")
+        try:
+            details = exc.read().decode("utf-8", errors="strict")
+        except UnicodeDecodeError:
+            details = "<non-UTF-8 error body>"
         print(f"Request failed ({exc.code}): {details}", file=sys.stderr)
         return 1
     except urllib.error.URLError as exc:
