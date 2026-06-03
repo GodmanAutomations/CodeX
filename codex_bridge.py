@@ -4,10 +4,12 @@ import json
 import os
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 
 
 def _parse_args() -> argparse.Namespace:
+    """Parse CLI arguments for the bridge command."""
     parser = argparse.ArgumentParser(
         description="Send a message to a Codex Cloud HTTP endpoint."
     )
@@ -16,6 +18,7 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _read_message(cli_message: str | None) -> str:
+    """Return message from CLI argument or stdin, or exit with a usage error."""
     if cli_message:
         return cli_message
     if not sys.stdin.isatty():
@@ -26,21 +29,33 @@ def _read_message(cli_message: str | None) -> str:
 
 
 def _build_request(url: str, api_key: str | None, message: str) -> urllib.request.Request:
+    """Create an authenticated HTTP request to the Codex Cloud endpoint."""
     payload = json.dumps({"message": message}).encode("utf-8")
     headers = {"Content-Type": "application/json"}
     if api_key:
         if "\r" in api_key or "\n" in api_key:
-            raise SystemExit("CODEX_API_KEY contains invalid characters.")
+            raise SystemExit(
+                "CODEX_API_KEY must not contain newline or carriage return characters."
+            )
         headers["Authorization"] = "Bearer " + api_key
     return urllib.request.Request(url=url, data=payload, headers=headers, method="POST")
 
 
+def _validate_url(url: str) -> None:
+    """Ensure endpoint URL is absolute and includes scheme and host."""
+    parsed = urllib.parse.urlparse(url)
+    if not parsed.scheme or not parsed.netloc:
+        raise SystemExit("CODEX_CLOUD_URL must be a valid absolute URL.")
+
+
 def main() -> int:
+    """Send a user message to Codex Cloud and return a process exit code."""
     args = _parse_args()
     message = _read_message(args.message)
     url = os.getenv("CODEX_CLOUD_URL")
     if not url:
         raise SystemExit("CODEX_CLOUD_URL is required.")
+    _validate_url(url)
     api_key = os.getenv("CODEX_API_KEY")
     timeout_raw = os.getenv("CODEX_CLOUD_TIMEOUT", "30")
     try:
