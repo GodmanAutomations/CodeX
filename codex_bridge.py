@@ -33,7 +33,7 @@ def _build_request(url: str, api_key: str | None, message: str) -> urllib.reques
     payload = json.dumps({"message": message}).encode("utf-8")
     headers = {"Content-Type": "application/json"}
     if api_key:
-        if any((codepoint := ord(char)) < 32 or codepoint == 127 for char in api_key):
+        if any(ord(char) < 32 or ord(char) == 127 for char in api_key):
             raise SystemExit(
                 "CODEX_API_KEY must not contain control characters."
             )
@@ -60,10 +60,10 @@ def main() -> int:
     timeout_raw = os.getenv("CODEX_CLOUD_TIMEOUT", "30")
     try:
         timeout = float(timeout_raw)
-        if timeout <= 0:
-            raise ValueError("Timeout must be positive")
     except ValueError:
-        raise SystemExit("CODEX_CLOUD_TIMEOUT must be a positive number.")
+        raise SystemExit(f"CODEX_CLOUD_TIMEOUT must be a number, got: {timeout_raw!r}")
+    if timeout <= 0:
+        raise SystemExit(f"CODEX_CLOUD_TIMEOUT must be > 0, got: {timeout_raw!r}")
 
     request = _build_request(url=url, api_key=api_key, message=message)
     try:
