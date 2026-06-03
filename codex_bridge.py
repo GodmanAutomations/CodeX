@@ -29,6 +29,8 @@ def _build_request(url: str, api_key: str | None, message: str) -> urllib.reques
     payload = json.dumps({"message": message}).encode("utf-8")
     headers = {"Content-Type": "application/json"}
     if api_key:
+        if "\r" in api_key or "\n" in api_key:
+            raise SystemExit("CODEX_API_KEY contains invalid characters.")
         headers["Authorization"] = "Bearer " + api_key
     return urllib.request.Request(url=url, data=payload, headers=headers, method="POST")
 
@@ -40,10 +42,17 @@ def main() -> int:
     if not url:
         raise SystemExit("CODEX_CLOUD_URL is required.")
     api_key = os.getenv("CODEX_API_KEY")
+    timeout_raw = os.getenv("CODEX_CLOUD_TIMEOUT", "30")
+    try:
+        timeout = float(timeout_raw)
+        if timeout <= 0:
+            raise ValueError
+    except ValueError:
+        raise SystemExit("CODEX_CLOUD_TIMEOUT must be a positive number.")
 
     request = _build_request(url=url, api_key=api_key, message=message)
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
             body = response.read().decode("utf-8", errors="replace")
             print(body)
             return 0
