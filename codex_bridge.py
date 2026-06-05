@@ -19,18 +19,18 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _read_message(cli_message: str | None) -> str:
+def _read_message(cli_message: "str | None") -> str:
     """Return message from CLI argument or stdin, or exit with a usage error."""
-    if cli_message:
+    if cli_message is not None:
         return cli_message
     if not sys.stdin.isatty():
-        piped = sys.stdin.read().strip()
-        if piped:
+        piped = sys.stdin.read().rstrip("\r\n")
+        if piped != "":
             return piped
     raise SystemExit("No message provided. Pass one as an argument or via stdin.")
 
 
-def _build_request(url: str, api_key: str | None, message: str) -> urllib.request.Request:
+def _build_request(url: str, api_key: "str | None", message: str) -> urllib.request.Request:
     """Create an authenticated HTTP request to the Codex Cloud endpoint."""
     payload = json.dumps({"message": message}).encode("utf-8")
     headers = {"Content-Type": "application/json"}
