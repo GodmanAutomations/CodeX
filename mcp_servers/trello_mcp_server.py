@@ -3674,6 +3674,48 @@ def draft_stephen_bill(
 
 
 @mcp.tool()
+def publish_stephen_bill(
+    board: str = "memphis",
+    bills_list: str = "BILLS",
+    bill_json: str = "",
+    apply_token: str = "",
+    comment_job_cards: bool = False,
+    move_to_list: str = "",
+) -> dict[str, Any]:
+    """Plan or publish a local Stephen bill draft to the Trello BILLS list.
+
+    Default mode is read-only planning. Trello writes require
+    apply_token="PUBLISH_STEPHEN_BILL".
+    """
+    command = [
+        "/Users/stephengodman/CodeX/bin/trello-publish-bill",
+        "--json",
+        "--board",
+        board,
+        "--bills-list",
+        bills_list,
+    ]
+    if bill_json:
+        command.extend(["--bill-json", bill_json])
+    if apply_token:
+        command.extend(["--apply-token", apply_token])
+    if comment_job_cards:
+        command.append("--comment-job-cards")
+    if move_to_list:
+        command.extend(["--move-to-list", move_to_list])
+    result = subprocess.run(command, check=False, capture_output=True, text=True, timeout=300)
+    output = result.stdout.strip() or result.stderr.strip()
+    try:
+        payload = json.loads(output)
+    except json.JSONDecodeError as exc:
+        raise TrelloError(f"bill publish returned invalid JSON: {output[:600]}") from exc
+    payload.setdefault("ok", result.returncode == 0)
+    payload.setdefault("safety", {})
+    payload["safety"].setdefault("secrets_returned", False)
+    return payload
+
+
+@mcp.tool()
 def copy_board(source_board: str = "memphis", name: str | None = None, keep_from_source: str = "cards") -> dict[str, Any]:
     """Copy a Trello board. Defaults to copying Memphis Pool with cards."""
     source_id = _board_id(source_board)

@@ -27,6 +27,7 @@ WRITE_PREFIXES = (
     "set_",
     "write_",
     "apply_",
+    "publish_",
     "copy_",
     "download_",
 )

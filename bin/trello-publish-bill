@@ -1,0 +1,374 @@
+#!/Users/stephengodman/000_AI/bin/python3
+"""Plan or publish a Stephen bill draft to the Memphis Pool Trello board."""
+from __future__ import annotations
+
+import argparse
+import importlib.util
+import json
+import mimetypes
+import os
+import re
+import subprocess
+import sys
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+
+ROOT = Path("/Users/stephengodman/CodeX")
+TRELLO_SERVER = ROOT / "mcp_servers" / "trello_mcp_server.py"
+DEFAULT_BILL_DIR = ROOT / "work-artifacts" / "billing-drafts"
+APPLY_TOKEN = "PUBLISH_STEPHEN_BILL"
+
+
+def load_launchctl_env() -> None:
+    for name in ("TRELLO_API_KEY", "TRELLO_KEY", "TRELLO_TOKEN"):
+        if os.environ.get(name):
+            continue
+        result = subprocess.run(
+            ["/bin/launchctl", "getenv", name],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        value = result.stdout.strip()
+        if value:
+            os.environ[name] = value
+
+
+def load_trello_module() -> Any:
+    load_launchctl_env()
+    spec = importlib.util.spec_from_file_location("codex_trello_mcp_server", TRELLO_SERVER)
+    if not spec or not spec.loader:
+        raise RuntimeError(f"Could not load Trello MCP server: {TRELLO_SERVER}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def latest_bill_json(bill_dir: Path) -> Path:
+    candidates = sorted(bill_dir.glob("Artesian Bill - *.json"), key=lambda path: path.stat().st_mtime, reverse=True)
+    if not candidates:
+        raise RuntimeError(f"No bill JSON files found in {bill_dir}")
+    return candidates[0]
+
+
+def load_bill_payload(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not payload.get("ok"):
+        raise RuntimeError(f"Bill JSON is not ok: {path}")
+    return payload
+
+
+def related_files(json_path: Path) -> dict[str, str]:
+    stem = json_path.with_suffix("")
+    files = {
+        "json": str(json_path),
+        "pdf": str(stem.with_suffix(".pdf")),
+        "csv": str(stem.with_suffix(".csv")),
+        "markdown": str(stem.with_suffix(".md")),
+    }
+    missing = [path for path in files.values() if not Path(path).is_file()]
+    if missing:
+        raise RuntimeError("Missing bill artifact(s): " + ", ".join(missing))
+    return files
+
+
+def clean_title(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def bill_card_name(json_path: Path, payload: dict[str, Any]) -> str:
+    title = clean_title(json_path.stem)
+    if title:
+        return title
+    total = payload.get("total")
+    bill_date = payload.get("bill_date") or datetime.now().strftime("%Y-%m-%d")
+    return f"Artesian Bill - {bill_date} - DRAFT - {total}"
+
+
+def get_list_id(trello: Any, board: str, list_name: str) -> str:
+    for item in trello.get_lists(board=board):
+        if str(item.get("name") or "").strip().lower() == list_name.strip().lower():
+            return str(item["id"])
+    raise RuntimeError(f"Could not find Trello list: {list_name}")
+
+
+def existing_card(trello: Any, list_id: str, name: str) -> dict[str, Any] | None:
+    for card in trello.get_cards_in_list(list_id=list_id, limit=500):
+        if clean_title(str(card.get("name") or "")).lower() == clean_title(name).lower():
+            return card
+    return None
+
+
+def included_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    preview = payload.get("source_preview") or {}
+    include_review = bool(payload.get("include_review"))
+    items = []
+    for item in preview.get("items") or []:
+        cls = item.get("classification") or {}
+        if cls.get("price_status") == "priced" or (include_review and cls.get("amount") is not None):
+            items.append(item)
+    return items
+
+
+def review_items(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    preview = payload.get("source_preview") or {}
+    return [
+        item
+        for item in preview.get("items") or []
+        if (item.get("classification") or {}).get("price_status") != "priced"
+    ]
+
+
+def make_card_description(payload: dict[str, Any], files: dict[str, str], included: list[dict[str, Any]], review: list[dict[str, Any]]) -> str:
+    lines = [
+        "Stephen bill draft generated from Trello.",
+        "",
+        f"Bill date: {payload.get('bill_date')}",
+        f"Due date: {payload.get('due_date')}",
+        f"Total: ${int(payload.get('total') or 0):,}.00",
+        f"Included lines: {len(included)}",
+        f"Review lines not included: {len(review)}",
+        "",
+        "Attached files:",
+    ]
+    for kind in ("pdf", "csv", "markdown", "json"):
+        lines.append(f"- {Path(files[kind]).name}")
+    lines.extend(["", "Included Trello jobs:"])
+    for item in included:
+        name = item.get("card_name") or item.get("name")
+        label = item.get("job_label") or (item.get("classification") or {}).get("job_label")
+        amount = item.get("amount") or (item.get("classification") or {}).get("amount")
+        lines.append(f"- {name} - {label} - ${int(amount or 0):,}.00 - {item.get('url')}")
+    if review:
+        lines.extend(["", "Review lines not included:"])
+        for item in review:
+            name = item.get("card_name") or item.get("name")
+            label = item.get("job_label") or (item.get("classification") or {}).get("job_label")
+            warnings = item.get("warnings") or (item.get("classification") or {}).get("warnings") or []
+            notes = "; ".join(warnings)
+            lines.append(f"- {name} - {label} - {notes}")
+    return "\n".join(lines)[:16000]
+
+
+def attachment_names(trello: Any, card_id: str) -> set[str]:
+    try:
+        return {str(item.get("name") or "") for item in trello.get_card_attachments(card_id)}
+    except Exception:
+        return set()
+
+
+def upload_file(trello: Any, card_id: str, file_path: str) -> dict[str, Any]:
+    path = Path(file_path)
+    content_type = mimetypes.guess_type(str(path))[0] or "application/octet-stream"
+    with path.open("rb") as fh:
+        attachment = trello._request_files(
+            "POST",
+            f"cards/{card_id}/attachments",
+            params={"name": path.name},
+            files={"file": (path.name, fh, content_type)},
+        )
+    return trello._attachment_summary(attachment)
+
+
+def build_plan(args: argparse.Namespace) -> dict[str, Any]:
+    json_path = Path(args.bill_json).expanduser() if args.bill_json else latest_bill_json(Path(args.bill_dir).expanduser())
+    payload = load_bill_payload(json_path)
+    files = related_files(json_path)
+    included = included_items(payload)
+    review = review_items(payload)
+    name = bill_card_name(json_path, payload)
+
+    trello = load_trello_module()
+    bills_list_id = get_list_id(trello, args.board, args.bills_list)
+    existing = existing_card(trello, bills_list_id, name)
+    billed_list_id = get_list_id(trello, args.board, args.move_to_list) if args.move_to_list else None
+
+    return {
+        "ok": True,
+        "mode": "apply" if args.apply_token == APPLY_TOKEN else "plan",
+        "required_apply_token": APPLY_TOKEN,
+        "board": args.board,
+        "bill_card_name": name,
+        "bills_list": args.bills_list,
+        "bills_list_id": bills_list_id,
+        "existing_bill_card": existing,
+        "bill_json": str(json_path),
+        "files": files,
+        "total": payload.get("total"),
+        "included_count": len(included),
+        "review_count": len(review),
+        "included_cards": [
+            {
+                "card_id": item.get("card_id"),
+                "name": item.get("card_name"),
+                "url": item.get("url"),
+                "amount": (item.get("classification") or {}).get("amount"),
+                "job_label": (item.get("classification") or {}).get("job_label"),
+            }
+            for item in included
+        ],
+        "review_cards": [
+            {
+                "card_id": item.get("card_id"),
+                "name": item.get("card_name"),
+                "url": item.get("url"),
+                "amount": (item.get("classification") or {}).get("amount"),
+                "warnings": (item.get("classification") or {}).get("warnings") or [],
+            }
+            for item in review
+        ],
+        "optional_actions": {
+            "comment_job_cards": args.comment_job_cards,
+            "move_to_list": args.move_to_list or "",
+            "move_to_list_id": billed_list_id,
+        },
+        "safety": {
+            "trello_writes": False,
+            "requires_apply_token": True,
+            "secrets_returned": False,
+        },
+    }
+
+
+def save_plan(plan: dict[str, Any], out_dir: Path) -> str:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    path = out_dir / f"publish-plan-{stamp}.json"
+    path.write_text(json.dumps(plan, indent=2, sort_keys=True), encoding="utf-8")
+    return str(path)
+
+
+def apply_plan(plan: dict[str, Any], args: argparse.Namespace) -> dict[str, Any]:
+    trello = load_trello_module()
+    bill_card = plan.get("existing_bill_card")
+    created = False
+    if bill_card:
+        card_id = str(bill_card["id"])
+    else:
+        desc = make_card_description(
+            load_bill_payload(Path(plan["bill_json"])),
+            plan["files"],
+            plan["included_cards"],
+            plan["review_cards"],
+        )
+        bill_card = trello.create_card(
+            list_id=plan["bills_list_id"],
+            name=plan["bill_card_name"],
+            desc=desc,
+            pos="top",
+        )
+        card_id = str(bill_card["id"])
+        created = True
+
+    existing_names = attachment_names(trello, card_id)
+    attachments = []
+    skipped = []
+    for kind in ("pdf", "csv", "markdown", "json"):
+        file_path = plan["files"][kind]
+        name = Path(file_path).name
+        if name in existing_names:
+            skipped.append(name)
+            continue
+        attachments.append(upload_file(trello, card_id, file_path))
+
+    comments = []
+    moves = []
+    bill_url = bill_card.get("shortUrl") or bill_card.get("url")
+    if args.comment_job_cards:
+        for item in plan["included_cards"]:
+            comment = trello.add_comment(
+                item["card_id"],
+                f"Included on {plan['bill_card_name']} for ${int(item.get('amount') or 0):,}.00. Bill card: {bill_url}",
+            )
+            comments.append({"card_id": item["card_id"], "comment_id": comment.get("id")})
+    if args.move_to_list:
+        target = plan["optional_actions"]["move_to_list_id"]
+        for item in plan["included_cards"]:
+            moved = trello.move_card(item["card_id"], target, pos="bottom")
+            moves.append({"card_id": item["card_id"], "list_id": moved.get("idList")})
+
+    return {
+        "ok": True,
+        "mode": "applied",
+        "bill_card": {
+            "id": card_id,
+            "name": bill_card.get("name"),
+            "url": bill_url,
+            "created": created,
+        },
+        "attachments_uploaded": attachments,
+        "attachments_skipped_existing": skipped,
+        "job_comments_written": comments,
+        "job_cards_moved": moves,
+        "safety": {
+            "trello_writes": True,
+            "bill_card_created": created,
+            "attachments_written": len(attachments),
+            "job_comments_written": len(comments),
+            "job_cards_moved": len(moves),
+            "secrets_returned": False,
+        },
+    }
+
+
+def print_plain(payload: dict[str, Any]) -> None:
+    if payload.get("mode") == "applied":
+        card = payload.get("bill_card") or {}
+        print(f"Published bill card: {card.get('name')}")
+        print(f"URL: {card.get('url')}")
+        print(f"Attachments uploaded: {len(payload.get('attachments_uploaded') or [])}")
+        print(f"Job comments written: {len(payload.get('job_comments_written') or [])}")
+        print(f"Job cards moved: {len(payload.get('job_cards_moved') or [])}")
+        return
+    print(f"Publish plan for: {payload.get('bill_card_name')}")
+    print(f"Total: ${int(payload.get('total') or 0):,}.00")
+    print(f"Included cards: {payload.get('included_count')}")
+    print(f"Review cards not included: {payload.get('review_count')}")
+    print(f"BILLS list: {payload.get('bills_list')}")
+    if payload.get("existing_bill_card"):
+        print("Existing bill card: yes")
+    print(f"Plan file: {payload.get('plan_file')}")
+    print(f"To publish: --apply-token {payload.get('required_apply_token')}")
+
+
+def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(description="Plan or publish a Trello bill card with bill artifacts attached.")
+    parser.add_argument("--board", default="memphis")
+    parser.add_argument("--bills-list", default="BILLS")
+    parser.add_argument("--bill-dir", default=str(DEFAULT_BILL_DIR))
+    parser.add_argument("--bill-json", default="")
+    parser.add_argument("--apply-token", default="")
+    parser.add_argument("--comment-job-cards", action="store_true")
+    parser.add_argument("--move-to-list", default="", help="Optional Trello list name to move included job cards after publish.")
+    parser.add_argument("--json", action="store_true")
+    args = parser.parse_args(argv)
+
+    try:
+        plan = build_plan(args)
+        plan["plan_file"] = save_plan(plan, Path(args.bill_dir).expanduser())
+        payload = apply_plan(plan, args) if args.apply_token == APPLY_TOKEN else plan
+    except Exception as exc:
+        payload = {
+            "ok": False,
+            "error_type": type(exc).__name__,
+            "error": str(exc)[:1200],
+            "safety": {
+                "trello_writes": False,
+                "secrets_returned": False,
+            },
+        }
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 1
+
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        print_plain(payload)
+    return 0 if payload.get("ok") else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))
