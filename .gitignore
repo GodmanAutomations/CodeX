@@ -50,6 +50,15 @@ backups/
 work-artifacts/
 dashboard/index.html
 mcp_servers/*.before-*
+research/
+play/
+venice/results/
+venice/characters/
+list_of_superskills.py
+1password-missing-telemetry-report.md
+GPTREVIEWOFCHAT.md
+INSPECTOR-GADGET-NEO4J-MCP-CAMOUFOX-GUIDE.md
+OPENWEBUI-ADDING-STUFF-GUIDE.md
 *.png
 *.jpg
 *.jpeg
