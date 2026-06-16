@@ -89,6 +89,7 @@ work-notes/*
 !work-notes/trello-draft-bill-command-2026-06-16.md
 !work-notes/trello-publish-bill-command-2026-06-16.md
 !work-notes/trello-route-stops-command-2026-06-16.md
+!work-notes/stephen-billing-rate-overrides-2026-06-16.md
 
 # Keep core control subtrees opt-in and small.
 capabilities/*.sqlite3

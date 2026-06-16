@@ -19,6 +19,7 @@ ROOT = Path("/Users/stephengodman/CodeX")
 TRELLO_SERVER = ROOT / "mcp_servers" / "trello_mcp_server.py"
 DEFAULT_OUT_DIR = ROOT / "work-artifacts" / "billing-drafts"
 DEFAULT_BILLING_LIST = "Jobs that I need to bill for"
+LOCAL_BILLING_RATES = ROOT / "config" / "stephen-billing-rates.json"
 PI_PRICE_COMMAND = (
     "cd /opt/artesian-pools; "
     "sed -n '54,170p' config.yaml"
@@ -132,6 +133,27 @@ def parse_scalar(value: str) -> Any:
     return value
 
 
+def load_local_billing_rates() -> dict[str, Any]:
+    if not LOCAL_BILLING_RATES.is_file():
+        return {}
+    return json.loads(LOCAL_BILLING_RATES.read_text(encoding="utf-8"))
+
+
+def merge_local_billing_rates(pricing: dict[str, Any]) -> tuple[dict[str, Any], str]:
+    overrides = load_local_billing_rates()
+    if not overrides:
+        return pricing, "none"
+    merged = json.loads(json.dumps(pricing))
+    for section in ("base", "addons", "distance_premiums"):
+        if section not in overrides:
+            continue
+        if isinstance(overrides[section], dict):
+            merged.setdefault(section, {}).update(overrides[section])
+        else:
+            merged[section] = overrides[section]
+    return merged, str(LOCAL_BILLING_RATES)
+
+
 def compile_rules(items: list[dict[str, Any]]) -> list[PriceRule]:
     rules: list[PriceRule] = []
     for item in items:
@@ -163,6 +185,23 @@ def get_list_id(trello: Any, board: str, list_name: str) -> str:
             return str(item["id"])
     names = ", ".join(str(item.get("name")) for item in lists)
     raise RuntimeError(f"Could not find Trello list '{list_name}'. Found: {names}")
+
+
+def find_extra_card(trello: Any, board: str, query: str) -> dict[str, Any]:
+    query = query.strip()
+    url_match = re.search(r"/c/([A-Za-z0-9]+)", query)
+    if url_match:
+        matches = trello.search_cards(query=url_match.group(1), board=board, limit=10)
+        if len(matches) == 1:
+            return trello.get_card(matches[0]["id"])
+    if re.fullmatch(r"[0-9a-f]{24}", query):
+        return trello.get_card(query)
+    if hasattr(trello, "_find_card_by_query"):
+        return trello._find_card_by_query(query, board=board)
+    matches = trello.search_cards(query=query, board=board, limit=5)
+    if len(matches) != 1:
+        raise RuntimeError(f"Extra card query must resolve to exactly one card: {query}")
+    return trello.get_card(matches[0]["id"])
 
 
 def compact_work_order_text(payload: dict[str, Any]) -> str:
@@ -202,13 +241,14 @@ def classify_job(card: dict[str, Any], detail: dict[str, Any], work_text: str, p
     job_label = "Liner Install"
     confidence = "medium"
 
-    if "warranty" in lower:
+    is_snap_in = bool(re.search(r"snap\s*-?\s*in", title_lower) or re.search(r"snap\s*-?\s*in", lower))
+
+    if "warranty" in lower and not is_snap_in:
         warnings.append("warranty mentioned; confirm whether this should be billed")
     if re.search(r"\binlay\s+steps?\b", title_lower) and not re.search(r"safety\s+cover", title_lower):
-        job_key = "liner_install"
+        job_key = "liner_install_inlet"
         job_label = "Liner Install / inlay steps"
-        confidence = "low"
-        warnings.append("title is specific to inlay steps; verify whether this is add-on-only or full liner install")
+        confidence = "high"
     elif re.search(r"\brope\s+anchors?\b|\banchor\b", title_lower):
         job_key = "repair"
         job_label = "Repair / anchors"
@@ -227,8 +267,12 @@ def classify_job(card: dict[str, Any], detail: dict[str, Any], work_text: str, p
         job_label = "Liner Reset"
         confidence = "high"
     elif re.search(r"\bmeasure\b|\bmeasures\b", title_lower):
-        job_key = "measure"
-        job_label = "Measure"
+        if re.search(r"\ba/?b\b|\binlet\b", title_lower):
+            job_key = "measure_ab"
+            job_label = "A/B Measure"
+        else:
+            job_key = "measure"
+            job_label = "Measure"
         confidence = "high"
     elif re.search(r"\brepair\b|skimmer|leak|patch", title_lower):
         job_key = "repair"
@@ -236,7 +280,7 @@ def classify_job(card: dict[str, Any], detail: dict[str, Any], work_text: str, p
         confidence = "medium"
     elif re.search(r"\binlet\b|\ba/?b\b", title_lower):
         job_key = "liner_install_inlet"
-        job_label = "Liner Install Inlet"
+        job_label = "Liner Install / inlay steps"
         confidence = "medium"
     elif re.search(r"\brope\s+anchors?\b|\banchor\b", lower):
         job_key = "repair"
@@ -256,8 +300,12 @@ def classify_job(card: dict[str, Any], detail: dict[str, Any], work_text: str, p
         job_label = "Liner Reset"
         confidence = "medium"
     elif re.search(r"\bmeasure\b|\bmeasures\b", lower):
-        job_key = "measure"
-        job_label = "Measure"
+        if re.search(r"\ba/?b\b|\binlet\b", lower):
+            job_key = "measure_ab"
+            job_label = "A/B Measure"
+        else:
+            job_key = "measure"
+            job_label = "Measure"
         confidence = "medium"
     elif re.search(r"\brepair\b|skimmer|leak|patch", lower):
         job_key = "repair"
@@ -265,7 +313,7 @@ def classify_job(card: dict[str, Any], detail: dict[str, Any], work_text: str, p
         confidence = "medium"
     elif re.search(r"\binlet\b|\ba/?b\b", lower):
         job_key = "liner_install_inlet"
-        job_label = "Liner Install Inlet"
+        job_label = "Liner Install / inlay steps"
         confidence = "medium"
 
     base_prices = pricing.get("base") or {}
@@ -386,9 +434,21 @@ def build_preview(args: argparse.Namespace) -> dict[str, Any]:
     price_ok, price_text = run_ssh_price_read()
     pricing = parse_price_block(price_text) if price_ok else {"base": {}, "addons": {}, "distance_premiums": []}
     price_source = "Pi5 /opt/artesian-pools/config.yaml pricing block" if price_ok else f"unavailable: {price_text}"
+    pricing, local_rate_source = merge_local_billing_rates(pricing)
+    if local_rate_source != "none":
+        price_source = f"{price_source}; local Stephen billing overrides: {local_rate_source}"
 
     list_id = get_list_id(trello, args.board, args.list)
     cards = trello.get_cards_in_list(list_id=list_id, limit=args.limit)
+    seen_card_ids = {card["id"] for card in cards}
+    extra_cards = []
+    for query in args.extra_card_query:
+        card = find_extra_card(trello, args.board, query)
+        if card["id"] in seen_card_ids:
+            continue
+        cards.append(card)
+        extra_cards.append({"query": query, "card_id": card["id"], "name": card.get("name"), "url": card.get("shortUrl")})
+        seen_card_ids.add(card["id"])
     items = []
     priced_total = 0
     review_amount_total = 0
@@ -433,6 +493,7 @@ def build_preview(args: argparse.Namespace) -> dict[str, Any]:
         "board": args.board,
         "source_list": args.list,
         "source_list_id": list_id,
+        "extra_cards": extra_cards,
         "cards_scanned": len(cards),
         "priced_total": priced_total,
         "review_amount_total": review_amount_total,
@@ -484,6 +545,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--list", default=DEFAULT_BILLING_LIST)
     parser.add_argument("--limit", type=int, default=100)
     parser.add_argument("--out-dir", default=str(DEFAULT_OUT_DIR))
+    parser.add_argument("--extra-card-query", action="append", default=[], help="Include an extra Trello card by search query.")
     parser.add_argument("--no-work-orders", action="store_true", help="Skip work-order attachment reads.")
     parser.add_argument("--json", action="store_true", help="Print JSON instead of a plain summary.")
     parser.add_argument("--stdout-only", action="store_true", help="Do not save local report files.")

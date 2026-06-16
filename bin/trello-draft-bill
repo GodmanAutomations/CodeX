@@ -41,6 +41,8 @@ def run_preview(args: argparse.Namespace) -> dict[str, Any]:
         "--limit",
         str(args.limit),
     ]
+    for query in args.extra_card_query:
+        command.extend(["--extra-card-query", query])
     if not args.read_work_orders:
         command.append("--no-work-orders")
     result = subprocess.run(command, check=False, capture_output=True, text=True, timeout=180)
@@ -334,6 +336,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--bill-date", default=today)
     parser.add_argument("--due-days", type=int, default=10)
     parser.add_argument("--from-preview-json", default="")
+    parser.add_argument("--extra-card-query", action="append", default=[], help="Include an extra Trello card by search query.")
     parser.add_argument("--read-work-orders", action="store_true", help="Allow work-order attachment text to add charges.")
     parser.add_argument("--include-review", action="store_true", help="Include needs-review lines in the bill total.")
     parser.add_argument("--final", action="store_true", help="Name the generated bill FINAL instead of DRAFT.")

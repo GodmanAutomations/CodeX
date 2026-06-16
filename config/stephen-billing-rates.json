@@ -1,0 +1,17 @@
+{
+  "source": "Stephen confirmed verbally on 2026-06-16",
+  "base": {
+    "liner_install": 1150,
+    "liner_install_inlet": 1500,
+    "measure": 150,
+    "measure_ab": 250,
+    "snap_in": 100
+  },
+  "notes": {
+    "liner_install": "Regular installs: rectangles, kidneys, and anything not with liner over/inlay steps.",
+    "liner_install_inlet": "Inlay/liner-over-step installs.",
+    "measure": "Non A/B pool measurement.",
+    "measure_ab": "A/B measurement.",
+    "snap_in": "Snap-in work, including today's snap-ins Stephen said to add."
+  }
+}

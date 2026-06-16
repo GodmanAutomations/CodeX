@@ -3595,6 +3595,7 @@ def preview_stephen_bill(
     list_name: str = "Jobs that I need to bill for",
     limit: int = 100,
     read_work_orders: bool = True,
+    extra_card_queries: list[str] | None = None,
 ) -> dict[str, Any]:
     """Build Stephen's read-only billing preview from Trello jobs ready to bill."""
     command = [
@@ -3607,6 +3608,8 @@ def preview_stephen_bill(
         "--limit",
         str(max(1, min(int(limit), 500))),
     ]
+    for query in extra_card_queries or []:
+        command.extend(["--extra-card-query", query])
     if not read_work_orders:
         command.append("--no-work-orders")
     result = subprocess.run(command, check=False, capture_output=True, text=True, timeout=180)
@@ -3637,6 +3640,7 @@ def draft_stephen_bill(
     limit: int = 100,
     include_review: bool = False,
     read_work_orders: bool = False,
+    extra_card_queries: list[str] | None = None,
 ) -> dict[str, Any]:
     """Create a local PDF/CSV/Markdown draft bill from Trello jobs ready to bill."""
     command = [
@@ -3649,6 +3653,8 @@ def draft_stephen_bill(
         "--limit",
         str(max(1, min(int(limit), 500))),
     ]
+    for query in extra_card_queries or []:
+        command.extend(["--extra-card-query", query])
     if include_review:
         command.append("--include-review")
     if read_work_orders:

@@ -4,6 +4,7 @@ Plain index of recent receipts. Newest first.
 
 | Modified | Lane | Receipt | File |
 |---|---|---|---|
+| 2026-06-16 16:13 | Other | Stephen Billing Rate Overrides - 2026-06-16 | `stephen-billing-rate-overrides-2026-06-16.md` |
 | 2026-06-16 11:18 | Trello MCP | Trello Route Stops Command - 2026-06-16 | `trello-route-stops-command-2026-06-16.md` |
 | 2026-06-16 07:33 | Trello MCP | Trello Publish Bill Command - 2026-06-16 | `trello-publish-bill-command-2026-06-16.md` |
 | 2026-06-16 05:40 | Trello MCP | Trello Draft Bill Command - 2026-06-16 | `trello-draft-bill-command-2026-06-16.md` |
