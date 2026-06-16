@@ -1,0 +1,186 @@
+#!/usr/bin/env python3
+"""Attach photo files to a Trello card by card name.
+
+Dry-run is the default. Use --apply for real Trello writes.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+
+LAUNCHER = Path("/Users/stephengodman/Candice-Code/mcp_servers/trello_mcp_launcher.sh")
+PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png", ".heic", ".webp", ".tif", ".tiff"}
+
+
+def clean_card_query(value: str) -> str:
+    value = re.sub(r"\s+", " ", value or "").strip(" .,:;-\"'")
+    value = re.sub(r"\b(?:trello\s+)?card\b", "", value, flags=re.I)
+    value = re.sub(r"\b(?:photo|photos|picture|pictures|pic|pics|image|images|file|files)\b", "", value, flags=re.I)
+    value = re.sub(r"\b(?:attach|upload|add|put|save|send|throw|drop|stick|post|file|link|to|on|onto|under|for|with|in|into|the|a|an)\b", " ", value, flags=re.I)
+    return re.sub(r"\s+", " ", value).strip(" .,:;-\"'")
+
+
+def run_launcher(args: list[str]) -> dict:
+    result = subprocess.run(
+        [str(LAUNCHER), *args],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    output = result.stdout.strip() or result.stderr.strip()
+    try:
+        payload = json.loads(output)
+    except json.JSONDecodeError:
+        payload = {
+            "ok": False,
+            "error": output[:1200] or f"launcher exited {result.returncode}",
+            "returncode": result.returncode,
+        }
+    if result.returncode != 0 and payload.get("ok") is not False:
+        payload["ok"] = False
+        payload["returncode"] = result.returncode
+    return payload
+
+
+def photo_paths(values: list[str]) -> list[Path]:
+    paths = [Path(value).expanduser() for value in values]
+    errors = []
+    for path in paths:
+        if not path.is_file():
+            errors.append(f"missing file: {path}")
+        elif path.suffix.lower() not in PHOTO_EXTENSIONS:
+            errors.append(f"not a supported photo extension: {path}")
+    if errors:
+        raise ValueError("; ".join(errors))
+    return paths
+
+
+def cover_index(value: str | None, count: int) -> int | None:
+    if value is None or value.lower() in {"none", "no", "false", "off"}:
+        return None
+    lowered = value.lower()
+    if lowered == "first":
+        return 0
+    if lowered == "last":
+        return count - 1
+    if lowered in {"second", "2"}:
+        return 1
+    if lowered in {"third", "3"}:
+        return 2
+    if lowered.isdigit():
+        return int(lowered) - 1
+    raise ValueError("--cover must be none, first, last, second, third, or a 1-based number")
+
+
+def attach_one(path: Path, card_query: str, board: str) -> dict:
+    return run_launcher(
+        [
+            "--attach-file",
+            "--board",
+            board,
+            "--card-query",
+            card_query,
+            "--file-path",
+            str(path),
+            "--name",
+            path.name,
+        ]
+    )
+
+
+def set_cover(card_id: str, attachment_id: str) -> dict:
+    return run_launcher(["--set-cover", "--card-id", card_id, "--attachment-id", attachment_id])
+
+
+def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(description="Attach one or more photo files to a Trello card")
+    parser.add_argument("photos", nargs="*", help="Photo file paths to attach.")
+    parser.add_argument("--card", "--card-query", dest="card_query", required=True, help="Card name search, for example Byrd or Corson.")
+    parser.add_argument("--board", default="memphis", help="Board alias. Default: memphis.")
+    parser.add_argument("--cover", default="none", help="Optional cover photo: none, first, last, second, third, or a number.")
+    parser.add_argument("--apply", action="store_true", help="Actually write attachments to Trello. Default is dry-run.")
+    parser.add_argument("--json", action="store_true", help="Return JSON.")
+    args = parser.parse_args(argv)
+
+    try:
+        card_query = clean_card_query(args.card_query)
+        if not card_query:
+            raise ValueError("--card must include a card name")
+        paths = photo_paths(args.photos)
+        if not paths:
+            raise ValueError("at least one photo path is required")
+        selected_cover = cover_index(args.cover, len(paths))
+        if selected_cover is not None and not (0 <= selected_cover < len(paths)):
+            raise ValueError("--cover index is outside the supplied photo list")
+    except ValueError as exc:
+        print(f"Trello photo attach: {exc}", file=sys.stderr)
+        return 2
+
+    plan = {
+        "ok": True,
+        "mode": "apply" if args.apply else "dry_run",
+        "board": args.board,
+        "card_query": card_query,
+        "photos": [str(path) for path in paths],
+        "cover": None if selected_cover is None else {"index": selected_cover + 1, "path": str(paths[selected_cover])},
+        "safety": {
+            "trello_writes": bool(args.apply),
+            "dry_run": not args.apply,
+            "comment_written": False,
+        },
+    }
+
+    if not args.apply:
+        if args.json:
+            print(json.dumps(plan, indent=2, sort_keys=True))
+        else:
+            print("DRY RUN: no Trello writes.")
+            print(f"Card: {card_query}")
+            for index, path in enumerate(paths, start=1):
+                marker = " [cover]" if selected_cover == index - 1 else ""
+                print(f"{index}. {path}{marker}")
+            print("Add --apply to attach these photos.")
+        return 0
+
+    results = []
+    cover_result = None
+    for path in paths:
+        result = attach_one(path, card_query, args.board)
+        results.append({"path": str(path), "result": result})
+        if not result.get("ok"):
+            payload = {**plan, "ok": False, "results": results, "error": result.get("error")}
+            print(json.dumps(payload, indent=2, sort_keys=True) if args.json else f"Trello photo attach: {result.get('error')}")
+            return 1
+
+    if selected_cover is not None:
+        chosen = results[selected_cover]["result"]
+        card_id = ((chosen.get("card") or {}).get("id") or "").strip()
+        attachment_id = ((chosen.get("attachment") or {}).get("id") or "").strip()
+        if not card_id or not attachment_id:
+            payload = {**plan, "ok": False, "results": results, "error": "attached photo did not return card id and attachment id for cover"}
+            print(json.dumps(payload, indent=2, sort_keys=True) if args.json else "Trello photo attach: attached photo did not return cover ids")
+            return 1
+        cover_result = set_cover(card_id, attachment_id)
+        if not cover_result.get("ok"):
+            payload = {**plan, "ok": False, "results": results, "cover_result": cover_result, "error": cover_result.get("error")}
+            print(json.dumps(payload, indent=2, sort_keys=True) if args.json else f"Trello cover set: {cover_result.get('error')}")
+            return 1
+
+    payload = {**plan, "results": results, "cover_result": cover_result}
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        print(f"Attached {len(results)} photo(s) to {card_query}.")
+        if cover_result:
+            print(f"Set cover from photo {selected_cover + 1}.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

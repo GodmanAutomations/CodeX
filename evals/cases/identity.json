@@ -1,0 +1,5 @@
+{
+  "id": "identity",
+  "description": "CodeX room files define Codex as Stephen's main executor and explicitly separate room identities.",
+  "target": "codex"
+}

@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOM="/Users/stephengodman/Candice-Code"
+MEMORY="$ROOM/memory/codex_memory.py"
+
+cmd="${1:-help}"
+shift || true
+
+case "$cmd" in
+  help|-h|--help)
+    cat <<'HELP'
+CodeX room helper
+
+Usage:
+  codex-room status
+  codex-room brief
+  codex-room recall QUERY
+  codex-room remember KIND KEY VALUE [TAGS]
+  codex-room handoff
+  codex-room files
+
+Examples:
+  codex-room status
+  codex-room brief
+  codex-room recall smoke
+  codex-room remember preference default-smoke-tests "Smoke test tool changes by default" testing,tools
+HELP
+    ;;
+  status)
+    "$MEMORY" status
+    ;;
+  brief)
+    latest_receipt() {
+      find "$ROOM/receipts/startup" -maxdepth 1 -type f -name "*$1.txt" 2>/dev/null | sort | tail -1
+    }
+
+    printf '# CodeX Room Brief\n\n'
+    printf '## Coding Anchor Self\n\n'
+    sed -n '1,90p' "$ROOM/CODEX-CODING-ANCHOR-SELF.md"
+    printf '\n## Identity Lock\n\n'
+    sed -n '/^```text$/,/^```$/p' "$ROOM/CODEX-IDENTITY-LOCK.md" | sed '/^```/d' || true
+    printf '\n## Working Card\n\n'
+    sed -n '1,80p' "$ROOM/CODEX-WORKING-CARD.md"
+    printf '\n## Current State\n\n'
+    sed -n '1,120p' "$ROOM/CURRENT.md"
+    printf '\n## Continuity Pulse\n\n'
+    "$ROOM/bin/codex-continuity" | sed -n '1,80p'
+    printf '\n## Practical Memory\n\n'
+    "$MEMORY" status
+    printf '\n## Latest Receipts\n\n'
+    preflight="$(latest_receipt standalone-preflight)"
+    doctor="$(latest_receipt room-doctor)"
+    printf -- '- standalone preflight: %s\n' "${preflight:-none}"
+    printf -- '- room doctor: %s\n' "${doctor:-none}"
+    ;;
+  recall|search)
+    if [ "$#" -lt 1 ]; then
+      echo "error: recall requires a query" >&2
+      exit 2
+    fi
+    "$MEMORY" search "$*"
+    ;;
+  remember|add)
+    if [ "$#" -lt 3 ]; then
+      echo "error: remember requires KIND KEY VALUE [TAGS]" >&2
+      exit 2
+    fi
+    kind="$1"
+    key="$2"
+    value="$3"
+    tags="${4:-}"
+    "$MEMORY" add --kind "$kind" --key "$key" --value "$value" --tags "$tags"
+    ;;
+  handoff)
+    printf '# CodeX Fast Handoff\n\n'
+    printf '## Coding Anchor Self\n\n'
+    sed -n '1,120p' "$ROOM/CODEX-CODING-ANCHOR-SELF.md"
+    printf '\n## Identity Lock\n\n'
+    sed -n '/^```text$/,/^```$/p' "$ROOM/CODEX-IDENTITY-LOCK.md" | sed '/^```/d' || true
+    printf '\n## Working Card\n\n'
+    sed -n '1,120p' "$ROOM/CODEX-WORKING-CARD.md"
+    printf '\n## Current\n\n'
+    sed -n '1,160p' "$ROOM/CURRENT.md"
+    printf '\n## Tool Rules\n\n'
+    sed -n '1,180p' "$ROOM/TOOL-RULES.md"
+    ;;
+  files)
+    find "$ROOM" -maxdepth 2 -type f | sort
+    ;;
+  *)
+    echo "error: unknown command: $cmd" >&2
+    echo "run: codex-room help" >&2
+    exit 2
+    ;;
+esac

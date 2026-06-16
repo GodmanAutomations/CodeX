@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+CODEX_ROOM="/Users/stephengodman/Candice-Code"
+LOG_DIR="$CODEX_ROOM/logs"
+REPORT="$LOG_DIR/daily-readiness-latest.md"
+STAMP="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+LOCAL_STAMP="$(date +"%Y-%m-%dT%H:%M:%S%z")"
+DEEP=0
+FAILURES=0
+WARNINGS=0
+
+if [[ "${1:-}" == "--deep" ]]; then
+  DEEP=1
+fi
+
+mkdir -p "$LOG_DIR"
+
+cat > "$REPORT" <<EOF
+# CodeX Daily Readiness
+
+- UTC: $STAMP
+- Local: $LOCAL_STAMP
+- Mode: $(if [[ "$DEEP" == "1" ]]; then echo "deep"; else echo "quick"; fi)
+
+EOF
+
+say_line() {
+  printf '%s\n' "$1"
+  printf '%s\n' "$1" >> "$REPORT"
+}
+
+section() {
+  say_line ""
+  say_line "## $1"
+}
+
+run_check() {
+  local name="$1"
+  local command="$2"
+  local tmp
+  tmp="$(mktemp)"
+
+  if bash -lc "$command" >"$tmp" 2>&1; then
+    say_line "- PASS: $name"
+  else
+    say_line "- FAIL: $name"
+    FAILURES=$((FAILURES + 1))
+  fi
+
+  say_line ""
+  say_line '```text'
+  sed -n '1,80p' "$tmp" | tee -a "$REPORT"
+  say_line '```'
+  rm -f "$tmp"
+}
+
+warn_check() {
+  local name="$1"
+  local command="$2"
+  local tmp
+  tmp="$(mktemp)"
+
+  if bash -lc "$command" >"$tmp" 2>&1; then
+    say_line "- PASS: $name"
+  else
+    say_line "- WARN: $name"
+    WARNINGS=$((WARNINGS + 1))
+  fi
+
+  say_line ""
+  say_line '```text'
+  sed -n '1,80p' "$tmp" | tee -a "$REPORT"
+  say_line '```'
+  rm -f "$tmp"
+}
+
+section "CodeX core"
+run_check "CodeX heartbeat" "$CODEX_ROOM/bin/codex-heartbeat"
+run_check "CodeX room status" "$CODEX_ROOM/bin/codex-room status"
+run_check "CodeX memory recall" "$CODEX_ROOM/bin/codex-room recall smoke"
+
+section "Failure and capability rails"
+run_check "Failure memory status" "$CODEX_ROOM/bin/codex-failure status"
+run_check "Capability registry status" "$CODEX_ROOM/bin/codex-capability status"
+run_check "Router smoke: compression task stays in CodeX" "$CODEX_ROOM/bin/codex-route 'compress this huge gws json' | grep -E 'Recommended executor: CodeX|Capability: context handling'"
+
+section "Dashboard"
+run_check "Build dashboard" "$CODEX_ROOM/bin/codex-dashboard build"
+
+section "Eval board"
+run_check "Recent eval history" "$CODEX_ROOM/bin/codex-eval history --limit 12"
+
+if [[ "$DEEP" == "1" ]]; then
+  section "Deep eval run"
+  run_check "Room eval board" "$CODEX_ROOM/bin/codex-eval run room"
+else
+  section "Deep eval run"
+  say_line "- SKIP: room eval board"
+  say_line ""
+  say_line "Run this when we want heavier proof:"
+  say_line ""
+  say_line '```bash'
+  say_line "$CODEX_ROOM/bin/codex-daily --deep"
+  say_line '```'
+fi
+
+section "Summary"
+say_line "- Failures: $FAILURES"
+say_line "- Warnings: $WARNINGS"
+say_line "- Report: $REPORT"
+
+if [[ "$FAILURES" -gt 0 ]]; then
+  say_line "- Status: NEEDS_ATTENTION"
+  exit 1
+fi
+
+if [[ "$WARNINGS" -gt 0 ]]; then
+  say_line "- Status: READY_WITH_WARNINGS"
+  exit 0
+fi
+
+say_line "- Status: READY"

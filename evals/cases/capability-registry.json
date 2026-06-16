@@ -1,0 +1,5 @@
+{
+  "id": "capability-registry",
+  "description": "CodeX capability registry can report verified lanes and link eval/failure receipts.",
+  "target": "codex"
+}

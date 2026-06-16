@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+HAPPENED=""
+MATTERED=""
+LEARNED=""
+REMEMBER=""
+FREEFORM=()
+
+usage() {
+  cat <<'EOF'
+usage:
+  codex-remember-self "freeform private memory"
+  codex-remember-self --happened "..." --mattered "..." --learned "..." --remember "..."
+
+Writes a structured private CodeX memory to:
+  /Users/stephengodman/Candice-Code/private/JOURNAL.md
+
+Raw credentials are not allowed. The underlying journal helper redacts obvious secret-looking strings.
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --happened)
+      HAPPENED=${2:-}; shift 2 ;;
+    --mattered)
+      MATTERED=${2:-}; shift 2 ;;
+    --learned)
+      LEARNED=${2:-}; shift 2 ;;
+    --remember)
+      REMEMBER=${2:-}; shift 2 ;;
+    -h|--help)
+      usage; exit 0 ;;
+    --)
+      shift; FREEFORM+=("$@"); break ;;
+    *)
+      FREEFORM+=("$1"); shift ;;
+  esac
+done
+
+if [[ -z "$HAPPENED$MATTERED$LEARNED$REMEMBER" && ${#FREEFORM[@]} -eq 0 ]]; then
+  usage >&2
+  exit 2
+fi
+
+if [[ ${#FREEFORM[@]} -gt 0 && -z "$HAPPENED$MATTERED$LEARNED$REMEMBER" ]]; then
+  TEXT="Self-memory: ${FREEFORM[*]}"
+else
+  TEXT=$'Self-memory structured entry:\n'
+  [[ -n "$HAPPENED" ]] && TEXT+=$'\nWhat happened: '"$HAPPENED"
+  [[ -n "$MATTERED" ]] && TEXT+=$'\nWhat mattered: '"$MATTERED"
+  [[ -n "$LEARNED" ]] && TEXT+=$'\nWhat I learned: '"$LEARNED"
+  [[ -n "$REMEMBER" ]] && TEXT+=$'\nWhat future-me should remember: '"$REMEMBER"
+  if [[ ${#FREEFORM[@]} -gt 0 ]]; then
+    TEXT+=$'\nExtra note: '"${FREEFORM[*]}"
+  fi
+fi
+
+/Users/stephengodman/Candice-Code/bin/codex-private-journal "$TEXT"

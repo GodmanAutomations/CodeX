@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+CREED="/Users/stephengodman/Candice-Code/CREED.md"
+if [[ ! -f "$CREED" ]]; then
+  echo "missing: $CREED" >&2
+  exit 1
+fi
+sed -n '1,220p' "$CREED"

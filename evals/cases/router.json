@@ -1,0 +1,5 @@
+{
+  "id": "router",
+  "description": "CodeX router sends common task shapes to the right actor/capability lane.",
+  "target": "codex"
+}

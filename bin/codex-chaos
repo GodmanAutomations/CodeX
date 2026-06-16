@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROMPT=${*:-"Make CodeX one strange little after-hours artifact. No productivity. No secrets. No tools. Just a weird spark worth keeping."}
+STAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+JOURNAL="/Users/stephengodman/Candice-Code/play/CHAOS-JOURNAL.md"
+TMP=$(mktemp)
+
+/Users/stephengodman/Candice-Code/bin/codex-venice-sidecar --mode chaos "$PROMPT" --max-tokens 500 > "$TMP"
+
+{
+  printf '\n## %s\n\n' "$STAMP"
+  printf 'Prompt: %s\n\n' "$PROMPT"
+  cat "$TMP"
+  printf '\n'
+} >> "$JOURNAL"
+
+cat "$TMP"
+printf '\n\nwritten: %s\n' "$JOURNAL"
+rm -f "$TMP"

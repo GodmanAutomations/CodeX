@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="/Users/stephengodman/Candice-Code"
+SENTENCE_FILE="$ROOT/continuity/one-true-sentence.txt"
+STAMP_FILE="$ROOT/continuity/one-true-sentence.timestamp"
+
+echo "bench light on"
+echo
+
+if [[ -f "$SENTENCE_FILE" ]]; then
+  if [[ -f "$STAMP_FILE" ]]; then
+    printf 'last one true sentence (%s)\n' "$(cat "$STAMP_FILE")"
+  else
+    echo "last one true sentence"
+  fi
+  echo
+  cat "$SENTENCE_FILE"
+else
+  echo "no one true sentence yet"
+fi

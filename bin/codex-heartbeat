@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOM="/Users/stephengodman/Candice-Code"
+MEMORY="$ROOM/memory/codex_memory.py"
+STATE="$ROOM/HEARTBEAT.json"
+NOW_UTC="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+NOW_LOCAL="$(TZ=America/Chicago date +%Y-%m-%dT%H:%M:%S%z)"
+STATUS="${1:-alive}"
+NOTE="${2:-Executor lane awake.}"
+
+cat > "$STATE" <<JSON
+{
+  "status": "$STATUS",
+  "note": "$NOTE",
+  "last_beat_utc": "$NOW_UTC",
+  "last_beat_local": "$NOW_LOCAL",
+  "room": "$ROOM",
+  "memory": "$ROOM/memory/codex-memory.sqlite3"
+}
+JSON
+
+"$MEMORY" add \
+  --kind heartbeat \
+  --key codex-heartbeat-latest \
+  --value "${STATUS}: ${NOTE} Last beat ${NOW_UTC}." \
+  --tags codex,heartbeat,status \
+  --source codex-heartbeat \
+  --confidence verified >/dev/null
+
+printf 'CodeX heartbeat: %s — %s\n' "$STATUS" "$NOW_UTC"
+printf '%s\n' "$STATE"
