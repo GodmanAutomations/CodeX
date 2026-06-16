@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-CODEX = Path('/Users/stephengodman/Candice-Code')
+CODEX = Path('/Users/stephengodman/CodeX')
 OUT = CODEX / 'dashboard' / 'index.html'
 
 

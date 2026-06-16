@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
-CODEX = Path('/Users/stephengodman/Candice-Code')
+CODEX = Path('/Users/stephengodman/CodeX')
 GLOBAL_AGENTS = Path('/Users/stephengodman/.codex/AGENTS.md')
 DB = CODEX / 'evals' / 'codex-evals.sqlite3'
 RESULTS = CODEX / 'evals' / 'results'

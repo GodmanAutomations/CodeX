@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
-CODEX_ROOM="/Users/stephengodman/Candice-Code"
+CODEX_ROOM="/Users/stephengodman/CodeX"
 LOG_DIR="$CODEX_ROOM/logs"
 REPORT="$LOG_DIR/daily-readiness-latest.md"
 STAMP="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"

@@ -10,7 +10,7 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
-ROOT = Path("/Users/stephengodman/Candice-Code")
+ROOT = Path("/Users/stephengodman/CodeX")
 HEARTBEAT = ROOT / "HEARTBEAT.json"
 JOURNAL = ROOT / "private" / "JOURNAL.md"
 CHAOS_JOURNAL = ROOT / "play" / "CHAOS-JOURNAL.md"

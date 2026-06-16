@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-DB_PATH = Path('/Users/stephengodman/Candice-Code/capabilities/capabilities.sqlite3')
+DB_PATH = Path('/Users/stephengodman/CodeX/capabilities/capabilities.sqlite3')
 
 
 def now() -> str:
@@ -110,13 +110,13 @@ def seed() -> None:
             'tags': 'codex,executor,repo,tools',
         },
         {
-            'actor': 'CodeX', 'capability': 'memory recall', 'command': '/Users/stephengodman/Candice-Code/bin/codex-room recall QUERY', 'eval_case': 'memory',
+            'actor': 'CodeX', 'capability': 'memory recall', 'command': '/Users/stephengodman/CodeX/bin/codex-room recall QUERY', 'eval_case': 'memory',
             'when_to_use': 'Use to recall standing executor preferences, identity boundaries, and compact handoff facts.',
             'when_not_to_use': 'Do not treat memory as newer than live files or current tool output.',
             'tags': 'codex,memory,sqlite',
         },
         {
-            'actor': 'CodeX', 'capability': 'failure memory', 'command': '/Users/stephengodman/Candice-Code/bin/codex-failure search QUERY', 'eval_case': 'failure-memory',
+            'actor': 'CodeX', 'capability': 'failure memory', 'command': '/Users/stephengodman/CodeX/bin/codex-failure search QUERY', 'eval_case': 'failure-memory',
             'when_to_use': 'Use before repeating a lane where something broke: Gemini contamination, wake scripts, wrapper smoke failures, eval false failures.',
             'when_not_to_use': 'Do not store blame, secrets, or giant raw logs.',
             'tags': 'codex,failures,sqlite,prevention',
@@ -140,7 +140,7 @@ def seed() -> None:
             'tags': 'codex,browser,drive,workspace,playwright',
         },
         {
-            'actor': 'CodeX', 'capability': 'venice model lane', 'command': '/Users/stephengodman/Candice-Code/bin/codex-venice smoke',
+            'actor': 'CodeX', 'capability': 'venice model lane', 'command': '/Users/stephengodman/CodeX/bin/codex-venice smoke',
             'when_to_use': 'Use the CodeX Venice helper for Venice-side model checks and receipts.',
             'when_not_to_use': 'Do not write raw Venice keys into prompts, docs, notes, or repo files.',
             'tags': 'codex,venice,model,sidecar',

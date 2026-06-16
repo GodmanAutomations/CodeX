@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="/Users/stephengodman/Candice-Code"
+ROOT="/Users/stephengodman/CodeX"
 
 cd "$ROOT"
 

@@ -16,7 +16,7 @@ if str(THIS_DIR) not in sys.path:
 
 import codex_venice
 
-OUT_DIR = Path('/Users/stephengodman/Candice-Code/research/venice-search')
+OUT_DIR = Path('/Users/stephengodman/CodeX/research/venice-search')
 
 
 def slugify(text: str) -> str:

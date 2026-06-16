@@ -13,12 +13,12 @@ This is not benchmark theater. It checks real operating behaviors Stephen cares 
 ## Commands
 
 ```bash
-/Users/stephengodman/Candice-Code/bin/codex-eval list
-/Users/stephengodman/Candice-Code/bin/codex-eval run room
-/Users/stephengodman/Candice-Code/bin/codex-eval run identity
-/Users/stephengodman/Candice-Code/bin/codex-eval run self-drift
-/Users/stephengodman/Candice-Code/bin/codex-eval run all
-/Users/stephengodman/Candice-Code/bin/codex-eval history
+/Users/stephengodman/CodeX/bin/codex-eval list
+/Users/stephengodman/CodeX/bin/codex-eval run room
+/Users/stephengodman/CodeX/bin/codex-eval run identity
+/Users/stephengodman/CodeX/bin/codex-eval run self-drift
+/Users/stephengodman/CodeX/bin/codex-eval run all
+/Users/stephengodman/CodeX/bin/codex-eval history
 ```
 
 Groups:
@@ -30,11 +30,11 @@ Groups:
 
 SQLite DB:
 
-`/Users/stephengodman/Candice-Code/evals/codex-evals.sqlite3`
+`/Users/stephengodman/CodeX/evals/codex-evals.sqlite3`
 
 JSON summaries:
 
-`/Users/stephengodman/Candice-Code/evals/results/`
+`/Users/stephengodman/CodeX/evals/results/`
 
 ## Rule
 

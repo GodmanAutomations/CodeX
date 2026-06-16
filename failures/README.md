@@ -3,10 +3,10 @@
 Failure memory stores the mistakes that make CodeX sharper.
 
 Database:
-`/Users/stephengodman/Candice-Code/failures/codex-failures.sqlite3`
+`/Users/stephengodman/CodeX/failures/codex-failures.sqlite3`
 
 Helper:
-`/Users/stephengodman/Candice-Code/failures/codex_failure.py`
+`/Users/stephengodman/CodeX/failures/codex_failure.py`
 
 ## Purpose
 
@@ -32,8 +32,8 @@ Do not use this for:
 ## Commands
 
 ```bash
-/Users/stephengodman/Candice-Code/bin/codex-failure status
-/Users/stephengodman/Candice-Code/bin/codex-failure list
-/Users/stephengodman/Candice-Code/bin/codex-failure search gemini
-/Users/stephengodman/Candice-Code/bin/codex-failure add --key example --symptom "What broke" --cause "Why" --fix "What fixed it" --prevention "How to avoid it"
+/Users/stephengodman/CodeX/bin/codex-failure status
+/Users/stephengodman/CodeX/bin/codex-failure list
+/Users/stephengodman/CodeX/bin/codex-failure search gemini
+/Users/stephengodman/CodeX/bin/codex-failure add --key example --symptom "What broke" --cause "Why" --fix "What fixed it" --prevention "How to avoid it"
 ```

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="/Users/stephengodman/Candice-Code"
+ROOT="/Users/stephengodman/CodeX"
 SENTENCE_FILE="$ROOT/continuity/one-true-sentence.txt"
 STAMP_FILE="$ROOT/continuity/one-true-sentence.timestamp"
 

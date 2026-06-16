@@ -10,7 +10,7 @@ from pathlib import Path
 from statistics import mean
 from typing import Any
 
-RESULTS_DIR = Path("/Users/stephengodman/Candice-Code/venice/results")
+RESULTS_DIR = Path("/Users/stephengodman/CodeX/venice/results")
 
 
 def load_receipt(path: Path) -> dict[str, Any]:

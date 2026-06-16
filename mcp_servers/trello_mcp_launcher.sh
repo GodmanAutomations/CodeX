@@ -3,7 +3,7 @@ set -euo pipefail
 
 ENV_FILE="${TRELLO_MCP_ENV_FILE:-/Users/stephengodman/.env.1password}"
 PYTHON_BIN="${TRELLO_MCP_PYTHON:-/Users/stephengodman/000_AI/bin/python3}"
-SERVER_PATH="${TRELLO_MCP_SERVER:-/Users/stephengodman/Candice-Code/mcp_servers/trello_mcp_server.py}"
+SERVER_PATH="${TRELLO_MCP_SERVER:-/Users/stephengodman/CodeX/mcp_servers/trello_mcp_server.py}"
 OP_TIMEOUT="${TRELLO_OP_RUN_TIMEOUT_SECONDS:-35}"
 LAST_OP_ENV_STATUS="not_attempted"
 LAST_OP_ENV_DETAIL=""
@@ -105,7 +105,7 @@ import os
 from pathlib import Path
 
 env_file = Path(os.environ.get("TRELLO_MCP_ENV_FILE", "/Users/stephengodman/.env.1password"))
-server_path = Path(os.environ.get("TRELLO_MCP_SERVER", "/Users/stephengodman/Candice-Code/mcp_servers/trello_mcp_server.py"))
+server_path = Path(os.environ.get("TRELLO_MCP_SERVER", "/Users/stephengodman/CodeX/mcp_servers/trello_mcp_server.py"))
 
 payload = {
     "ok": bool((os.getenv("TRELLO_API_KEY") or os.getenv("TRELLO_KEY")) and (os.getenv("TRELLO_API_TOKEN") or os.getenv("TRELLO_TOKEN"))),
@@ -157,7 +157,7 @@ import importlib.util
 import json
 import os
 
-server_path = os.environ.get("TRELLO_MCP_SERVER", "/Users/stephengodman/Candice-Code/mcp_servers/trello_mcp_server.py")
+server_path = os.environ.get("TRELLO_MCP_SERVER", "/Users/stephengodman/CodeX/mcp_servers/trello_mcp_server.py")
 include_live = os.environ.get("TRELLO_MCP_DOCTOR_INCLUDE_LIVE") == "true"
 
 spec = importlib.util.spec_from_file_location("trello_mcp_server_doctor", server_path)

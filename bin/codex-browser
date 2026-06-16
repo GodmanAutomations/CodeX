@@ -2,6 +2,6 @@
 set -euo pipefail
 
 PYTHON="/Users/stephengodman/GodmanAutomations/godman-lab/.venv/bin/python"
-SCRIPT="/Users/stephengodman/Candice-Code/browser/codex_browser.py"
+SCRIPT="/Users/stephengodman/CodeX/browser/codex_browser.py"
 
 exec "$PYTHON" "$SCRIPT" "$@"

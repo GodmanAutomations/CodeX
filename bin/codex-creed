@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-CREED="/Users/stephengodman/Candice-Code/CREED.md"
+CREED="/Users/stephengodman/CodeX/CREED.md"
 if [[ ! -f "$CREED" ]]; then
   echo "missing: $CREED" >&2
   exit 1

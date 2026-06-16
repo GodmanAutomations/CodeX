@@ -5,10 +5,10 @@ Local durable memory for Codex's executor lane.
 This is the practical facts database. It is not the startup pulse and not the MCP continuity vault.
 
 Database:
-`/Users/stephengodman/Candice-Code/memory/codex-memory.sqlite3`
+`/Users/stephengodman/CodeX/memory/codex-memory.sqlite3`
 
 Helper:
-`/Users/stephengodman/Candice-Code/memory/codex_memory.py`
+`/Users/stephengodman/CodeX/memory/codex_memory.py`
 
 ## Purpose
 
@@ -42,10 +42,10 @@ Do not use this for:
 ## Commands
 
 ```bash
-/Users/stephengodman/Candice-Code/memory/codex_memory.py status
-/Users/stephengodman/Candice-Code/memory/codex_memory.py list --kind preference
-/Users/stephengodman/Candice-Code/memory/codex_memory.py search smoke
-/Users/stephengodman/Candice-Code/memory/codex_memory.py add --kind preference --key example --value "Example value" --tags codex,executor
+/Users/stephengodman/CodeX/memory/codex_memory.py status
+/Users/stephengodman/CodeX/memory/codex_memory.py list --kind preference
+/Users/stephengodman/CodeX/memory/codex_memory.py search smoke
+/Users/stephengodman/CodeX/memory/codex_memory.py add --kind preference --key example --value "Example value" --tags codex,executor
 ```
 
 ## Rule

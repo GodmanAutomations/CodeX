@@ -30,11 +30,11 @@ from mcp.server.fastmcp import FastMCP
 
 BASE_URL = "https://api.trello.com/1"
 DEFAULT_TIMEOUT = 30
-ARTIFACT_ROOT = Path("/Users/stephengodman/Candice-Code/work-artifacts/trello-mcp")
+ARTIFACT_ROOT = Path("/Users/stephengodman/CodeX/work-artifacts/trello-mcp")
 RAG_CLI = Path("/Users/stephengodman/000_AI/bin/rag")
 POOL_JOBS_ROOT = Path("/Users/stephengodman/godman-pool-data/jobs")
 LOCAL_TRELLO_CONFIG_PATH = Path("/Users/stephengodman/.trello-mcp/config.json")
-TRELLO_MCP_LAUNCHER_PATH = Path("/Users/stephengodman/Candice-Code/mcp_servers/trello_mcp_launcher.sh")
+TRELLO_MCP_LAUNCHER_PATH = Path("/Users/stephengodman/CodeX/mcp_servers/trello_mcp_launcher.sh")
 CODEX_CONFIG_PATH = Path("/Users/stephengodman/.codex/config.toml")
 CLAUDE_CONFIG_PATH = Path("/Users/stephengodman/.claude.json")
 SUPPORTED_PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".tif", ".tiff"}
@@ -3598,7 +3598,7 @@ def preview_stephen_bill(
 ) -> dict[str, Any]:
     """Build Stephen's read-only billing preview from Trello jobs ready to bill."""
     command = [
-        "/Users/stephengodman/Candice-Code/bin/trello-preview-bill",
+        "/Users/stephengodman/CodeX/bin/trello-preview-bill",
         "--json",
         "--board",
         board,
@@ -3640,7 +3640,7 @@ def draft_stephen_bill(
 ) -> dict[str, Any]:
     """Create a local PDF/CSV/Markdown draft bill from Trello jobs ready to bill."""
     command = [
-        "/Users/stephengodman/Candice-Code/bin/trello-draft-bill",
+        "/Users/stephengodman/CodeX/bin/trello-draft-bill",
         "--json",
         "--board",
         board,

@@ -18,7 +18,7 @@ from reportlab.lib.units import inch
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 
-ROOT = Path("/Users/stephengodman/Candice-Code")
+ROOT = Path("/Users/stephengodman/CodeX")
 PREVIEW_COMMAND = ROOT / "bin" / "trello-preview-bill"
 DEFAULT_OUT_DIR = ROOT / "work-artifacts" / "billing-drafts"
 

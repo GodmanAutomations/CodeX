@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 
-ROOT = Path("/Users/stephengodman/Candice-Code")
+ROOT = Path("/Users/stephengodman/CodeX")
 TRELLO_LAUNCHER = ROOT / "mcp_servers" / "trello_mcp_launcher.sh"
 TRELLO_SERVER = ROOT / "mcp_servers" / "trello_mcp_server.py"
 ENV_LOADER = Path("/Users/stephengodman/bin/codex-load-api-keys-once")

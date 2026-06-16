@@ -2,7 +2,7 @@
 
 Source catalog:
 
-`/Users/stephengodman/Candice-Code/list_of_superskills.py`
+`/Users/stephengodman/CodeX/list_of_superskills.py`
 
 The file is a 754-line superskill name catalog. It is useful as a pattern
 source, not as an executable Python module.
@@ -21,7 +21,7 @@ surfaces no longer agree about the intended self.
 The room-native adaptation is:
 
 ```bash
-/Users/stephengodman/Candice-Code/bin/codex-self-drift
+/Users/stephengodman/CodeX/bin/codex-self-drift
 ```
 
 It checks that Coding Anchor remains CodeX's all-time posture across:

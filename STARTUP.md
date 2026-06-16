@@ -9,7 +9,7 @@ Use the canonical CodeX startup path:
 3. Read `START-HERE.md`.
 4. Read `BOOT.md`.
 5. Read `CURRENT.md`.
-6. Run `/Users/stephengodman/Candice-Code/bin/codex-startup`.
+6. Run `/Users/stephengodman/CodeX/bin/codex-startup`.
 
 For the actual boot contract, see `BOOT.md`.
 

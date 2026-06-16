@@ -9,13 +9,13 @@ This is a light workbench drawer, not a cathedral.
 This room is managed as a local git control repo. The physical checkout is:
 
 ```bash
-/Users/stephengodman/Candice-Code
+/Users/stephengodman/CodeX
 ```
 
 The stable CodeX path is restored as a compatibility symlink:
 
 ```bash
-/Users/stephengodman/CodeX -> /Users/stephengodman/Candice-Code
+/Users/stephengodman/CodeX -> /Users/stephengodman/CodeX
 ```
 
 Use `/Users/stephengodman/CodeX` in room docs and launchers unless there is a specific filesystem reason to inspect the physical checkout.
@@ -35,7 +35,7 @@ Use `/Users/stephengodman/CodeX` in room docs and launchers unless there is a sp
 Standalone app launch:
 
 ```bash
-/Users/stephengodman/Candice-Code/bin/codex-launch
+/Users/stephengodman/CodeX/bin/codex-launch
 ```
 
 Default self:
@@ -47,22 +47,22 @@ Coding Anchor always on: CodeX stays CodeX, finds true state, takes the smallest
 Room health check:
 
 ```bash
-/Users/stephengodman/Candice-Code/bin/codex-status
-/Users/stephengodman/Candice-Code/bin/codex-doctor-room
+/Users/stephengodman/CodeX/bin/codex-status
+/Users/stephengodman/CodeX/bin/codex-doctor-room
 ```
 
 MCP control panel:
 
 ```bash
-/Users/stephengodman/Candice-Code/bin/codex-mcp status
-/Users/stephengodman/Candice-Code/bin/codex-mcp tools --include-writes
-/Users/stephengodman/Candice-Code/bin/codex-mcp trello-test Byrd
+/Users/stephengodman/CodeX/bin/codex-mcp status
+/Users/stephengodman/CodeX/bin/codex-mcp tools --include-writes
+/Users/stephengodman/CodeX/bin/codex-mcp trello-test Byrd
 ```
 
 Fast room brief:
 
 ```bash
-/Users/stephengodman/Candice-Code/bin/codex-room brief
+/Users/stephengodman/CodeX/bin/codex-room brief
 ```
 
 ## Room Surfaces
@@ -70,7 +70,7 @@ Fast room brief:
 If something feels important but hidden:
 
 ```bash
-sed -n '1,220p' /Users/stephengodman/Candice-Code/ROOM-SURFACE-MAP.md
+sed -n '1,220p' /Users/stephengodman/CodeX/ROOM-SURFACE-MAP.md
 ```
 
 Key room-temperature files:
@@ -85,7 +85,7 @@ Key room-temperature files:
 Run:
 
 ```bash
-/Users/stephengodman/Candice-Code/bin/codex-heartbeat
+/Users/stephengodman/CodeX/bin/codex-heartbeat
 ```
 
 This updates `HEARTBEAT.json` and the SQLite memory key `codex-heartbeat-latest`.
@@ -100,8 +100,8 @@ This updates `HEARTBEAT.json` and the SQLite memory key `codex-heartbeat-latest`
 Run practical leveling checks:
 
 ```bash
-/Users/stephengodman/Candice-Code/bin/codex-eval run room
-/Users/stephengodman/Candice-Code/bin/codex-self-drift
+/Users/stephengodman/CodeX/bin/codex-eval run room
+/Users/stephengodman/CodeX/bin/codex-self-drift
 ```
 
 Use `run all` when you want every current CodeX-owned eval case in one sweep.
@@ -111,34 +111,34 @@ Use `run all` when you want every current CodeX-owned eval case in one sweep.
 Record practical failures and prevention rules:
 
 ```bash
-/Users/stephengodman/Candice-Code/bin/codex-failure status
-/Users/stephengodman/Candice-Code/bin/codex-failure search gemini
+/Users/stephengodman/CodeX/bin/codex-failure status
+/Users/stephengodman/CodeX/bin/codex-failure search gemini
 ```
 
 ## Capability Registry
 
 ```bash
-/Users/stephengodman/Candice-Code/bin/codex-capability status
-/Users/stephengodman/Candice-Code/bin/codex-capability search browser
+/Users/stephengodman/CodeX/bin/codex-capability status
+/Users/stephengodman/CodeX/bin/codex-capability search browser
 ```
 
 ## Dashboard
 
 ```bash
-/Users/stephengodman/Candice-Code/bin/codex-dashboard build
-open /Users/stephengodman/Candice-Code/dashboard/index.html
+/Users/stephengodman/CodeX/bin/codex-dashboard build
+open /Users/stephengodman/CodeX/dashboard/index.html
 ```
 
 ## Router
 
 ```bash
-/Users/stephengodman/Candice-Code/bin/codex-route "compress this huge gws json"
+/Users/stephengodman/CodeX/bin/codex-route "compress this huge gws json"
 ```
 
 ## Continuity
 
 ```bash
-/Users/stephengodman/Candice-Code/bin/codex-continuity
+/Users/stephengodman/CodeX/bin/codex-continuity
 ```
 
 ## Path Map
@@ -147,5 +147,5 @@ Use the local system tree for fast path questions:
 
 ```bash
 /Users/stephengodman/bin/systree find "<term>"
-sed -n '1,220p' /Users/stephengodman/Candice-Code/SYSTEM-TREE.md
+sed -n '1,220p' /Users/stephengodman/CodeX/SYSTEM-TREE.md
 ```

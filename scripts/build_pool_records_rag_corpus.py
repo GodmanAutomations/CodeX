@@ -273,7 +273,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source-root", required=True)
     parser.add_argument("--output-root", default="/Users/stephengodman/godman-pool-data/jobs")
-    parser.add_argument("--manifest", default="/Users/stephengodman/Candice-Code/work-artifacts/trello-mcp/audits/pool-records-rag-corpus-manifest-2026-06-15.json")
+    parser.add_argument("--manifest", default="/Users/stephengodman/CodeX/work-artifacts/trello-mcp/audits/pool-records-rag-corpus-manifest-2026-06-15.json")
     args = parser.parse_args()
 
     payload = build(Path(args.source_root).expanduser(), Path(args.output_root).expanduser())

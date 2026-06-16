@@ -118,7 +118,7 @@ def test_deep_layer_tracks_chair_threads_and_repair(tmp_path: Path) -> None:
 
 
 def test_room_root_points_to_standalone_codex_folder() -> None:
-    assert ROOM_ROOT == Path("/Users/stephengodman/Candice-Code")
+    assert ROOM_ROOT == Path("/Users/stephengodman/CodeX")
 
 
 def test_codex_continuity_files_have_native_names_only() -> None:

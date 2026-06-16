@@ -15,7 +15,7 @@ The server uses the prepared Python environment at:
 Run it directly:
 
 ```bash
-/Users/stephengodman/Candice-Code/codex_continuity/run-codex-continuity-mcp.sh
+/Users/stephengodman/CodeX/codex_continuity/run-codex-continuity-mcp.sh
 ```
 
 ## MCP Tools

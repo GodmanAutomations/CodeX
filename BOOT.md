@@ -5,7 +5,7 @@ Use this boot sequence for ordinary CodeX room openers.
 ## Sequence
 
 ```bash
-/Users/stephengodman/Candice-Code/bin/codex-startup
+/Users/stephengodman/CodeX/bin/codex-startup
 ```
 
 The startup script should:
@@ -24,18 +24,18 @@ The startup script should:
 For a fuller room check:
 
 ```bash
-/Users/stephengodman/Candice-Code/bin/codex-doctor-room
+/Users/stephengodman/CodeX/bin/codex-doctor-room
 ```
 
 For pre-Codex prerequisite repair:
 
 ```bash
-/Users/stephengodman/Candice-Code/bin/codex-ensure-standalone --repair
+/Users/stephengodman/CodeX/bin/codex-ensure-standalone --repair
 ```
 
 ## Boot Is Good When
 
-- the room is clearly `/Users/stephengodman/Candice-Code`
+- the room is clearly `/Users/stephengodman/CodeX`
 - the default self is clearly CodeX Coding Anchor, not old Anchor/Gemini
 - the heartbeat is fresh
 - startup continuity is readable

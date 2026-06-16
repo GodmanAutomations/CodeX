@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 
-LAUNCHER = Path("/Users/stephengodman/Candice-Code/mcp_servers/trello_mcp_launcher.sh")
+LAUNCHER = Path("/Users/stephengodman/CodeX/mcp_servers/trello_mcp_launcher.sh")
 
 
 def clean_card_query(value: str) -> str:

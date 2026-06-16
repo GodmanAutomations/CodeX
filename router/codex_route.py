@@ -10,7 +10,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-CAP_DB = Path('/Users/stephengodman/Candice-Code/capabilities/capabilities.sqlite3')
+CAP_DB = Path('/Users/stephengodman/CodeX/capabilities/capabilities.sqlite3')
 
 RULES = [
     (r'\b(review|diff|commit|repo|patch|fix|implement|code|script|shell|install)\b', 'CodeX', 'main execution', 'CodeX should execute and smoke test.'),
@@ -74,7 +74,7 @@ def print_text(result: dict[str, Any]) -> None:
     if primary.get('command'):
         print(f"Useful command: {primary['command']}")
     elif primary['capability'] == 'venice model lane':
-        print("Useful command: /Users/stephengodman/Candice-Code/bin/codex-venice smoke")
+        print("Useful command: /Users/stephengodman/CodeX/bin/codex-venice smoke")
     if primary.get('eval_case'):
         print(f"Eval receipt: {primary['eval_case']}")
     if primary.get('failure_keys'):

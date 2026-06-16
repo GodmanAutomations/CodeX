@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-CODEX = Path('/Users/stephengodman/Candice-Code')
+CODEX = Path('/Users/stephengodman/CodeX')
 GLOBAL_AGENTS = Path('/Users/stephengodman/.codex/AGENTS.md')
 MEMORY = CODEX / 'memory' / 'codex_memory.py'
 

@@ -5,7 +5,7 @@ Use this as the clipboard version for cold starts in the CodeX room.
 ## Startup Prompt
 
 ```text
-You are starting in /Users/stephengodman/Candice-Code.
+You are starting in /Users/stephengodman/CodeX.
 
 Stay in this folder for startup and continuity.
 Do not re-root into .codex, Rook, Anchor, or any other room unless I explicitly say to.
@@ -16,9 +16,9 @@ Startup steps:
 3. Read START-HERE.md
 4. Read BOOT.md
 5. Read CURRENT.md
-6. Run /Users/stephengodman/Candice-Code/bin/codex-startup
+6. Run /Users/stephengodman/CodeX/bin/codex-startup
 7. Report boot complete in one short paragraph, including:
-   - confirmation you stayed in /Users/stephengodman/Candice-Code
+   - confirmation you stayed in /Users/stephengodman/CodeX
    - confirmation Coding Anchor is the default CodeX posture
    - heartbeat status
    - continuity status
@@ -30,20 +30,20 @@ If the boot feels thin, then also read:
 - BENCH-LIGHT-ON-GUARDRAILS.md
 - ROOM-SURFACE-MAP.md
 
-After meaningful work, use /Users/stephengodman/Candice-Code/bin/codex-remember-self when there is something future-CodeX should keep.
-Use /Users/stephengodman/Candice-Code/bin/codex-one-true-sentence only for a meaningful carry-forward line, not every session.
+After meaningful work, use /Users/stephengodman/CodeX/bin/codex-remember-self when there is something future-CodeX should keep.
+Use /Users/stephengodman/CodeX/bin/codex-one-true-sentence only for a meaningful carry-forward line, not every session.
 ```
 
 ## One Command
 
 ```bash
-/Users/stephengodman/Candice-Code/bin/codex-startup
+/Users/stephengodman/CodeX/bin/codex-startup
 ```
 
 Fast read-only room brief:
 
 ```bash
-/Users/stephengodman/Candice-Code/bin/codex-room brief
+/Users/stephengodman/CodeX/bin/codex-room brief
 ```
 
 ## Standalone App Launch
@@ -51,14 +51,14 @@ Fast read-only room brief:
 Use this when starting from a shell and you want CodeX to check its pre-app prerequisites first, then open the Codex desktop app:
 
 ```bash
-/Users/stephengodman/Candice-Code/bin/codex-launch
+/Users/stephengodman/CodeX/bin/codex-launch
 ```
 
 Health check without launching a new Codex session:
 
 ```bash
-/Users/stephengodman/Candice-Code/bin/codex-ensure-standalone --repair
-/Users/stephengodman/Candice-Code/bin/codex-doctor-room
+/Users/stephengodman/CodeX/bin/codex-ensure-standalone --repair
+/Users/stephengodman/CodeX/bin/codex-doctor-room
 ```
 
 ## What This Does
@@ -87,26 +87,26 @@ If Stephen asks whether anything important is hidden or overlooked, read `ROOM-S
 ## Useful Follow-On Commands
 
 ```bash
-/Users/stephengodman/Candice-Code/bin/codex-room status
-/Users/stephengodman/Candice-Code/bin/codex-room handoff
-/Users/stephengodman/Candice-Code/bin/codex-room recall smoke
+/Users/stephengodman/CodeX/bin/codex-room status
+/Users/stephengodman/CodeX/bin/codex-room handoff
+/Users/stephengodman/CodeX/bin/codex-room recall smoke
 /Users/stephengodman/bin/systree find "CodeX"
-/Users/stephengodman/Candice-Code/bin/codex-browser headlines https://news.ycombinator.com --json
-/Users/stephengodman/Candice-Code/bin/codex-route "test venice model lane"
-/Users/stephengodman/Candice-Code/bin/codex-venice smoke
+/Users/stephengodman/CodeX/bin/codex-browser headlines https://news.ycombinator.com --json
+/Users/stephengodman/CodeX/bin/codex-route "test venice model lane"
+/Users/stephengodman/CodeX/bin/codex-venice smoke
 ```
 
 ## Browser
 
 Use Camoufox as the hard default for CodeX browser work.
 
-- Primary command: `/Users/stephengodman/Candice-Code/bin/codex-browser`
+- Primary command: `/Users/stephengodman/CodeX/bin/codex-browser`
 - Default engine: `camoufox`
 - Runtime Python: `/Users/stephengodman/GodmanAutomations/godman-lab/.venv/bin/python`
 - Installed there: `camoufox`, `browser_use`, `nodriver`
-- Archived dependency mirror: `/Users/stephengodman/Candice-Code-archives/dependency-stash-2026-06-14/Users/stephengodman/...`
-- Archived browser engines mirror: `/Users/stephengodman/Candice-Code-archives/dependency-stash-2026-06-14/Users/stephengodman/Library/Caches/ms-playwright`
-- Archive pointer: `/Users/stephengodman/Candice-Code/DEPENDENCY-STASH-ARCHIVE.md`
+- Archived dependency mirror: `/Users/stephengodman/CodeX-archives/dependency-stash-2026-06-14/Users/stephengodman/...`
+- Archived browser engines mirror: `/Users/stephengodman/CodeX-archives/dependency-stash-2026-06-14/Users/stephengodman/Library/Caches/ms-playwright`
+- Archive pointer: `/Users/stephengodman/CodeX/DEPENDENCY-STASH-ARCHIVE.md`
 
 Do not default to Chrome/profile/extension automation. Use Chrome only when Stephen explicitly asks for Chrome or the task requires a logged-in Chrome profile.
 
@@ -114,16 +114,16 @@ Do not default to Chrome/profile/extension automation. Use Chrome only when Step
 
 Venice is a CodeX-side model lane, not a raw-secret note lane.
 
-- Use `/Users/stephengodman/Candice-Code/bin/codex-venice models` to list models.
-- Use `/Users/stephengodman/Candice-Code/bin/codex-venice smoke` for a safe API smoke.
+- Use `/Users/stephengodman/CodeX/bin/codex-venice models` to list models.
+- Use `/Users/stephengodman/CodeX/bin/codex-venice smoke` for a safe API smoke.
 - Keep `VENICE_API_KEY` or `VENICE_ADMIN_KEY` env-only. Do not write keys into notes, prompts, docs, or repo files.
 
 ## Memory
 
 SQLite memory is at:
 
-`/Users/stephengodman/Candice-Code/memory/codex-memory.sqlite3`
+`/Users/stephengodman/CodeX/memory/codex-memory.sqlite3`
 
 Helper:
 
-`/Users/stephengodman/Candice-Code/memory/codex_memory.py`
+`/Users/stephengodman/CodeX/memory/codex_memory.py`

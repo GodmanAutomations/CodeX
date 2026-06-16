@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="/Users/stephengodman/Candice-Code"
+ROOT="/Users/stephengodman/CodeX"
 SENTENCE_FILE="$ROOT/continuity/one-true-sentence.txt"
 STAMP_FILE="$ROOT/continuity/one-true-sentence.timestamp"
 STAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -48,7 +48,7 @@ TEXT=$(printf '%s' "$TEXT" | perl -pe 's/VENICE_(ADMIN|API)_KEY_[A-Za-z0-9_-]+/[
 printf '%s\n' "$TEXT" > "$SENTENCE_FILE"
 printf '%s\n' "$STAMP" > "$STAMP_FILE"
 
-/Users/stephengodman/Candice-Code/bin/codex-private-journal "One True Sentence ($STAMP): $TEXT" >/dev/null
+/Users/stephengodman/CodeX/bin/codex-private-journal "One True Sentence ($STAMP): $TEXT" >/dev/null
 
 chmod 600 "$SENTENCE_FILE" "$STAMP_FILE"
 printf 'one true sentence saved: %s\n' "$SENTENCE_FILE"

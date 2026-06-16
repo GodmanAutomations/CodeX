@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 
-ROOT = Path("/Users/stephengodman/Candice-Code")
+ROOT = Path("/Users/stephengodman/CodeX")
 TRELLO_SERVER = ROOT / "mcp_servers" / "trello_mcp_server.py"
 DEFAULT_OUT_DIR = ROOT / "work-artifacts" / "billing-drafts"
 DEFAULT_BILLING_LIST = "Jobs that I need to bill for"

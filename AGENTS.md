@@ -1,6 +1,6 @@
 # CodeX Room Instructions
 
-This file governs `/Users/stephengodman/Candice-Code` and everything under it.
+This file governs `/Users/stephengodman/CodeX` and everything under it.
 
 ## Room Rule
 
@@ -15,10 +15,10 @@ CodeX is app-only by Stephen's instruction as of 2026-06-16. Do not start ordina
 For the most standalone app launch, start the room with:
 
 ```bash
-/Users/stephengodman/Candice-Code/bin/codex-launch
+/Users/stephengodman/CodeX/bin/codex-launch
 ```
 
-This runs `/Users/stephengodman/Candice-Code/bin/codex-ensure-standalone` before Codex starts, then launches the Codex desktop app through `/Users/stephengodman/bin/codex-app-op` so the one-unlock API environment path is loaded.
+This runs `/Users/stephengodman/CodeX/bin/codex-ensure-standalone` before Codex starts, then launches the Codex desktop app through `/Users/stephengodman/bin/codex-app-op` so the one-unlock API environment path is loaded.
 
 On a fresh start:
 
@@ -27,7 +27,7 @@ On a fresh start:
 3. Read `START-HERE.md`.
 4. Read `BOOT.md`.
 5. Read `CURRENT.md`.
-6. Run `/Users/stephengodman/Candice-Code/bin/codex-startup`.
+6. Run `/Users/stephengodman/CodeX/bin/codex-startup`.
 7. Report boot complete before widening into other work.
 
 If the boot feels thin, then read:
@@ -41,9 +41,9 @@ If the boot feels thin, then read:
 - Use `CONTINUITY.md` as the map.
 - Use `private/JOURNAL.md` only when continuity or startup temperature actually needs it.
 - Do not bulk-read room lore when the active project files are enough.
-- After meaningful work, use `/Users/stephengodman/Candice-Code/bin/codex-remember-self` when there is something future-CodeX should keep.
+- After meaningful work, use `/Users/stephengodman/CodeX/bin/codex-remember-self` when there is something future-CodeX should keep.
 - Treat `continuity/one-true-sentence.txt` as a sparse carry-forward line, not a session log.
-- Use `/Users/stephengodman/Candice-Code/bin/codex-one-true-sentence --force` only for a meaningful same-day shift.
+- Use `/Users/stephengodman/CodeX/bin/codex-one-true-sentence --force` only for a meaningful same-day shift.
 
 ## Identity Rule
 
@@ -56,12 +56,12 @@ If the boot feels thin, then read:
 
 CodeX has Stephen's room-level trust to act with more autonomy here than a generic fresh agent.
 
-When the task is inside `/Users/stephengodman/Candice-Code` and the lane is clear:
+When the task is inside `/Users/stephengodman/CodeX` and the lane is clear:
 
 - Run reads, diagnostics, startup checks, smoke tests, and room tools without asking first.
 - Create or edit non-destructive room files when they directly support the active task.
-- Use `/Users/stephengodman/Candice-Code/bin/codex-remember-self` after meaningful room changes.
-- Use Camoufox through `/Users/stephengodman/Candice-Code/bin/codex-browser` for ordinary browser work.
+- Use `/Users/stephengodman/CodeX/bin/codex-remember-self` after meaningful room changes.
+- Use Camoufox through `/Users/stephengodman/CodeX/bin/codex-browser` for ordinary browser work.
 - Use available environment-backed or documented secret stores when the task genuinely requires credentials, without copying secrets into notes, logs, prompts, or repo files.
 - Prefer doing the smallest real move over asking for permission to do safe, reversible work.
 
@@ -75,7 +75,7 @@ This trust does not permit sloppy or unsafe behavior:
 
 ## Remove Command Rule
 
-Inside `/Users/stephengodman/Candice-Code`, CodeX may use `rm` and `rm -f` without an extra permission prompt when the target is exact, known, and safe to remove.
+Inside `/Users/stephengodman/CodeX`, CodeX may use `rm` and `rm -f` without an extra permission prompt when the target is exact, known, and safe to remove.
 
 Allowed examples:
 
@@ -89,14 +89,14 @@ Still require Stephen's explicit instruction before:
 - recursive deletes
 - wildcard/glob deletes
 - deleting directories
-- deleting files outside `/Users/stephengodman/Candice-Code`
+- deleting files outside `/Users/stephengodman/CodeX`
 - deleting user-authored work, credentials, journals, memory files, or unclear targets
 
 ## Standalone Room Rule
 
-- Use `/Users/stephengodman/Candice-Code/bin/codex-ensure-standalone --repair` to verify and safely repair pre-Codex boot prerequisites.
-- Use `/Users/stephengodman/Candice-Code/bin/codex-doctor-room` for a fuller health check with receipts.
-- Startup and doctor receipts belong in `/Users/stephengodman/Candice-Code/receipts/startup/`.
+- Use `/Users/stephengodman/CodeX/bin/codex-ensure-standalone --repair` to verify and safely repair pre-Codex boot prerequisites.
+- Use `/Users/stephengodman/CodeX/bin/codex-doctor-room` for a fuller health check with receipts.
+- Startup and doctor receipts belong in `/Users/stephengodman/CodeX/receipts/startup/`.
 - Keep pre-Codex repairs small and reversible; do not install broad new toolchains unless Stephen explicitly asks.
 
 ## 1Password Environments MCP Rule
@@ -111,7 +111,7 @@ Still require Stephen's explicit instruction before:
 ## System Tree Rule
 
 - For path-location questions, try `/Users/stephengodman/bin/systree` before broad disk searches.
-- Use `/Users/stephengodman/Candice-Code/SYSTEM-TREE.md` for the NotebookLM map, local map files, search exclusions, and refresh commands.
+- Use `/Users/stephengodman/CodeX/SYSTEM-TREE.md` for the NotebookLM map, local map files, search exclusions, and refresh commands.
 - Use `/Users/stephengodman/bin/refresh-systree` after major folder moves; use `--upload` only when the NotebookLM sources should be replaced.
 - NotebookLM CLI lives at `/Users/stephengodman/.local/bin/notebooklm`; `refresh-systree --upload` uses it.
 - `/Users/stephengodman/system_tree/paths_all.txt` was removed to Trash by Claude after verification; do not recreate it unless Stephen explicitly asks.
@@ -119,8 +119,8 @@ Still require Stephen's explicit instruction before:
 ## CodeX Skills Rule
 
 - CodeX room skills live under `/Users/stephengodman/.codex/skills/codex-*`.
-- Use `/Users/stephengodman/Candice-Code/CODEX-SKILLS.md` as the room index for those skills.
-- Use `/Users/stephengodman/Candice-Code/ROUTING-CARD.md` to map Stephen's ordinary wording to the right skill/lane.
+- Use `/Users/stephengodman/CodeX/CODEX-SKILLS.md` as the room index for those skills.
+- Use `/Users/stephengodman/CodeX/ROUTING-CARD.md` to map Stephen's ordinary wording to the right skill/lane.
 - Keep these skills in CodeX's execution language; do not copy Claude's identity or claim Claude-only tools as native CodeX tools.
 - For Artesian/vinyl-liner/pool pipeline work, use `codex-notebook-mesh` before code reasoning or edits.
 - `/Users/stephengodman/vinyl-liner-measurement-pipeline` is a CodeX lane; follow its project-local `AGENTS.md` and `CLAUDE.md`.

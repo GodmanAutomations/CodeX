@@ -26,7 +26,7 @@ from nodriver import cdp
 
 
 CHROME = Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
-ARTIFACTS = Path("/Users/stephengodman/Candice-Code/browser/artifacts")
+ARTIFACTS = Path("/Users/stephengodman/CodeX/browser/artifacts")
 DEFAULT_ENGINE = "camoufox"
 
 

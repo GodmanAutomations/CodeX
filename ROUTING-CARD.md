@@ -7,13 +7,13 @@ Use this card to route ordinary prompts into the right CodeX lane.
 ## Fast Routes
 
 - "What is broken?", "what is live?", "check CodeX", "status":
-  run `/Users/stephengodman/Candice-Code/bin/codex-status`.
+  run `/Users/stephengodman/CodeX/bin/codex-status`.
 
 - MCP, Trello MCP, tool list, reload MCP, doctor MCP:
-  run `/Users/stephengodman/Candice-Code/bin/codex-mcp status` first.
+  run `/Users/stephengodman/CodeX/bin/codex-mcp status` first.
 
 - Receipts, work notes, "what file means what":
-  run `/Users/stephengodman/Candice-Code/bin/codex-receipts-index`, then read `/Users/stephengodman/Candice-Code/work-notes/INDEX.md`.
+  run `/Users/stephengodman/CodeX/bin/codex-receipts-index`, then read `/Users/stephengodman/CodeX/work-notes/INDEX.md`.
 
 - Pool job, liner, vinyl-liner, pricing, Tara, route logic, Memphis Pool, real-job fill:
   `codex-notebook-mesh` first, then `codex-pool-ops`.

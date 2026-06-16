@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-DB_PATH = Path('/Users/stephengodman/Candice-Code/memory/codex-memory.sqlite3')
+DB_PATH = Path('/Users/stephengodman/CodeX/memory/codex-memory.sqlite3')
 
 
 def utc_now() -> str:

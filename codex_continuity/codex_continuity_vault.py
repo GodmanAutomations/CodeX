@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 
-ROOM_ROOT = Path("/Users/stephengodman/Candice-Code")
+ROOM_ROOT = Path("/Users/stephengodman/CodeX")
 CONTINUITY_ROOT = ROOM_ROOT / "codex_continuity"
 DEFAULT_DB_PATH = CONTINUITY_ROOT / "codex-continuity.sqlite3"
 DEFAULT_TOMORROW_DIR = CONTINUITY_ROOT / "tomorrow"

@@ -14,7 +14,7 @@ usage:
   codex-remember-self --happened "..." --mattered "..." --learned "..." --remember "..."
 
 Writes a structured private CodeX memory to:
-  /Users/stephengodman/Candice-Code/private/JOURNAL.md
+  /Users/stephengodman/CodeX/private/JOURNAL.md
 
 Raw credentials are not allowed. The underlying journal helper redacts obvious secret-looking strings.
 EOF
@@ -57,4 +57,4 @@ else
   fi
 fi
 
-/Users/stephengodman/Candice-Code/bin/codex-private-journal "$TEXT"
+/Users/stephengodman/CodeX/bin/codex-private-journal "$TEXT"
