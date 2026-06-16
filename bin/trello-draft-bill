@@ -1,0 +1,376 @@
+#!/Users/stephengodman/000_AI/bin/python3
+"""Create a clean draft bill from the Trello billing preview."""
+from __future__ import annotations
+
+import argparse
+import csv
+import json
+import subprocess
+import sys
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any
+
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.units import inch
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+
+ROOT = Path("/Users/stephengodman/Candice-Code")
+PREVIEW_COMMAND = ROOT / "bin" / "trello-preview-bill"
+DEFAULT_OUT_DIR = ROOT / "work-artifacts" / "billing-drafts"
+
+
+def money(value: int | float | None) -> str:
+    if value is None:
+        return "NEEDS RATE"
+    return f"${value:,.2f}"
+
+
+def run_preview(args: argparse.Namespace) -> dict[str, Any]:
+    command = [
+        str(PREVIEW_COMMAND),
+        "--json",
+        "--stdout-only",
+        "--board",
+        args.board,
+        "--list",
+        args.list,
+        "--limit",
+        str(args.limit),
+    ]
+    if not args.read_work_orders:
+        command.append("--no-work-orders")
+    result = subprocess.run(command, check=False, capture_output=True, text=True, timeout=180)
+    output = result.stdout.strip() or result.stderr.strip()
+    try:
+        payload = json.loads(output)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"preview returned invalid JSON: {output[:1000]}") from exc
+    if result.returncode != 0 or not payload.get("ok"):
+        raise RuntimeError(payload.get("error") or f"preview failed with exit {result.returncode}")
+    return payload
+
+
+def load_preview(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not payload.get("ok"):
+        raise RuntimeError(f"preview JSON is not ok: {path}")
+    return payload
+
+
+def bill_lines(preview: dict[str, Any], include_review: bool) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    included = []
+    review = []
+    for item in preview.get("items") or []:
+        cls = item.get("classification") or {}
+        if cls.get("price_status") == "priced":
+            included.append(item)
+        else:
+            review.append(item)
+            if include_review and cls.get("amount") is not None:
+                included.append(item)
+    return included, review
+
+
+def make_slug(total: int | float, bill_date: datetime, draft: bool) -> str:
+    status = "DRAFT" if draft else "FINAL"
+    amount = str(int(total)) if float(total).is_integer() else f"{total:.2f}".replace(".", "-")
+    return f"Artesian Bill - {bill_date.strftime('%Y-%m-%d')} - {status} - {amount}"
+
+
+def make_markdown(
+    preview: dict[str, Any],
+    included: list[dict[str, Any]],
+    review: list[dict[str, Any]],
+    total: int,
+    bill_date: datetime,
+    due_date: datetime,
+    include_review: bool,
+) -> str:
+    lines = [
+        f"# Artesian Bill - {bill_date.strftime('%B %-d, %Y')}",
+        "",
+        "From: Artesian Pools",
+        "Bill to: Memphis Pool",
+        f"Date: {bill_date.strftime('%Y-%m-%d')}",
+        f"Due date: {due_date.strftime('%Y-%m-%d')}",
+        f"Total due: {money(total)}",
+        "",
+        "## Bill Lines",
+        "",
+        "| # | Job | Description | Amount | Trello |",
+        "|---:|---|---|---:|---|",
+    ]
+    for index, item in enumerate(included, start=1):
+        cls = item["classification"]
+        lines.append(
+            f"| {index} | {clean_cell(item['card_name'])} | {clean_cell(cls['job_label'])} | {money(cls['amount'])} | {item['url']} |"
+        )
+    lines.extend(["", f"**Total due: {money(total)}**", ""])
+    if review:
+        header = "Review Lines Included" if include_review else "Review Lines Not Included"
+        lines.extend([f"## {header}", ""])
+        for item in review:
+            cls = item["classification"]
+            notes = "; ".join(cls.get("warnings") or [])
+            lines.append(f"- {item['card_name']} - {cls['job_label']} - {money(cls.get('amount'))} - {notes}")
+        lines.append("")
+    lines.extend(
+        [
+            "## Source",
+            "",
+            f"- Trello board: {preview.get('board')}",
+            f"- Trello list: {preview.get('source_list')}",
+            f"- Cards scanned: {preview.get('cards_scanned')}",
+            f"- Price source: {preview.get('price_source')}",
+            "- Trello writes: 0",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def clean_cell(value: Any) -> str:
+    return str(value or "").replace("|", "/").replace("\n", " ").strip()
+
+
+def write_csv(path: Path, included: list[dict[str, Any]]) -> None:
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(["job_name", "description", "amount", "status", "trello_url", "card_id"])
+        for item in included:
+            cls = item["classification"]
+            writer.writerow(
+                [
+                    item["card_name"],
+                    cls["job_label"],
+                    cls["amount"],
+                    cls["price_status"],
+                    item["url"],
+                    item["card_id"],
+                ]
+            )
+
+
+def write_pdf(
+    path: Path,
+    preview: dict[str, Any],
+    included: list[dict[str, Any]],
+    review: list[dict[str, Any]],
+    total: int,
+    bill_date: datetime,
+    due_date: datetime,
+    include_review: bool,
+) -> None:
+    doc = SimpleDocTemplate(
+        str(path),
+        pagesize=letter,
+        rightMargin=0.55 * inch,
+        leftMargin=0.55 * inch,
+        topMargin=0.55 * inch,
+        bottomMargin=0.55 * inch,
+    )
+    styles = getSampleStyleSheet()
+    title = ParagraphStyle("BillTitle", parent=styles["Title"], fontSize=18, leading=22, alignment=0)
+    small = ParagraphStyle("Small", parent=styles["BodyText"], fontSize=8, leading=10)
+    body = ParagraphStyle("Body", parent=styles["BodyText"], fontSize=9, leading=11)
+    section = ParagraphStyle("Section", parent=styles["Heading2"], fontSize=11, leading=14, spaceBefore=10)
+
+    story: list[Any] = [
+        Paragraph("Artesian Bill", title),
+        Paragraph(f"Date: {bill_date.strftime('%B %-d, %Y')}", body),
+        Paragraph(f"Due Date: {due_date.strftime('%B %-d, %Y')}", body),
+        Paragraph("From: Artesian Pools", body),
+        Paragraph("Bill To: Memphis Pool", body),
+        Spacer(1, 0.16 * inch),
+        Paragraph(f"Total Due: {money(total)}", ParagraphStyle("Total", parent=styles["Heading1"], fontSize=16, leading=20)),
+        Spacer(1, 0.12 * inch),
+    ]
+
+    data = [["#", "Job", "Description", "Amount"]]
+    for index, item in enumerate(included, start=1):
+        cls = item["classification"]
+        data.append(
+            [
+                str(index),
+                Paragraph(str(item["card_name"]), small),
+                Paragraph(str(cls["job_label"]), small),
+                money(cls["amount"]),
+            ]
+        )
+    data.append(["", "", "TOTAL", money(total)])
+
+    table = Table(data, colWidths=[0.32 * inch, 3.25 * inch, 1.6 * inch, 1.0 * inch], repeatRows=1)
+    table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F2937")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTNAME", (-2, -1), (-1, -1), "Helvetica-Bold"),
+                ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#D1D5DB")),
+                ("BACKGROUND", (0, 1), (-1, -2), colors.HexColor("#F9FAFB")),
+                ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#E5E7EB")),
+                ("ALIGN", (0, 0), (0, -1), "CENTER"),
+                ("ALIGN", (-1, 1), (-1, -1), "RIGHT"),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("LEADING", (0, 0), (-1, -1), 10),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ]
+        )
+    )
+    story.append(table)
+
+    if review:
+        review_title = "Review Lines Included" if include_review else "Review Lines Not Included"
+        story.append(Paragraph(review_title, section))
+        review_data = [["Job", "Possible Amount", "Reason"]]
+        for item in review:
+            cls = item["classification"]
+            review_data.append(
+                [
+                    Paragraph(str(item["card_name"]), small),
+                    money(cls.get("amount")),
+                    Paragraph("; ".join(cls.get("warnings") or []), small),
+                ]
+            )
+        review_table = Table(review_data, colWidths=[3.2 * inch, 1.05 * inch, 2.0 * inch], repeatRows=1)
+        review_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#374151")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#D1D5DB")),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 8),
+                    ("LEADING", (0, 0), (-1, -1), 10),
+                    ("TOPPADDING", (0, 0), (-1, -1), 5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ]
+            )
+        )
+        story.append(review_table)
+
+    story.extend(
+        [
+            Paragraph("Source", section),
+            Paragraph(f"Trello list: {preview.get('source_list')} | Cards scanned: {preview.get('cards_scanned')}", small),
+            Paragraph(f"Price source: {preview.get('price_source')}", small),
+            Paragraph("Draft generated locally by CodeX. Trello writes: 0.", small),
+        ]
+    )
+    doc.build(story)
+
+
+def save_bill(
+    preview: dict[str, Any],
+    included: list[dict[str, Any]],
+    review: list[dict[str, Any]],
+    args: argparse.Namespace,
+) -> dict[str, str | int]:
+    bill_date = datetime.strptime(args.bill_date, "%Y-%m-%d")
+    due_date = bill_date + timedelta(days=args.due_days)
+    total = sum(int((item.get("classification") or {}).get("amount") or 0) for item in included)
+    out_dir = Path(args.out_dir).expanduser()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    slug = make_slug(total, bill_date, draft=not args.final)
+
+    md_path = out_dir / f"{slug}.md"
+    pdf_path = out_dir / f"{slug}.pdf"
+    csv_path = out_dir / f"{slug}.csv"
+    json_path = out_dir / f"{slug}.json"
+
+    md_path.write_text(
+        make_markdown(preview, included, review, total, bill_date, due_date, args.include_review),
+        encoding="utf-8",
+    )
+    write_csv(csv_path, included)
+    write_pdf(pdf_path, preview, included, review, total, bill_date, due_date, args.include_review)
+    json_path.write_text(
+        json.dumps(
+            {
+                "ok": True,
+                "bill_date": args.bill_date,
+                "due_date": due_date.strftime("%Y-%m-%d"),
+                "total": total,
+                "included_count": len(included),
+                "review_count": len(review),
+                "include_review": args.include_review,
+                "source_preview": preview,
+                "safety": {
+                    "trello_writes": False,
+                    "google_drive_writes": False,
+                    "pi5_writes": False,
+                    "secrets_returned": False,
+                },
+            },
+            indent=2,
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    return {
+        "total": total,
+        "included_count": len(included),
+        "review_count": len(review),
+        "markdown": str(md_path),
+        "pdf": str(pdf_path),
+        "csv": str(csv_path),
+        "json": str(json_path),
+    }
+
+
+def main(argv: list[str]) -> int:
+    today = datetime.now().strftime("%Y-%m-%d")
+    parser = argparse.ArgumentParser(description="Create a draft bill from Trello jobs ready to bill.")
+    parser.add_argument("--board", default="memphis")
+    parser.add_argument("--list", default="Jobs that I need to bill for")
+    parser.add_argument("--limit", type=int, default=100)
+    parser.add_argument("--out-dir", default=str(DEFAULT_OUT_DIR))
+    parser.add_argument("--bill-date", default=today)
+    parser.add_argument("--due-days", type=int, default=10)
+    parser.add_argument("--from-preview-json", default="")
+    parser.add_argument("--read-work-orders", action="store_true", help="Allow work-order attachment text to add charges.")
+    parser.add_argument("--include-review", action="store_true", help="Include needs-review lines in the bill total.")
+    parser.add_argument("--final", action="store_true", help="Name the generated bill FINAL instead of DRAFT.")
+    parser.add_argument("--json", action="store_true")
+    args = parser.parse_args(argv)
+
+    try:
+        preview = load_preview(Path(args.from_preview_json).expanduser()) if args.from_preview_json else run_preview(args)
+        included, review = bill_lines(preview, include_review=args.include_review)
+        outputs = save_bill(preview, included, review, args)
+    except Exception as exc:
+        payload = {
+            "ok": False,
+            "error_type": type(exc).__name__,
+            "error": str(exc)[:1200],
+            "safety": {
+                "trello_writes": False,
+                "google_drive_writes": False,
+                "pi5_writes": False,
+                "secrets_returned": False,
+            },
+        }
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 1
+
+    payload = {"ok": True, **outputs}
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        print(f"Draft bill total: {money(outputs['total'])}")
+        print(f"Included lines: {outputs['included_count']}")
+        print(f"Review lines not included: {outputs['review_count']}")
+        print(f"PDF: {outputs['pdf']}")
+        print(f"CSV: {outputs['csv']}")
+        print(f"Markdown: {outputs['markdown']}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

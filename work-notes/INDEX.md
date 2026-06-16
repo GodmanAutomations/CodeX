@@ -4,6 +4,7 @@ Plain index of recent receipts. Newest first.
 
 | Modified | Lane | Receipt | File |
 |---|---|---|---|
+| 2026-06-16 05:40 | Trello MCP | Trello Draft Bill Command - 2026-06-16 | `trello-draft-bill-command-2026-06-16.md` |
 | 2026-06-16 04:17 | Trello MCP | Trello Billing Preview Command - 2026-06-16 | `trello-billing-preview-command-2026-06-16.md` |
 | 2026-06-16 03:17 | CodeX | CodeX Local Git Control Repo - 2026-06-16 | `codex-local-git-control-repo-2026-06-16.md` |
 | 2026-06-16 03:12 | Other | Measurement Pipeline V2 Legacy Compat NotebookLM Audit | `measurement-pipeline-v2-legacy-compat-notebooklm-audit-2026-06-04.md` |

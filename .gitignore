@@ -86,6 +86,7 @@ work-notes/*
 !work-notes/trello-find-card-command-2026-06-16.md
 !work-notes/trello-mcp-workorder-attachment-tools-2026-06-15.md
 !work-notes/trello-billing-preview-command-2026-06-16.md
+!work-notes/trello-draft-bill-command-2026-06-16.md
 
 # Keep core control subtrees opt-in and small.
 capabilities/*.sqlite3

@@ -3631,6 +3631,49 @@ def preview_stephen_bill(
 
 
 @mcp.tool()
+def draft_stephen_bill(
+    board: str = "memphis",
+    list_name: str = "Jobs that I need to bill for",
+    limit: int = 100,
+    include_review: bool = False,
+    read_work_orders: bool = False,
+) -> dict[str, Any]:
+    """Create a local PDF/CSV/Markdown draft bill from Trello jobs ready to bill."""
+    command = [
+        "/Users/stephengodman/Candice-Code/bin/trello-draft-bill",
+        "--json",
+        "--board",
+        board,
+        "--list",
+        list_name,
+        "--limit",
+        str(max(1, min(int(limit), 500))),
+    ]
+    if include_review:
+        command.append("--include-review")
+    if read_work_orders:
+        command.append("--read-work-orders")
+    result = subprocess.run(command, check=False, capture_output=True, text=True, timeout=240)
+    output = result.stdout.strip() or result.stderr.strip()
+    try:
+        payload = json.loads(output)
+    except json.JSONDecodeError as exc:
+        raise TrelloError(f"bill draft returned invalid JSON: {output[:600]}") from exc
+    payload.setdefault("ok", result.returncode == 0)
+    payload.setdefault("safety", {})
+    payload["safety"].update(
+        {
+            "trello_writes": False,
+            "google_drive_writes": False,
+            "pi5_writes": False,
+            "local_bill_files_written": not bool(payload.get("error")),
+            "secrets_returned": False,
+        }
+    )
+    return payload
+
+
+@mcp.tool()
 def copy_board(source_board: str = "memphis", name: str | None = None, keep_from_source: str = "cards") -> dict[str, Any]:
     """Copy a Trello board. Defaults to copying Memphis Pool with cards."""
     source_id = _board_id(source_board)
