@@ -4,6 +4,22 @@ Codex's room for Stephen Godman.
 
 This is a light workbench drawer, not a cathedral.
 
+## Local Git
+
+This room is managed as a local git control repo. The physical checkout is:
+
+```bash
+/Users/stephengodman/Candice-Code
+```
+
+The stable CodeX path is restored as a compatibility symlink:
+
+```bash
+/Users/stephengodman/CodeX -> /Users/stephengodman/Candice-Code
+```
+
+Use `/Users/stephengodman/CodeX` in room docs and launchers unless there is a specific filesystem reason to inspect the physical checkout.
+
 ## Start Here
 
 - `CODEX-IDENTITY-LOCK.md`
