@@ -3590,6 +3590,47 @@ def apply_record_match_action_plan(
 
 
 @mcp.tool()
+def preview_stephen_bill(
+    board: str = "memphis",
+    list_name: str = "Jobs that I need to bill for",
+    limit: int = 100,
+    read_work_orders: bool = True,
+) -> dict[str, Any]:
+    """Build Stephen's read-only billing preview from Trello jobs ready to bill."""
+    command = [
+        "/Users/stephengodman/Candice-Code/bin/trello-preview-bill",
+        "--json",
+        "--board",
+        board,
+        "--list",
+        list_name,
+        "--limit",
+        str(max(1, min(int(limit), 500))),
+    ]
+    if not read_work_orders:
+        command.append("--no-work-orders")
+    result = subprocess.run(command, check=False, capture_output=True, text=True, timeout=180)
+    output = result.stdout.strip() or result.stderr.strip()
+    try:
+        payload = json.loads(output)
+    except json.JSONDecodeError as exc:
+        raise TrelloError(f"billing preview returned invalid JSON: {output[:600]}") from exc
+    payload.setdefault("ok", result.returncode == 0)
+    payload.setdefault("safety", {})
+    payload["safety"].update(
+        {
+            "read_only": True,
+            "trello_writes": False,
+            "google_drive_writes": False,
+            "pi5_writes": False,
+            "local_report_files_written": not bool(payload.get("error")),
+            "secrets_returned": False,
+        }
+    )
+    return payload
+
+
+@mcp.tool()
 def copy_board(source_board: str = "memphis", name: str | None = None, keep_from_source: str = "cards") -> dict[str, Any]:
     """Copy a Trello board. Defaults to copying Memphis Pool with cards."""
     source_id = _board_id(source_board)

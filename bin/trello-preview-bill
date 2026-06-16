@@ -1,0 +1,520 @@
+#!/Users/stephengodman/000_AI/bin/python3
+"""Build a read-only Stephen billing preview from the Memphis Pool Trello board."""
+from __future__ import annotations
+
+import argparse
+import importlib.util
+import json
+import os
+import re
+import subprocess
+import sys
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+
+ROOT = Path("/Users/stephengodman/Candice-Code")
+TRELLO_SERVER = ROOT / "mcp_servers" / "trello_mcp_server.py"
+DEFAULT_OUT_DIR = ROOT / "work-artifacts" / "billing-drafts"
+DEFAULT_BILLING_LIST = "Jobs that I need to bill for"
+PI_PRICE_COMMAND = (
+    "cd /opt/artesian-pools; "
+    "sed -n '54,170p' config.yaml"
+)
+
+
+@dataclass
+class PriceRule:
+    pattern: str
+    price: int
+    description: str
+
+
+def load_launchctl_env() -> None:
+    for name in ("TRELLO_API_KEY", "TRELLO_KEY", "TRELLO_TOKEN"):
+        if os.environ.get(name):
+            continue
+        result = subprocess.run(
+            ["/bin/launchctl", "getenv", name],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        value = result.stdout.strip()
+        if value:
+            os.environ[name] = value
+
+
+def load_trello_module() -> Any:
+    load_launchctl_env()
+    spec = importlib.util.spec_from_file_location("codex_trello_mcp_server", TRELLO_SERVER)
+    if not spec or not spec.loader:
+        raise RuntimeError(f"Could not load Trello MCP server: {TRELLO_SERVER}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def run_ssh_price_read() -> tuple[bool, str]:
+    result = subprocess.run(
+        ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", "pi5-ts", PI_PRICE_COMMAND],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+    if result.returncode != 0:
+        return False, (result.stderr or result.stdout).strip()[:1200]
+    return True, result.stdout
+
+
+def parse_price_block(text: str) -> dict[str, Any]:
+    pricing: dict[str, Any] = {"base": {}, "addons": {}, "distance_premiums": []}
+    section = ""
+    addon_job = ""
+    current_rule: dict[str, Any] | None = None
+
+    for raw in text.splitlines():
+        line = raw.rstrip()
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        indent = len(line) - len(line.lstrip(" "))
+
+        if indent == 2 and stripped.endswith(":"):
+            section = stripped[:-1]
+            addon_job = ""
+            current_rule = None
+            continue
+
+        if section == "base" and indent == 4:
+            match = re.match(r"([A-Za-z0-9_]+):\s*([0-9]+)", stripped)
+            if match:
+                pricing["base"][match.group(1)] = int(match.group(2))
+            continue
+
+        if section == "addons":
+            if indent == 4 and stripped.endswith(":"):
+                addon_job = stripped[:-1]
+                pricing["addons"].setdefault(addon_job, [])
+                current_rule = None
+                continue
+            if indent == 6 and stripped.startswith("- "):
+                current_rule = {}
+                pricing["addons"].setdefault(addon_job, []).append(current_rule)
+                stripped = stripped[2:].strip()
+            if current_rule is not None and ":" in stripped:
+                key, value = stripped.split(":", 1)
+                current_rule[key.strip()] = parse_scalar(value.strip())
+            continue
+
+        if section == "distance_premiums":
+            if indent == 4 and stripped.startswith("- "):
+                current_rule = {}
+                pricing["distance_premiums"].append(current_rule)
+                stripped = stripped[2:].strip()
+            if current_rule is not None and ":" in stripped:
+                key, value = stripped.split(":", 1)
+                current_rule[key.strip()] = parse_scalar(value.strip())
+
+    return pricing
+
+
+def parse_scalar(value: str) -> Any:
+    value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] == '"':
+        value = value[1:-1]
+    if re.fullmatch(r"[0-9]+", value):
+        return int(value)
+    return value
+
+
+def compile_rules(items: list[dict[str, Any]]) -> list[PriceRule]:
+    rules: list[PriceRule] = []
+    for item in items:
+        pattern = str(item.get("pattern") or "").strip()
+        price = item.get("price")
+        description = str(item.get("description") or pattern).strip()
+        if pattern and isinstance(price, int):
+            rules.append(PriceRule(pattern=pattern, price=price, description=description))
+    return rules
+
+
+def safe_pattern(pattern: str) -> str:
+    if pattern == r"haul\s*off|h/?o|haulaway":
+        return r"\b(?:haul\s*off|h/?o|haulaway)\b"
+    return pattern
+
+
+def rule_matches(rule: PriceRule, text: str) -> bool:
+    try:
+        return bool(re.search(safe_pattern(rule.pattern), text, re.IGNORECASE))
+    except re.error:
+        return False
+
+
+def get_list_id(trello: Any, board: str, list_name: str) -> str:
+    lists = trello.get_lists(board=board)
+    for item in lists:
+        if str(item.get("name") or "").strip().lower() == list_name.strip().lower():
+            return str(item["id"])
+    names = ", ".join(str(item.get("name")) for item in lists)
+    raise RuntimeError(f"Could not find Trello list '{list_name}'. Found: {names}")
+
+
+def compact_work_order_text(payload: dict[str, Any]) -> str:
+    if not payload.get("ok"):
+        return ""
+    hints = payload.get("hints") or {}
+    lines = []
+    lines.extend(hints.get("important_lines") or [])
+    lines.extend(hints.get("haul_lines") or [])
+    text = payload.get("text") or ""
+    if text:
+        lines.append(text[:2500])
+    return "\n".join(str(line) for line in lines if line)
+
+
+def classify_job(card: dict[str, Any], detail: dict[str, Any], work_text: str, pricing: dict[str, Any]) -> dict[str, Any]:
+    labels = [str(label.get("name") or label) for label in card.get("labels") or detail.get("labels") or []]
+    title = str(card.get("name") or "")
+    title_lower = title.lower()
+    classification_context = "\n".join(
+        [
+            title,
+            str(detail.get("desc") or ""),
+            " ".join(labels),
+        ]
+    )
+    combined = "\n".join(
+        [
+            classification_context,
+            work_text,
+        ]
+    )
+    lower = classification_context.lower()
+
+    warnings: list[str] = []
+    job_key = "liner_install"
+    job_label = "Liner Install"
+    confidence = "medium"
+
+    if "warranty" in lower:
+        warnings.append("warranty mentioned; confirm whether this should be billed")
+    if re.search(r"\binlay\s+steps?\b", title_lower) and not re.search(r"safety\s+cover", title_lower):
+        job_key = "liner_install"
+        job_label = "Liner Install / inlay steps"
+        confidence = "low"
+        warnings.append("title is specific to inlay steps; verify whether this is add-on-only or full liner install")
+    elif re.search(r"\brope\s+anchors?\b|\banchor\b", title_lower):
+        job_key = "repair"
+        job_label = "Repair / anchors"
+        confidence = "low"
+        warnings.append("anchor work is not a dedicated pricing rule in the live config")
+    elif re.search(r"safety\s+cover|cover\s+install", title_lower):
+        job_key = "safety_cover"
+        job_label = "Safety Cover"
+        confidence = "high"
+    elif re.search(r"snap\s*-?\s*in", title_lower):
+        job_key = "snap_in"
+        job_label = "Snap-In"
+        confidence = "high"
+    elif re.search(r"\breset\b|\bre[- ]?set\b", title_lower):
+        job_key = "liner_reset"
+        job_label = "Liner Reset"
+        confidence = "high"
+    elif re.search(r"\bmeasure\b|\bmeasures\b", title_lower):
+        job_key = "measure"
+        job_label = "Measure"
+        confidence = "high"
+    elif re.search(r"\brepair\b|skimmer|leak|patch", title_lower):
+        job_key = "repair"
+        job_label = "Repair"
+        confidence = "medium"
+    elif re.search(r"\binlet\b|\ba/?b\b", title_lower):
+        job_key = "liner_install_inlet"
+        job_label = "Liner Install Inlet"
+        confidence = "medium"
+    elif re.search(r"\brope\s+anchors?\b|\banchor\b", lower):
+        job_key = "repair"
+        job_label = "Repair / anchors"
+        confidence = "low"
+        warnings.append("anchor work is not a dedicated pricing rule in the live config")
+    elif re.search(r"safety\s+cover|cover\s+install", lower):
+        job_key = "safety_cover"
+        job_label = "Safety Cover"
+        confidence = "medium"
+    elif re.search(r"snap\s*-?\s*in", lower):
+        job_key = "snap_in"
+        job_label = "Snap-In"
+        confidence = "medium"
+    elif re.search(r"\breset\b|\bre[- ]?set\b", lower):
+        job_key = "liner_reset"
+        job_label = "Liner Reset"
+        confidence = "medium"
+    elif re.search(r"\bmeasure\b|\bmeasures\b", lower):
+        job_key = "measure"
+        job_label = "Measure"
+        confidence = "medium"
+    elif re.search(r"\brepair\b|skimmer|leak|patch", lower):
+        job_key = "repair"
+        job_label = "Repair"
+        confidence = "medium"
+    elif re.search(r"\binlet\b|\ba/?b\b", lower):
+        job_key = "liner_install_inlet"
+        job_label = "Liner Install Inlet"
+        confidence = "medium"
+
+    base_prices = pricing.get("base") or {}
+    base = base_prices.get(job_key)
+    addons = []
+    distance = []
+    amount: int | None = None
+    price_status = "priced"
+
+    if isinstance(base, int):
+        amount = base
+        for rule in compile_rules((pricing.get("addons") or {}).get(job_key) or []):
+            if rule_matches(rule, combined):
+                addons.append({"description": rule.description, "price": rule.price})
+                amount += rule.price
+        for rule in compile_rules(pricing.get("distance_premiums") or []):
+            if rule_matches(rule, combined):
+                distance.append({"description": rule.description, "price": rule.price})
+                amount += rule.price
+    else:
+        price_status = "needs_rate"
+        warnings.append(f"no base price found for {job_key}")
+
+    if confidence == "low" or warnings:
+        price_status = "needs_review" if amount is not None else "needs_rate"
+
+    return {
+        "job_key": job_key,
+        "job_label": job_label,
+        "confidence": confidence,
+        "base": base,
+        "addons": addons,
+        "distance": distance,
+        "amount": amount,
+        "price_status": price_status,
+        "warnings": warnings,
+        "labels": labels,
+    }
+
+
+def money(value: int | None) -> str:
+    if value is None:
+        return "NEEDS RATE"
+    return f"${value:,.2f}"
+
+
+def make_markdown(payload: dict[str, Any]) -> str:
+    lines = [
+        f"# Stephen Billing Preview - {payload['created_at']}",
+        "",
+        f"- Board: {payload['board']}",
+        f"- Source list: {payload['source_list']}",
+        f"- Cards scanned: {payload['cards_scanned']}",
+        f"- Confirmed priced total: {money(payload['priced_total'])}",
+        f"- Review-line possible total: {money(payload['review_amount_total'])}",
+        f"- Draft total including review lines: {money(payload['draft_total_including_review'])}",
+        f"- Needs review: {payload['needs_review_count']}",
+        f"- Price source: {payload['price_source']}",
+        f"- Trello writes: 0",
+        "",
+        "## Draft Lines",
+        "",
+        "| # | Card | Inferred work | Status | Amount | Notes |",
+        "|---:|---|---|---|---:|---|",
+    ]
+
+    for index, item in enumerate(payload["items"], start=1):
+        notes = "; ".join(item["classification"].get("warnings") or [])
+        notes = notes.replace("|", "/")
+        card_link = f"[{item['card_name']}]({item['url']})"
+        classification = item["classification"]
+        lines.append(
+            "| {index} | {card} | {job} ({confidence}) | {status} | {amount} | {notes} |".format(
+                index=index,
+                card=card_link.replace("|", "/"),
+                job=classification["job_label"].replace("|", "/"),
+                confidence=classification["confidence"],
+                status=classification["price_status"],
+                amount=money(classification["amount"]),
+                notes=notes or "",
+            )
+        )
+
+    lines.extend(["", "## Details", ""])
+    for item in payload["items"]:
+        cls = item["classification"]
+        lines.extend(
+            [
+                f"### {item['card_name']}",
+                f"- URL: {item['url']}",
+                f"- Card ID: {item['card_id']}",
+                f"- Inferred work: {cls['job_label']} ({cls['job_key']}, confidence {cls['confidence']})",
+                f"- Base: {money(cls['base'] if isinstance(cls['base'], int) else None)}",
+            ]
+        )
+        if cls["addons"]:
+            lines.append("- Add-ons: " + ", ".join(f"{row['description']} {money(row['price'])}" for row in cls["addons"]))
+        if cls["distance"]:
+            lines.append("- Distance: " + ", ".join(f"{row['description']} {money(row['price'])}" for row in cls["distance"]))
+        lines.append(f"- Draft amount: {money(cls['amount'])}")
+        if cls["warnings"]:
+            lines.append("- Review notes: " + "; ".join(cls["warnings"]))
+        if item.get("work_order"):
+            wo = item["work_order"]
+            lines.append(f"- Work-order read: {'yes' if wo.get('ok') else 'no'}")
+            if wo.get("attachment"):
+                lines.append(f"- Work-order attachment: {(wo.get('attachment') or {}).get('name')}")
+            if wo.get("error"):
+                lines.append(f"- Work-order note: {wo.get('error')}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def build_preview(args: argparse.Namespace) -> dict[str, Any]:
+    trello = load_trello_module()
+
+    price_ok, price_text = run_ssh_price_read()
+    pricing = parse_price_block(price_text) if price_ok else {"base": {}, "addons": {}, "distance_premiums": []}
+    price_source = "Pi5 /opt/artesian-pools/config.yaml pricing block" if price_ok else f"unavailable: {price_text}"
+
+    list_id = get_list_id(trello, args.board, args.list)
+    cards = trello.get_cards_in_list(list_id=list_id, limit=args.limit)
+    items = []
+    priced_total = 0
+    review_amount_total = 0
+    needs_review_count = 0
+
+    for card in cards:
+        detail = trello.get_card(card["id"])
+        work_order: dict[str, Any] | None = None
+        work_text = ""
+        if not args.no_work_orders:
+            try:
+                work_order = trello.read_card_work_order(card_id=card["id"], board=args.board, max_text_chars=3000)
+                work_text = compact_work_order_text(work_order)
+            except Exception as exc:
+                work_order = {"ok": False, "error": str(exc)[:500]}
+
+        classification = classify_job(card, detail, work_text, pricing)
+        if classification["price_status"] == "priced" and isinstance(classification["amount"], int):
+            priced_total += classification["amount"]
+        else:
+            needs_review_count += 1
+            if isinstance(classification["amount"], int):
+                review_amount_total += classification["amount"]
+
+        items.append(
+            {
+                "card_id": card["id"],
+                "card_name": card.get("name"),
+                "url": card.get("shortUrl"),
+                "classification": classification,
+                "work_order": {
+                    "ok": bool((work_order or {}).get("ok")),
+                    "error": (work_order or {}).get("error"),
+                    "attachment": (work_order or {}).get("attachment"),
+                },
+            }
+        )
+
+    return {
+        "ok": True,
+        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "board": args.board,
+        "source_list": args.list,
+        "source_list_id": list_id,
+        "cards_scanned": len(cards),
+        "priced_total": priced_total,
+        "review_amount_total": review_amount_total,
+        "draft_total_including_review": priced_total + review_amount_total,
+        "needs_review_count": needs_review_count,
+        "price_source": price_source,
+        "items": items,
+        "safety": {
+            "read_only": True,
+            "trello_writes": False,
+            "google_drive_writes": False,
+            "pi5_writes": False,
+            "secrets_returned": False,
+        },
+    }
+
+
+def save_outputs(payload: dict[str, Any], out_dir: Path) -> dict[str, str]:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    md_path = out_dir / f"stephen-billing-preview-{stamp}.md"
+    json_path = out_dir / f"stephen-billing-preview-{stamp}.json"
+    md_path.write_text(make_markdown(payload), encoding="utf-8")
+    json_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    return {"markdown": str(md_path), "json": str(json_path)}
+
+
+def print_summary(payload: dict[str, Any], outputs: dict[str, str] | None) -> None:
+    print(f"Stephen billing preview: {payload['cards_scanned']} cards")
+    print(f"Confirmed priced total: {money(payload['priced_total'])}")
+    print(f"Review-line possible total: {money(payload['review_amount_total'])}")
+    print(f"Draft total including review lines: {money(payload['draft_total_including_review'])}")
+    print(f"Needs review: {payload['needs_review_count']}")
+    if outputs:
+        print(f"Report: {outputs['markdown']}")
+        print(f"JSON: {outputs['json']}")
+    print("")
+    for item in payload["items"]:
+        cls = item["classification"]
+        status = cls["price_status"]
+        print(f"- {item['card_name']}: {cls['job_label']} | {status} | {money(cls['amount'])}")
+        for warning in cls.get("warnings") or []:
+            print(f"  note: {warning}")
+
+
+def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(description="Preview Stephen's bill from Trello jobs ready to bill.")
+    parser.add_argument("--board", default="memphis")
+    parser.add_argument("--list", default=DEFAULT_BILLING_LIST)
+    parser.add_argument("--limit", type=int, default=100)
+    parser.add_argument("--out-dir", default=str(DEFAULT_OUT_DIR))
+    parser.add_argument("--no-work-orders", action="store_true", help="Skip work-order attachment reads.")
+    parser.add_argument("--json", action="store_true", help="Print JSON instead of a plain summary.")
+    parser.add_argument("--stdout-only", action="store_true", help="Do not save local report files.")
+    args = parser.parse_args(argv)
+
+    try:
+        payload = build_preview(args)
+        outputs = None if args.stdout_only else save_outputs(payload, Path(args.out_dir).expanduser())
+        payload["outputs"] = outputs
+    except Exception as exc:
+        error = {
+            "ok": False,
+            "error_type": type(exc).__name__,
+            "error": str(exc)[:1200],
+            "safety": {
+                "read_only": True,
+                "trello_writes": False,
+                "google_drive_writes": False,
+                "pi5_writes": False,
+                "secrets_returned": False,
+            },
+        }
+        print(json.dumps(error, indent=2, sort_keys=True))
+        return 1
+
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        print_summary(payload, outputs)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))
