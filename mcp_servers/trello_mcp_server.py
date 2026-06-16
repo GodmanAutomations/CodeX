@@ -3716,6 +3716,53 @@ def publish_stephen_bill(
 
 
 @mcp.tool()
+def route_pool_stops(
+    stop_queries: list[str],
+    board: str = "memphis",
+    warehouse_first: bool = True,
+    manual_stops: list[str] | None = None,
+    origin: str = "Current Location",
+) -> dict[str, Any]:
+    """Build a route from Trello pool job names plus optional manual stops.
+
+    Manual stops use NAME=ADDRESS, for example:
+    "Keathley pump drop=8925 Cedar Mills Cove, Cordova, TN".
+    """
+    if not stop_queries and not manual_stops:
+        raise TrelloError("stop_queries or manual_stops is required")
+    command = [
+        "/Users/stephengodman/CodeX/bin/trello-route-stops",
+        "--json",
+        "--board",
+        board,
+        "--origin",
+        origin,
+    ]
+    if warehouse_first:
+        command.append("--warehouse-first")
+    for item in manual_stops or []:
+        command.extend(["--manual-stop", item])
+    command.extend(stop_queries)
+    result = subprocess.run(command, check=False, capture_output=True, text=True, timeout=180)
+    output = result.stdout.strip() or result.stderr.strip()
+    try:
+        payload = json.loads(output)
+    except json.JSONDecodeError as exc:
+        raise TrelloError(f"route command returned invalid JSON: {output[:600]}") from exc
+    payload.setdefault("ok", result.returncode == 0)
+    payload.setdefault("safety", {})
+    payload["safety"].update(
+        {
+            "trello_writes": False,
+            "google_drive_writes": False,
+            "pi5_writes": False,
+            "secrets_returned": False,
+        }
+    )
+    return payload
+
+
+@mcp.tool()
 def copy_board(source_board: str = "memphis", name: str | None = None, keep_from_source: str = "cards") -> dict[str, Any]:
     """Copy a Trello board. Defaults to copying Memphis Pool with cards."""
     source_id = _board_id(source_board)
