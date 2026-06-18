@@ -70,6 +70,9 @@ Updated: 2026-06-16
 - Twilio caller-control dashboard slice is built: `/Users/stephengodman/CodeX/output/phone-lookup/build_caller_control.py`; latest dashboard `/Users/stephengodman/CodeX/output/phone-lookup/caller-control-latest.html`.
 - Latest caller-control counts: 33 unknown numbers, 23 screened now, 10 forwarded now, 0 hard-blocked now, 23 candidate-block-later review items.
 - Twilio caller decision ledger slice is built: `/Users/stephengodman/CodeX/output/phone-lookup/caller-decisions.json` plus `/Users/stephengodman/CodeX/output/phone-lookup/caller_decisions.py`; dashboard now merges manual decisions without changing live Twilio policy.
+- Recon MCP is live and globally configured as a read-only CodeX MCP server at `/Users/stephengodman/CodeX/mcp_servers/recon_mcp_launcher.sh`; its server, data helpers, and canonical paths are tracked in this repo so the live tool surface is reproducible.
+- Recon uses `/Users/stephengodman/GodmanAutomations/data` as the canonical data root and `/Users/stephengodman/CodeX/config/stephen-billing-rates.json` as Stephen's local 2026 Artesian billing-rate authority.
+- Recon exposes billing, report, job, bill-history, and photo-match lookup tools as read-only. Refresh remains dry-run preview only; stale `/Users/stephengodman/data` script paths are reportable warnings, not blockers.
 
 ## Watch Items
 
