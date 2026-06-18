@@ -73,6 +73,7 @@ Updated: 2026-06-16
 - Recon MCP is live and globally configured as a read-only CodeX MCP server at `/Users/stephengodman/CodeX/mcp_servers/recon_mcp_launcher.sh`; its server, data helpers, and canonical paths are tracked in this repo so the live tool surface is reproducible.
 - Recon uses `/Users/stephengodman/GodmanAutomations/data` as the canonical data root and `/Users/stephengodman/CodeX/config/stephen-billing-rates.json` as Stephen's local 2026 Artesian billing-rate authority.
 - Recon exposes billing, report, job, bill-history, and photo-match lookup tools as read-only. Refresh remains dry-run preview only; stale `/Users/stephengodman/data` script paths are reportable warnings, not blockers.
+- Cybersecurity skills MCP is globally configured as `cybersecurity-skills`, backed by `/Users/stephengodman/CodeX/Codex's Secret Sauce/run_mcp.py` through that repo's `.venv` Python; it exposes search, load, and domain-list tools for the 754-skill library.
 
 ## Watch Items
 
