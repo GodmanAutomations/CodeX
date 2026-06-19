@@ -2802,7 +2802,7 @@ def get_card(card_id: str) -> dict[str, Any]:
     return _request(
         "GET",
         f"cards/{card_id}",
-        params={"fields": "id,name,desc,shortUrl,idList,idBoard,closed,due,labels,dateLastActivity"},
+        params={"fields": "id,name,desc,shortUrl,idList,idBoard,closed,due,labels,dateLastActivity,idAttachmentCover,cover,badges"},
     )
 
 
@@ -4872,6 +4872,8 @@ def apply_photo_card_match_plan(
     upload_policy: str = "all_gps_matches",
     min_vision_upload_score: int = 50,
     require_pool_visible: bool = False,
+    check_existing_names_in_dry_run: bool = True,
+    preserve_existing_pool_photo_cover: bool = True,
 ) -> dict[str, Any]:
     """Apply a previewed photo-card match plan to Trello.
 
@@ -4909,11 +4911,23 @@ def apply_photo_card_match_plan(
         if not card_id:
             continue
         existing_by_name: dict[str, dict[str, Any]] = {}
-        if apply_enabled and skip_existing_names:
+        existing_by_id: dict[str, dict[str, Any]] = {}
+        existing_cover_id = None
+        existing_pool_photo_cover_id = None
+        check_existing_names = bool(skip_existing_names and (apply_enabled or check_existing_names_in_dry_run))
+        if check_existing_names:
             try:
                 for item in get_card_attachments(card_id):
                     if item.get("name"):
                         existing_by_name[str(item["name"])] = item
+                    if item.get("id"):
+                        existing_by_id[str(item["id"])] = item
+                if set_covers:
+                    card_meta = get_card(card_id)
+                    existing_cover_id = card_meta.get("idAttachmentCover") or (card_meta.get("cover") or {}).get("idAttachment")
+                    existing_cover = existing_by_id.get(str(existing_cover_id or ""))
+                    if existing_cover and str(existing_cover.get("name") or "").startswith("Pool photo "):
+                        existing_pool_photo_cover_id = str(existing_cover_id)
             except Exception as exc:
                 errors.append({"card_id": card_id, "stage": "list_existing_attachments", "error": str(exc)[:500]})
                 continue
@@ -4941,6 +4955,8 @@ def apply_photo_card_match_plan(
                 else:
                     skipped_suppressed_count += 1
                 continue
+            taken = str(photo.get("taken_at") or "unknown-date")[:10]
+            attachment_name = f"Pool photo {taken} {str(photo.get('photo_id') or staged_path.stem)[:8]}{staged_path.suffix.lower()}"[:256]
             upload_decision = _photo_upload_decision(
                 photo,
                 upload_policy=policy,
@@ -4948,6 +4964,20 @@ def apply_photo_card_match_plan(
                 require_pool_visible=require_pool_visible,
             )
             photo["upload_decision"] = upload_decision
+            if skip_existing_names and attachment_name in existing_by_name:
+                existing = existing_by_name[attachment_name]
+                row = {
+                    "photo_id": photo.get("photo_id"),
+                    "status": "skipped_existing_name",
+                    "attachment_name": attachment_name,
+                    "attachment_id": existing.get("id"),
+                    "upload_decision": upload_decision,
+                }
+                if str(photo.get("photo_id")) == selected_cover_id:
+                    selected_cover_upload_planned = True
+                    selected_cover_attachment_id = existing.get("id")
+                card_result["uploads"].append(row)
+                continue
             if upload_decision["action"] != "upload":
                 quality_row = {
                     "photo_id": photo.get("photo_id"),
@@ -4970,8 +5000,6 @@ def apply_photo_card_match_plan(
                     skipped_suppressed_count += 1
                 continue
             uploadable_seen += 1
-            taken = str(photo.get("taken_at") or "unknown-date")[:10]
-            attachment_name = f"Pool photo {taken} {str(photo.get('photo_id') or staged_path.stem)[:8]}{staged_path.suffix.lower()}"[:256]
             if dry_run:
                 row = {
                     "photo_id": photo.get("photo_id"),
@@ -4984,18 +5012,6 @@ def apply_photo_card_match_plan(
                 }
                 if str(photo.get("photo_id")) == selected_cover_id:
                     selected_cover_upload_planned = True
-            elif skip_existing_names and attachment_name in existing_by_name:
-                existing = existing_by_name[attachment_name]
-                row = {
-                    "photo_id": photo.get("photo_id"),
-                    "status": "skipped_existing_name",
-                    "attachment_name": attachment_name,
-                    "attachment_id": existing.get("id"),
-                    "upload_decision": upload_decision,
-                }
-                if str(photo.get("photo_id")) == selected_cover_id:
-                    selected_cover_upload_planned = True
-                    selected_cover_attachment_id = existing.get("id")
             else:
                 try:
                     uploaded = attach_file_to_card(
@@ -5020,12 +5036,35 @@ def apply_photo_card_match_plan(
                     errors.append({"card_id": card_id, "photo_id": photo.get("photo_id"), "stage": "upload", "error": str(exc)[:500]})
             card_result["uploads"].append(row)
         if dry_run:
-            if set_covers and selected_cover_id and selected_cover_upload_planned:
+            if set_covers and preserve_existing_pool_photo_cover and existing_pool_photo_cover_id:
+                card_result["cover"] = {
+                    "status": "preserved_existing_pool_photo_cover",
+                    "attachment_id": existing_pool_photo_cover_id,
+                }
+            elif set_covers and selected_cover_id and selected_cover_attachment_id:
+                if existing_cover_id == selected_cover_attachment_id:
+                    card_result["cover"] = {
+                        "status": "already_set",
+                        "photo_id": selected_cover_id,
+                        "attachment_id": selected_cover_attachment_id,
+                    }
+                else:
+                    card_result["cover"] = {
+                        "status": "would_set_existing_attachment",
+                        "photo_id": selected_cover_id,
+                        "attachment_id": selected_cover_attachment_id,
+                    }
+            elif set_covers and selected_cover_id and selected_cover_upload_planned:
                 card_result["cover"] = {"status": "would_set", "photo_id": selected_cover_id}
             elif set_covers and selected_cover_id:
                 card_result["cover"] = {"status": "cover_photo_not_uploadable", "photo_id": selected_cover_id}
             else:
                 card_result["cover"] = {"status": "not_requested", "photo_id": selected_cover_id or None}
+        elif set_covers and preserve_existing_pool_photo_cover and existing_pool_photo_cover_id:
+            card_result["cover"] = {
+                "status": "preserved_existing_pool_photo_cover",
+                "attachment_id": existing_pool_photo_cover_id,
+            }
         elif set_covers and selected_cover_attachment_id:
             try:
                 cover = set_card_cover(card_id=card_id, attachment_id=str(selected_cover_attachment_id))
@@ -5037,6 +5076,7 @@ def apply_photo_card_match_plan(
 
     upload_count = sum(1 for card in results for item in card.get("uploads", []) if item.get("status") == "uploaded")
     would_upload_count = sum(1 for card in results for item in card.get("uploads", []) if item.get("status") == "would_upload")
+    skipped_existing_count = sum(1 for card in results for item in card.get("uploads", []) if item.get("status") == "skipped_existing_name")
     needs_review_count = sum(len(card.get("needs_review", [])) for card in results)
     rejected_count = sum(len(card.get("rejected_photos", [])) for card in results)
     return {
@@ -5048,6 +5088,7 @@ def apply_photo_card_match_plan(
             "cards_considered": len(results),
             "uploaded": upload_count,
             "would_upload": would_upload_count,
+            "skipped_existing_name": skipped_existing_count,
             "needs_review": needs_review_count,
             "rejected": rejected_count,
             "errors": len(errors),
@@ -5055,6 +5096,8 @@ def apply_photo_card_match_plan(
             "upload_policy": policy,
             "min_vision_upload_score": min_upload_score,
             "require_pool_visible": bool(require_pool_visible),
+            "check_existing_names_in_dry_run": bool(check_existing_names_in_dry_run),
+            "preserve_existing_pool_photo_cover": bool(preserve_existing_pool_photo_cover),
         },
         "results": results,
         "errors": errors,
@@ -5280,6 +5323,129 @@ def attach_pool_photos_to_cards(
         "plan_markdown_path": preview.get("plan_markdown_path"),
         "preview_summary": preview_summary,
         "card_location_summary": card_location_summary,
+        "apply_summary": apply_summary,
+        "apply_results": apply_result.get("results"),
+        "upload_quality": {
+            "upload_policy": (upload_policy or "usable_images").strip().lower(),
+            "min_vision_upload_score": max(0, min(int(min_vision_upload_score), 100)),
+            "require_pool_visible": bool(require_pool_visible),
+        },
+        "warnings": warnings,
+        "errors": apply_result.get("errors") or [],
+        "safety": {
+            "dry_run_default": True,
+            "trello_writes": not dry_run,
+            "photos_writes": False,
+            "local_file_write": True,
+            "icloud_network_access": True,
+            "google_drive_writes": False,
+            "secrets_returned": False,
+            "required_apply_token": required_apply_token,
+            "gemini_network_access": bool(vision_cover_scoring),
+        },
+    }
+
+
+@mcp.tool()
+def sync_pool_photos_to_board(
+    board: str = "memphis",
+    dry_run: bool = True,
+    apply_token: str = "",
+    days_back: int = 90,
+    radius_ft: int = 250,
+    max_photos: int = 1500,
+    limit_matching_cards: int = 100,
+    max_total_photos: int = 20,
+    max_photos_per_card: int = 2,
+    include_complete: bool = False,
+    geocode_limit: int = 80,
+    allowed_confidences_json: str = '["very_strong", "likely"]',
+    set_covers: bool = True,
+    skip_existing_names: bool = True,
+    vision_cover_scoring: bool = True,
+    vision_cover_limit: int = 3,
+    vision_cover_model: str = "",
+    upload_policy: str = "usable_images",
+    min_vision_upload_score: int = 50,
+    require_pool_visible: bool = True,
+) -> dict[str, Any]:
+    """Board-wide photo sync queue for open pool job cards.
+
+    This scans open Trello cards on the board, matches recent Apple Photos by GPS,
+    stages/downloads candidate originals, scores candidates with Gemini vision,
+    and optionally applies upload/cover writes. Dry-run is default and live writes
+    require APPLY_PHOTO_CARD_MATCH_PLAN.
+    """
+    total_photo_limit = max(1, min(int(max_total_photos), 200))
+    per_card_limit = max(1, min(int(max_photos_per_card), 25))
+    matching_card_limit = max(1, min(int(limit_matching_cards), 500))
+    required_apply_token = "APPLY_PHOTO_CARD_MATCH_PLAN"
+    if not dry_run and apply_token != required_apply_token:
+        raise TrelloError(f"Refusing Trello writes. Re-run with apply_token={required_apply_token!r}.")
+
+    preview = preview_photo_card_matches(
+        source_path=str(DEFAULT_PHOTOS_LIBRARY_PATH),
+        board=board,
+        days_back=days_back,
+        radius_ft=radius_ft,
+        max_photos=max_photos,
+        limit_cards=matching_card_limit,
+        include_complete=include_complete,
+        geocode_limit=geocode_limit,
+        stage_files=True,
+        max_stage_files=total_photo_limit,
+        max_stage_files_per_card=per_card_limit,
+        export_missing_originals=True,
+        missing_export_limit=total_photo_limit,
+        missing_export_timeout_seconds=300,
+        missing_export_apply_token="EXPORT_PHOTOS_FROM_ICLOUD",
+        vision_cover_scoring=vision_cover_scoring,
+        vision_cover_limit=vision_cover_limit,
+        vision_cover_model=vision_cover_model,
+    )
+    apply_result = apply_photo_card_match_plan(
+        preview["plan_json_path"],
+        dry_run=dry_run,
+        apply_token=apply_token,
+        allowed_confidences_json=allowed_confidences_json,
+        limit_cards=matching_card_limit,
+        limit_photos_per_card=per_card_limit,
+        set_covers=set_covers,
+        skip_existing_names=skip_existing_names,
+        include_skipped_photos=False,
+        upload_policy=upload_policy,
+        min_vision_upload_score=min_vision_upload_score,
+        require_pool_visible=require_pool_visible,
+    )
+
+    preview_summary = preview.get("summary") or {}
+    apply_summary = apply_result.get("summary") or {}
+    warnings = []
+    if int(preview_summary.get("matched_cards") or 0) == 0:
+        warnings.append({"type": "no_board_photo_matches", "detail": "No open cards had GPS-matched photos within the current radius/days window."})
+    if int(apply_summary.get("would_upload") or 0) == 0 and dry_run and int(apply_summary.get("skipped_existing_name") or 0) == 0:
+        warnings.append({"type": "no_safe_upload_candidates", "detail": "Quality gate did not find uploadable candidates under the current policy."})
+    if int(apply_summary.get("would_upload") or 0) == 0 and dry_run and int(apply_summary.get("skipped_existing_name") or 0) > 0:
+        warnings.append(
+            {
+                "type": "safe_candidates_already_attached",
+                "count": apply_summary.get("skipped_existing_name"),
+                "detail": "Uploadable candidates matched existing Trello attachment names, so no duplicate upload is needed.",
+            }
+        )
+    if int(apply_summary.get("needs_review") or 0):
+        warnings.append({"type": "photos_need_review", "count": apply_summary.get("needs_review")})
+    if int(apply_summary.get("rejected") or 0):
+        warnings.append({"type": "photos_rejected_by_quality_gate", "count": apply_summary.get("rejected")})
+
+    return {
+        "ok": bool(preview.get("ok")) and bool(apply_result.get("ok")),
+        "mode": "dry_run" if dry_run else "applied",
+        "board": {"alias": board, "id": _board_id(board), "include_complete": include_complete},
+        "plan_json_path": preview.get("plan_json_path"),
+        "plan_markdown_path": preview.get("plan_markdown_path"),
+        "preview_summary": preview_summary,
+        "card_location_summary": preview.get("card_location_summary"),
         "apply_summary": apply_summary,
         "apply_results": apply_result.get("results"),
         "upload_quality": {
@@ -6399,6 +6565,7 @@ def _run_cli(argv: list[str]) -> int:
     parser.add_argument("--read-work-order", action="store_true", help="Read a work-order-like attachment from a Trello card and exit.")
     parser.add_argument("--attach-file", action="store_true", help="Attach a local file to a Trello card and exit. This writes to Trello.")
     parser.add_argument("--attach-pool-photos", action="store_true", help="Plan/apply phone Photos GPS matches to target Trello cards.")
+    parser.add_argument("--sync-pool-photos", action="store_true", help="Plan/apply board-wide phone Photos GPS matches to Trello cards.")
     parser.add_argument("--set-cover", action="store_true", help="Set a Trello card cover attachment and exit. This writes to Trello.")
     parser.add_argument("--primary-board", default="memphis")
     parser.add_argument("--comparison-board", default="legacy_memphis")
@@ -6421,6 +6588,7 @@ def _run_cli(argv: list[str]) -> int:
     parser.add_argument("--max-photos", type=int, default=1500)
     parser.add_argument("--max-targets", type=int, default=12)
     parser.add_argument("--max-photos-per-card", type=int, default=5)
+    parser.add_argument("--max-total-photos", type=int, default=20)
     parser.add_argument("--geocode-limit", type=int, default=50)
     parser.add_argument("--vision-cover-scoring", default="true")
     parser.add_argument("--upload-policy", default="usable_images", choices=["usable_images", "all_gps_matches", "review_only"])
@@ -6495,6 +6663,29 @@ def _run_cli(argv: list[str]) -> int:
                 min_vision_upload_score=args.min_vision_upload_score,
                 require_pool_visible=_cli_bool(args.require_pool_visible),
             )
+        elif args.sync_pool_photos:
+            photo_include_complete = (
+                _cli_bool(args.include_complete)
+                if any(item == "--include-complete" or item.startswith("--include-complete=") for item in argv)
+                else False
+            )
+            payload = sync_pool_photos_to_board(
+                board=args.board,
+                dry_run=not bool(args.apply_token),
+                apply_token=args.apply_token,
+                days_back=args.days_back,
+                radius_ft=args.radius_ft,
+                max_photos=args.max_photos,
+                limit_matching_cards=args.limit_cards,
+                max_total_photos=args.max_total_photos,
+                max_photos_per_card=args.max_photos_per_card,
+                include_complete=photo_include_complete,
+                geocode_limit=args.geocode_limit,
+                vision_cover_scoring=_cli_bool(args.vision_cover_scoring),
+                upload_policy=args.upload_policy,
+                min_vision_upload_score=args.min_vision_upload_score,
+                require_pool_visible=_cli_bool(args.require_pool_visible),
+            )
         elif args.set_cover:
             if not args.card_id or not args.attachment_id:
                 raise TrelloError("--card-id and --attachment-id are required with --set-cover")
@@ -6509,7 +6700,7 @@ def _run_cli(argv: list[str]) -> int:
                 sample_cards_per_list=args.sample_cards_per_list,
             )
         else:
-            parser.error("choose --runtime-diagnostics, --search-cards, --read-work-order, --attach-file, --attach-pool-photos, --set-cover, or --write-cutover-packet")
+            parser.error("choose --runtime-diagnostics, --search-cards, --read-work-order, --attach-file, --attach-pool-photos, --sync-pool-photos, --set-cover, or --write-cutover-packet")
             return 2
     except Exception as exc:
         payload = {

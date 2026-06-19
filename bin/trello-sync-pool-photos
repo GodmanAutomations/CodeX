@@ -1,0 +1,210 @@
+#!/usr/bin/env python3
+"""Sync Apple Photos pool-job images to Trello through the Trello MCP launcher.
+
+Default mode is a dry-run board-wide queue. Use --apply for live Trello writes.
+If card names are supplied, the wrapper targets those cards; otherwise it scans
+the board for GPS matches.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+
+ROOT = Path("/Users/stephengodman/CodeX")
+LAUNCHER = ROOT / "mcp_servers" / "trello_mcp_launcher.sh"
+RECEIPT_DIR = ROOT / "work-artifacts" / "trello-mcp" / "photo-sync-runs"
+APPLY_TOKEN = "APPLY_PHOTO_CARD_MATCH_PLAN"
+
+
+def run_launcher(args: list[str], timeout_seconds: int) -> dict[str, Any]:
+    result = subprocess.run(
+        [str(LAUNCHER), *args],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=timeout_seconds,
+    )
+    output = result.stdout.strip() or result.stderr.strip()
+    try:
+        payload = json.loads(output)
+    except json.JSONDecodeError:
+        payload = {
+            "ok": False,
+            "error": output[:1600] or f"launcher exited {result.returncode}",
+            "returncode": result.returncode,
+        }
+    if result.returncode != 0 and payload.get("ok") is not False:
+        payload["ok"] = False
+        payload["returncode"] = result.returncode
+    return payload
+
+
+def compact_summary(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "ok": payload.get("ok"),
+        "mode": payload.get("mode"),
+        "board": payload.get("board"),
+        "plan_json_path": payload.get("plan_json_path"),
+        "plan_markdown_path": payload.get("plan_markdown_path"),
+        "target_summary": payload.get("target_summary"),
+        "preview_summary": payload.get("preview_summary"),
+        "apply_summary": payload.get("apply_summary"),
+        "upload_quality": payload.get("upload_quality"),
+        "warnings": payload.get("warnings") or [],
+        "errors": payload.get("errors") or [],
+        "safety": payload.get("safety"),
+    }
+
+
+def write_receipts(payload: dict[str, Any], command_args: list[str]) -> tuple[Path, Path]:
+    RECEIPT_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    json_path = RECEIPT_DIR / f"pool-photo-sync-{stamp}.json"
+    markdown_path = RECEIPT_DIR / f"pool-photo-sync-{stamp}.md"
+    json_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+
+    summary = compact_summary(payload)
+    apply_summary = summary.get("apply_summary") or {}
+    preview_summary = summary.get("preview_summary") or {}
+    lines = [
+        "# Pool Photo Sync Receipt",
+        "",
+        f"- Mode: {summary.get('mode')}",
+        f"- OK: {summary.get('ok')}",
+        f"- Plan JSON: {summary.get('plan_json_path')}",
+        f"- Plan Markdown: {summary.get('plan_markdown_path')}",
+        f"- Matched cards: {preview_summary.get('matched_cards')}",
+        f"- Matched photos: {preview_summary.get('matched_photos')}",
+        f"- Staged photos: {preview_summary.get('staged_photos')}",
+        f"- Would upload: {apply_summary.get('would_upload')}",
+        f"- Uploaded: {apply_summary.get('uploaded')}",
+        f"- Already on card: {apply_summary.get('skipped_existing_name')}",
+        f"- Needs review: {apply_summary.get('needs_review')}",
+        f"- Rejected: {apply_summary.get('rejected')}",
+        f"- Errors: {apply_summary.get('errors')}",
+        f"- Trello writes: {(summary.get('safety') or {}).get('trello_writes')}",
+        "",
+        "## Command",
+        "",
+        "```text",
+        " ".join(command_args),
+        "```",
+        "",
+    ]
+    warnings = summary.get("warnings") or []
+    if warnings:
+        lines.extend(["## Warnings", ""])
+        for warning in warnings:
+            lines.append(f"- {warning}")
+        lines.append("")
+    results = payload.get("apply_results") or []
+    if results:
+        lines.extend(["## Cards", ""])
+        for card in results[:50]:
+            lines.append(f"### {card.get('card_name')}")
+            lines.append(f"- URL: {card.get('card_url')}")
+            lines.append(f"- Uploads: {len(card.get('uploads') or [])}")
+            lines.append(f"- Needs review: {len(card.get('needs_review') or [])}")
+            lines.append(f"- Rejected: {len(card.get('rejected_photos') or [])}")
+            cover = card.get("cover") or {}
+            lines.append(f"- Cover: {cover.get('status')} {cover.get('photo_id') or ''}".rstrip())
+            lines.append("")
+    markdown_path.write_text("\n".join(lines), encoding="utf-8")
+    return json_path, markdown_path
+
+
+def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(description="Dry-run or apply pool photo sync from Apple Photos to Trello")
+    parser.add_argument("targets", nargs="*", help="Optional Trello card names. Omit for board-wide sync.")
+    parser.add_argument("--board", default="memphis")
+    parser.add_argument("--apply", action="store_true", help="Actually upload/set covers on Trello.")
+    parser.add_argument("--evidence", action="store_true", help="Upload all GPS matches instead of only useful vision-approved pool photos.")
+    parser.add_argument("--review-only", action="store_true", help="Stage and classify photos, but mark all upload candidates for review.")
+    parser.add_argument("--days-back", type=int, default=90)
+    parser.add_argument("--radius-ft", type=int, default=250)
+    parser.add_argument("--max-photos", type=int, default=1500)
+    parser.add_argument("--max-total-photos", type=int, default=20)
+    parser.add_argument("--max-photos-per-card", type=int, default=2)
+    parser.add_argument("--limit-cards", type=int, default=100)
+    parser.add_argument("--geocode-limit", type=int, default=80)
+    parser.add_argument("--min-vision-upload-score", type=int, default=50)
+    parser.add_argument("--no-require-pool-visible", action="store_true")
+    parser.add_argument("--no-vision", action="store_true")
+    parser.add_argument("--include-complete", action="store_true")
+    parser.add_argument("--json", action="store_true", help="Print full JSON instead of compact human output.")
+    parser.add_argument("--timeout-seconds", type=int, default=600)
+    args = parser.parse_args(argv)
+
+    upload_policy = "usable_images"
+    if args.evidence:
+        upload_policy = "all_gps_matches"
+    if args.review_only:
+        upload_policy = "review_only"
+
+    command = [
+        "--board",
+        args.board,
+        "--days-back",
+        str(args.days_back),
+        "--radius-ft",
+        str(args.radius_ft),
+        "--max-photos",
+        str(args.max_photos),
+        "--max-photos-per-card",
+        str(args.max_photos_per_card),
+        "--limit-cards",
+        str(args.limit_cards),
+        "--geocode-limit",
+        str(args.geocode_limit),
+        "--vision-cover-scoring",
+        "false" if args.no_vision else "true",
+        "--upload-policy",
+        upload_policy,
+        "--min-vision-upload-score",
+        str(args.min_vision_upload_score),
+        "--require-pool-visible",
+        "false" if args.no_require_pool_visible else "true",
+    ]
+    if args.apply:
+        command.extend(["--apply-token", APPLY_TOKEN])
+    if args.include_complete:
+        command.extend(["--include-complete", "true"])
+
+    targets = [item.strip() for item in args.targets if item.strip()]
+    if targets:
+        command.insert(0, "--attach-pool-photos")
+        command.extend(["--max-targets", str(len(targets))])
+        command.extend(["--target-card-queries", "\n".join(targets)])
+    else:
+        command.insert(0, "--sync-pool-photos")
+        command.extend(["--max-total-photos", str(args.max_total_photos)])
+
+    payload = run_launcher(command, timeout_seconds=args.timeout_seconds)
+    json_receipt, markdown_receipt = write_receipts(payload, [str(LAUNCHER), *command])
+    payload.setdefault("receipts", {})
+    payload["receipts"].update({"json": str(json_receipt), "markdown": str(markdown_receipt)})
+
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        summary = compact_summary(payload)
+        apply_summary = summary.get("apply_summary") or {}
+        preview_summary = summary.get("preview_summary") or {}
+        print(f"OK: {summary.get('ok')} mode={summary.get('mode')}")
+        print(f"matched_cards={preview_summary.get('matched_cards')} matched_photos={preview_summary.get('matched_photos')} staged={preview_summary.get('staged_photos')}")
+        print(f"would_upload={apply_summary.get('would_upload')} uploaded={apply_summary.get('uploaded')} already_on_card={apply_summary.get('skipped_existing_name')} review={apply_summary.get('needs_review')} rejected={apply_summary.get('rejected')} errors={apply_summary.get('errors')}")
+        print(f"plan={summary.get('plan_markdown_path') or summary.get('plan_json_path')}")
+        print(f"receipt={markdown_receipt}")
+        for warning in summary.get("warnings") or []:
+            print(f"warning: {warning}")
+    return 0 if payload.get("ok") else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

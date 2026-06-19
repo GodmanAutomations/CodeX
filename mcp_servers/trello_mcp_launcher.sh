@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ENV_FILE="${TRELLO_MCP_ENV_FILE:-/Users/stephengodman/.env.1password}"
+PLAIN_ENV_FILE="${TRELLO_MCP_PLAIN_ENV_FILE:-/Users/stephengodman/GodmanAutomations/artesian-pools/automation/.env}"
 PYTHON_BIN="${TRELLO_MCP_PYTHON:-/Users/stephengodman/000_AI/bin/python3}"
 SERVER_PATH="${TRELLO_MCP_SERVER:-/Users/stephengodman/CodeX/mcp_servers/trello_mcp_server.py}"
 OP_BIN="${OP_BIN:-op}"
@@ -20,11 +21,59 @@ has_trello_env() {
 
 load_launchctl_env() {
   local name value
-  for name in TRELLO_API_KEY TRELLO_KEY TRELLO_API_TOKEN TRELLO_TOKEN; do
+  for name in TRELLO_API_KEY TRELLO_KEY TRELLO_API_TOKEN TRELLO_TOKEN GEMINI_API_KEY GOOGLE_API_KEY GOOGLE_GENERATIVE_AI_API_KEY; do
     value="$(/bin/launchctl getenv "$name" 2>/dev/null || true)"
     [[ -n "$value" ]] && export "$name=$value"
   done
   return 0
+}
+
+load_plain_env() {
+  [[ -f "$PLAIN_ENV_FILE" ]] || return 1
+  local tmp
+  tmp="$(mktemp "${TMPDIR:-/tmp}/trello-mcp-plain-env.XXXXXX")"
+  chmod 600 "$tmp"
+  trap 'rm -f "$tmp"' RETURN
+  "$PYTHON_BIN" - "$PLAIN_ENV_FILE" "$tmp" <<'PY' || return 1
+import os
+import sys
+from pathlib import Path
+
+source = Path(sys.argv[1])
+target = Path(sys.argv[2])
+allowed = {
+    "TRELLO_API_KEY",
+    "TRELLO_KEY",
+    "TRELLO_API_TOKEN",
+    "TRELLO_TOKEN",
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+    "GOOGLE_GENERATIVE_AI_API_KEY",
+}
+values = {}
+for raw in source.read_text(errors="ignore").splitlines():
+    line = raw.strip()
+    if not line or line.startswith("#") or "=" not in line:
+        continue
+    if line.startswith("export "):
+        line = line[len("export "):].strip()
+    name, value = line.split("=", 1)
+    name = name.strip()
+    if name not in allowed:
+        continue
+    value = value.strip().strip('"').strip("'")
+    if value and not value.startswith("op://") and "\n" not in value:
+        values[name] = value
+target.write_text("".join(f"{name}={value}\n" for name, value in values.items()), encoding="utf-8")
+PY
+  while IFS='=' read -r name value; do
+    case "$name" in
+      TRELLO_API_KEY|TRELLO_KEY|TRELLO_API_TOKEN|TRELLO_TOKEN|GEMINI_API_KEY|GOOGLE_API_KEY|GOOGLE_GENERATIVE_AI_API_KEY)
+        [[ -n "$value" ]] && export "$name=$value"
+        ;;
+    esac
+  done <"$tmp"
+  has_trello_env
 }
 
 load_op_env() {
@@ -173,6 +222,7 @@ payload = {
         "env_file": str(env_file),
         "env_file_exists": env_file.exists(),
         "env_file_mode": os.getenv("TRELLO_MCP_STATUS_ENV_FILE_MODE") or None,
+        "plain_env_file": os.environ.get("TRELLO_MCP_PLAIN_ENV_FILE", "/Users/stephengodman/GodmanAutomations/artesian-pools/automation/.env"),
         "server_path": str(server_path),
         "server_exists": server_path.exists(),
         "launcher_mode": os.getenv("TRELLO_MCP_STATUS_LAUNCHER_MODE") or None,
@@ -237,6 +287,8 @@ if [[ "${1:-}" == "--status" ]]; then
     load_launchctl_env
     if has_trello_env; then
       source="mac_user_environment"
+    elif load_plain_env && has_trello_env; then
+      source="plain_env_file"
     elif load_op_env && has_trello_env; then
       source="op_env_file"
       op_loaded="true"
@@ -258,6 +310,8 @@ if [[ "${1:-}" == "--doctor" || "${1:-}" == "--doctor-live" ]]; then
     load_launchctl_env
     if has_trello_env; then
       source="mac_user_environment"
+    elif load_plain_env && has_trello_env; then
+      source="plain_env_file"
     elif load_op_env && has_trello_env; then
       source="op_env_file"
       op_loaded="true"
@@ -268,6 +322,7 @@ if [[ "${1:-}" == "--doctor" || "${1:-}" == "--doctor-live" ]]; then
 fi
 
 load_launchctl_env
+has_trello_env || load_plain_env || true
 has_trello_env || load_op_env || true
 
 exec "$PYTHON_BIN" "$SERVER_PATH" "$@"
