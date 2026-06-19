@@ -1429,17 +1429,45 @@ def _card_locations_for_photo_match(
     include_complete: bool = False,
     limit_cards: int = 500,
     geocode_limit: int = 100,
+    target_card_query: str = "",
+    target_card_id: str = "",
 ) -> dict[str, Any]:
     trello_filter = "all" if include_complete else "open"
-    cards = _request(
+    all_cards = _request(
         "GET",
         f"boards/{_board_id(board)}/cards",
         params={"filter": trello_filter, "fields": "id,name,desc,shortUrl,idList,idBoard,closed,due,dateLastActivity"},
     )
-    cards = cards[: max(1, min(int(limit_cards), 1000))]
     list_names = {item["id"]: item["name"] for item in get_lists(board=board, filter="all")}
+    query = (target_card_query or "").strip()
+    wanted_id = (target_card_id or "").strip()
+    target_tokens = _match_tokens(query)
+    target_filtered = 0
+    cards = []
+    for card in all_cards:
+        list_name = list_names.get(card.get("idList"), "UNKNOWN")
+        card_text = f"{card.get('name', '')}\n{card.get('desc', '')}\n{list_name}"
+        short_url = str(card.get("shortUrl") or "")
+        id_match = bool(wanted_id) and (
+            wanted_id == str(card.get("id") or "")
+            or wanted_id in short_url
+        )
+        query_match = (
+            not query
+            or query.lower() in card_text.lower()
+            or (target_tokens and _score_text(target_tokens, card_text) == len(target_tokens))
+        )
+        if wanted_id and not id_match:
+            target_filtered += 1
+            continue
+        if query and not query_match:
+            target_filtered += 1
+            continue
+        cards.append(card)
+    matched_card_count_before_limit = len(cards)
+    cards = cards[: max(1, min(int(limit_cards), 1000))]
     locations = []
-    skipped = {"no_address": 0, "not_geocoded": 0, "geocode_limit": 0}
+    skipped = {"no_address": 0, "not_geocoded": 0, "geocode_limit": 0, "target_filtered": target_filtered}
     geocode_attempts = 0
     cache = _read_json_file(PHOTO_GEOCODE_CACHE_PATH, {})
     for card in cards:
@@ -1478,9 +1506,15 @@ def _card_locations_for_photo_match(
             skipped["not_geocoded"] += 1
     return {
         "cards_seen": len(cards),
+        "cards_available": len(all_cards),
         "locations": locations,
         "skipped": skipped,
         "geocode_attempts": geocode_attempts,
+        "target": {
+            "card_query": query or None,
+            "card_id": wanted_id or None,
+            "matched_card_count_before_limit": matched_card_count_before_limit,
+        },
     }
 
 
@@ -4020,6 +4054,8 @@ def preview_photo_card_matches(
     missing_export_limit: int = 25,
     missing_export_timeout_seconds: int = 180,
     missing_export_apply_token: str = "",
+    target_card_query: str = "",
+    target_card_id: str = "",
 ) -> dict[str, Any]:
     """Preview phone/Photos-library photo matches to Trello cards.
 
@@ -4050,6 +4086,8 @@ def preview_photo_card_matches(
         include_complete=include_complete,
         limit_cards=limit_cards,
         geocode_limit=geocode_limit,
+        target_card_query=target_card_query,
+        target_card_id=target_card_id,
     )
     locations = card_location_payload["locations"]
 
@@ -4181,12 +4219,16 @@ def preview_photo_card_matches(
             "export_missing_originals": export_missing_originals,
             "missing_export_limit": missing_export_limit,
             "missing_export_timeout_seconds": missing_export_timeout_seconds,
+            "target_card_query": (target_card_query or "").strip() or None,
+            "target_card_id": (target_card_id or "").strip() or None,
         },
         "card_location_summary": {
             "cards_seen": card_location_payload.get("cards_seen"),
+            "cards_available": card_location_payload.get("cards_available"),
             "geocoded_card_locations": len(locations),
             "skipped": card_location_payload.get("skipped"),
             "geocode_attempts": card_location_payload.get("geocode_attempts"),
+            "target": card_location_payload.get("target"),
         },
         "summary": {
             "matched_cards": len(cards),
@@ -4219,6 +4261,8 @@ def preview_photo_card_matches(
         "",
         f"- Source: {plan['source']['source_path']}",
         f"- Board: {board}",
+        f"- Target card query: {(target_card_query or '').strip() or 'none'}",
+        f"- Target card id: {(target_card_id or '').strip() or 'none'}",
         f"- Matched cards: {plan['summary']['matched_cards']}",
         f"- Matched photos: {plan['summary']['matched_photos']}",
         f"- Staged photos: {plan['summary']['staged_photos']}",
@@ -4309,13 +4353,19 @@ def apply_photo_card_match_plan(
         }
         selected_cover_id = str(group.get("selected_cover_photo_id") or "")
         selected_cover_attachment_id = None
-        for photo in (group.get("photos") or [])[: max(1, min(int(limit_photos_per_card), 50))]:
+        uploadable_seen = 0
+        upload_limit = max(1, min(int(limit_photos_per_card), 50))
+        for photo in group.get("photos") or []:
             if str(photo.get("confidence")) not in allowed:
                 continue
             staged_path = Path(str(photo.get("staged_path") or "")).expanduser()
             if not staged_path.is_file():
                 card_result["uploads"].append({"photo_id": photo.get("photo_id"), "status": "skipped", "reason": "staged_file_missing"})
                 continue
+            if uploadable_seen >= upload_limit:
+                card_result["uploads"].append({"photo_id": photo.get("photo_id"), "status": "skipped", "reason": "limit_photos_per_card"})
+                continue
+            uploadable_seen += 1
             taken = str(photo.get("taken_at") or "unknown-date")[:10]
             attachment_name = f"Pool photo {taken} {str(photo.get('photo_id') or staged_path.stem)[:8]}{staged_path.suffix.lower()}"[:256]
             if dry_run:
