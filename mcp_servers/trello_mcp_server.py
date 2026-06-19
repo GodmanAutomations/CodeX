@@ -14,14 +14,16 @@ import re
 import hashlib
 import json
 import math
+import shutil
+import sqlite3
 import subprocess
 import sys
 import time
 import zipfile
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import unquote_plus, urlparse
 from xml.etree import ElementTree
 
 import requests
@@ -31,13 +33,27 @@ from mcp.server.fastmcp import FastMCP
 BASE_URL = "https://api.trello.com/1"
 DEFAULT_TIMEOUT = 30
 ARTIFACT_ROOT = Path("/Users/stephengodman/CodeX/work-artifacts/trello-mcp")
+DEFAULT_PHOTOS_LIBRARY_PATH = Path("/Users/stephengodman/Pictures/Photos Library.photoslibrary")
+PHOTO_MATCH_ROOT = ARTIFACT_ROOT / "photo-card-matches"
+PHOTOS_INTAKE_ROOT = ARTIFACT_ROOT / "photos-intake"
+PHOTO_GEOCODE_CACHE_PATH = PHOTO_MATCH_ROOT / "geocode-cache.json"
+PHOTOKIT_EXPORTER_SOURCE = Path("/Users/stephengodman/CodeX/mcp_servers/photos_photokit_export.swift")
+PHOTOKIT_EXPORTER_APP = Path("/Users/stephengodman/Applications/CodeXPhotoKitExport.app")
+PHOTOKIT_EXPORTER_BIN = PHOTOKIT_EXPORTER_APP / "Contents" / "MacOS" / "photos_photokit_export"
+OSXPHOTOS_BIN = Path(os.getenv("OSXPHOTOS_BIN", "/opt/homebrew/bin/osxphotos"))
+OSXPHOTOS_AUTHORIZED_PYTHON = Path(
+    os.getenv(
+        "OSXPHOTOS_AUTHORIZED_PYTHON",
+        "/opt/homebrew/Cellar/python@3.12/3.12.12_2/Frameworks/Python.framework/Versions/3.12/bin/python3.12",
+    )
+)
 RAG_CLI = Path("/Users/stephengodman/000_AI/bin/rag")
 POOL_JOBS_ROOT = Path("/Users/stephengodman/godman-pool-data/jobs")
 LOCAL_TRELLO_CONFIG_PATH = Path("/Users/stephengodman/.trello-mcp/config.json")
 TRELLO_MCP_LAUNCHER_PATH = Path("/Users/stephengodman/CodeX/mcp_servers/trello_mcp_launcher.sh")
 CODEX_CONFIG_PATH = Path("/Users/stephengodman/.codex/config.toml")
 CLAUDE_CONFIG_PATH = Path("/Users/stephengodman/.claude.json")
-SUPPORTED_PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".tif", ".tiff"}
+SUPPORTED_PHOTO_EXTENSIONS = {".heic", ".heif", ".jpg", ".jpeg", ".png", ".tif", ".tiff"}
 SUPPORTED_SHEET_EXTENSIONS = {".xls", ".xlsx", ".csv"}
 SUPPORTED_WORK_ORDER_EXTENSIONS = SUPPORTED_SHEET_EXTENSIONS | {".pdf", ".txt"}
 MATCH_STOPWORDS = {
@@ -107,12 +123,15 @@ PROFILE_PATHS = [
 ]
 OP_VAULT = "3i56wtg5jxdvaiz7ksc6bmh65y"
 OP_TRELLO_ITEM = "ifrjvey3q2pztbbyv5e7zhd6da"
+OP_BIN = os.getenv("OP_BIN") or ("/opt/homebrew/bin/op" if Path("/opt/homebrew/bin/op").exists() else "op")
 OP_TIMEOUT_SECONDS = int(os.getenv("TRELLO_OP_TIMEOUT_SECONDS", "8"))
 OP_FAILURE_RETRY_SECONDS = int(os.getenv("TRELLO_OP_FAILURE_RETRY_SECONDS", "300"))
 _CREDENTIAL_CACHE: tuple[str, str] | None = None
 _OP_FAILURE_CACHE: dict[str, dict[str, Any]] = {}
 
 mcp = FastMCP("trello")
+mimetypes.add_type("image/heic", ".heic")
+mimetypes.add_type("image/heif", ".heif")
 
 
 class TrelloError(RuntimeError):
@@ -120,10 +139,11 @@ class TrelloError(RuntimeError):
 
 
 def _profile_text() -> str:
+    chunks = []
     for path in PROFILE_PATHS:
         if path.exists():
-            return path.read_text(errors="ignore")
-    return ""
+            chunks.append(path.read_text(errors="ignore"))
+    return "\n\n".join(chunks)
 
 
 def _local_trello_config() -> dict[str, Any]:
@@ -279,7 +299,7 @@ def _op_field_result(field: str, *, use_failure_cache: bool = True) -> dict[str,
     try:
         result = subprocess.run(
             [
-                "op",
+                OP_BIN,
                 "item",
                 "get",
                 OP_TRELLO_ITEM,
@@ -606,6 +626,922 @@ def _artifact_dir(kind: str) -> Path:
     return path
 
 
+def _read_json_file(path: Path, default: Any) -> Any:
+    if not path.exists():
+        return default
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return default
+
+
+def _write_json_file(path: Path, payload: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+
+
+APPLE_PHOTOS_EPOCH = datetime(2001, 1, 1, tzinfo=timezone.utc)
+
+
+def _apple_time_to_iso(value: Any) -> str | None:
+    if value is None:
+        return None
+    try:
+        return (APPLE_PHOTOS_EPOCH + timedelta(seconds=float(value))).astimezone().isoformat(timespec="seconds")
+    except Exception:
+        return None
+
+
+def _datetime_to_apple_seconds(value: datetime) -> float:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return (value.astimezone(timezone.utc) - APPLE_PHOTOS_EPOCH).total_seconds()
+
+
+def _looks_like_photos_library(path: Path) -> bool:
+    return path.suffix == ".photoslibrary" or (path / "database" / "Photos.sqlite").exists()
+
+
+def _photos_db_path(library_path: Path) -> Path:
+    db = library_path / "database" / "Photos.sqlite"
+    if not db.exists():
+        raise TrelloError(f"Photos database not found: {db}")
+    return db
+
+
+def _photos_original_path(library_path: Path, directory: Any, filename: Any) -> Path:
+    return library_path / "originals" / str(directory or "") / str(filename or "")
+
+
+def _valid_photo_coordinate(lat: Any, lng: Any) -> bool:
+    try:
+        lat_f = float(lat)
+        lng_f = float(lng)
+    except Exception:
+        return False
+    if not (-90.0 <= lat_f <= 90.0 and -180.0 <= lng_f <= 180.0):
+        return False
+    # Apple Photos uses -180/-180 as a no-location sentinel in some libraries.
+    if abs(lat_f + 180.0) < 0.0001 and abs(lng_f + 180.0) < 0.0001:
+        return False
+    if abs(lat_f) < 0.0001 and abs(lng_f) < 0.0001:
+        return False
+    return True
+
+
+def _cover_candidate_score(photo: dict[str, Any]) -> int:
+    width = int(photo.get("width") or 0)
+    height = int(photo.get("height") or 0)
+    size = int(photo.get("size") or 0)
+    score = 0
+    if width and height:
+        score += 35 if width >= height else 15
+        ratio = max(width, height) / max(1, min(width, height))
+        if 1.1 <= ratio <= 2.4:
+            score += 10
+        score += min(30, int((width * height) / 1_000_000))
+    score += min(25, int(size / 1_000_000))
+    return score
+
+
+def _photos_library_assets(
+    library_path: Path,
+    *,
+    days_back: int = 60,
+    max_files: int = 500,
+    require_local: bool = False,
+) -> list[dict[str, Any]]:
+    library_path = library_path.expanduser()
+    db = _photos_db_path(library_path)
+    where = [
+        "ZTRASHEDSTATE = 0",
+        "ZHIDDEN = 0",
+        "ZFILENAME IS NOT NULL",
+        "ZKIND = 0",
+        "ZLATITUDE IS NOT NULL",
+        "ZLONGITUDE IS NOT NULL",
+    ]
+    params: list[Any] = []
+    if days_back > 0:
+        since = _datetime_to_apple_seconds(datetime.now(timezone.utc) - timedelta(days=days_back))
+        where.append("ZDATECREATED >= ?")
+        params.append(since)
+    query = f"""
+        SELECT ZUUID, ZDIRECTORY, ZFILENAME, ZDATECREATED, ZLATITUDE, ZLONGITUDE,
+               ZWIDTH, ZHEIGHT, ZUNIFORMTYPEIDENTIFIER, ZCLOUDLOCALSTATE
+        FROM ZASSET
+        WHERE {' AND '.join(where)}
+        ORDER BY ZDATECREATED DESC
+        LIMIT ?
+    """
+    params.append(max(1, min(int(max_files), 5000)))
+    rows: list[dict[str, Any]] = []
+    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=5)
+    conn.row_factory = sqlite3.Row
+    try:
+        for row in conn.execute(query, params):
+            if not _valid_photo_coordinate(row["ZLATITUDE"], row["ZLONGITUDE"]):
+                continue
+            original_path = _photos_original_path(library_path, row["ZDIRECTORY"], row["ZFILENAME"])
+            suffix = original_path.suffix.lower()
+            if suffix not in SUPPORTED_PHOTO_EXTENSIONS:
+                continue
+            local_exists = original_path.exists()
+            if require_local and not local_exists:
+                continue
+            item = {
+                "photo_id": row["ZUUID"],
+                "source": "photos_library",
+                "source_library": str(library_path),
+                "path": str(original_path),
+                "filename": row["ZFILENAME"],
+                "local_exists": local_exists,
+                "size": original_path.stat().st_size if local_exists else None,
+                "sha256": _sha256(original_path) if local_exists else None,
+                "taken_at": _apple_time_to_iso(row["ZDATECREATED"]),
+                "latitude": float(row["ZLATITUDE"]),
+                "longitude": float(row["ZLONGITUDE"]),
+                "has_gps": True,
+                "width": int(row["ZWIDTH"] or 0),
+                "height": int(row["ZHEIGHT"] or 0),
+                "uti": row["ZUNIFORMTYPEIDENTIFIER"],
+                "cloud_local_state": row["ZCLOUDLOCALSTATE"],
+            }
+            item["cover_candidate_score"] = _cover_candidate_score(item)
+            rows.append(item)
+    finally:
+        conn.close()
+    return rows
+
+
+def _photos_sample(
+    row: sqlite3.Row,
+    original_path: Path,
+    *,
+    local_exists: bool,
+    has_gps: bool,
+    include_paths: bool,
+    include_coordinates: bool,
+) -> dict[str, Any]:
+    sample = {
+        "photo_id": row["ZUUID"],
+        "filename": row["ZFILENAME"],
+        "taken_at": _apple_time_to_iso(row["ZDATECREATED"]),
+        "extension": original_path.suffix.lower(),
+        "local_exists": local_exists,
+        "has_gps": has_gps,
+        "width": int(row["ZWIDTH"] or 0),
+        "height": int(row["ZHEIGHT"] or 0),
+        "uti": row["ZUNIFORMTYPEIDENTIFIER"],
+        "cloud_local_state": row["ZCLOUDLOCALSTATE"],
+    }
+    if local_exists:
+        sample["size"] = original_path.stat().st_size
+    if include_paths:
+        sample["source_path"] = str(original_path)
+    if include_coordinates and has_gps:
+        sample["latitude"] = round(float(row["ZLATITUDE"]), 6)
+        sample["longitude"] = round(float(row["ZLONGITUDE"]), 6)
+    return sample
+
+
+def _photos_library_intake_status(
+    library_path: Path,
+    *,
+    days_back: int = 365,
+    max_assets: int = 10000,
+    sample_limit: int = 20,
+    include_paths: bool = False,
+    include_coordinates: bool = False,
+) -> dict[str, Any]:
+    library_path = library_path.expanduser()
+    db = _photos_db_path(library_path)
+    where = [
+        "ZTRASHEDSTATE = 0",
+        "ZHIDDEN = 0",
+        "ZFILENAME IS NOT NULL",
+        "ZKIND = 0",
+    ]
+    params: list[Any] = []
+    if days_back > 0:
+        since = _datetime_to_apple_seconds(datetime.now(timezone.utc) - timedelta(days=days_back))
+        where.append("ZDATECREATED >= ?")
+        params.append(since)
+    query = f"""
+        SELECT ZUUID, ZDIRECTORY, ZFILENAME, ZDATECREATED, ZLATITUDE, ZLONGITUDE,
+               ZWIDTH, ZHEIGHT, ZUNIFORMTYPEIDENTIFIER, ZCLOUDLOCALSTATE
+        FROM ZASSET
+        WHERE {' AND '.join(where)}
+        ORDER BY ZDATECREATED DESC
+        LIMIT ?
+    """
+    limit = max(1, min(int(max_assets), 50000))
+    params.append(limit)
+
+    counts = {
+        "assets_scanned": 0,
+        "supported_image_assets": 0,
+        "unsupported_extension_assets": 0,
+        "local_originals": 0,
+        "missing_originals": 0,
+        "gps_assets": 0,
+        "gps_local_originals": 0,
+        "gps_missing_originals": 0,
+        "no_gps_assets": 0,
+        "local_original_bytes": 0,
+    }
+    extension_counts: dict[str, int] = {}
+    cloud_local_state_counts: dict[str, int] = {}
+    samples = {
+        "gps_local_ready": [],
+        "gps_missing_original": [],
+        "local_without_gps": [],
+    }
+    newest_taken_at: str | None = None
+    oldest_taken_at: str | None = None
+
+    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=5)
+    conn.row_factory = sqlite3.Row
+    try:
+        for row in conn.execute(query, params):
+            counts["assets_scanned"] += 1
+            original_path = _photos_original_path(library_path, row["ZDIRECTORY"], row["ZFILENAME"])
+            suffix = original_path.suffix.lower()
+            extension_counts[suffix or "<none>"] = extension_counts.get(suffix or "<none>", 0) + 1
+            cloud_key = str(row["ZCLOUDLOCALSTATE"])
+            cloud_local_state_counts[cloud_key] = cloud_local_state_counts.get(cloud_key, 0) + 1
+            if suffix not in SUPPORTED_PHOTO_EXTENSIONS:
+                counts["unsupported_extension_assets"] += 1
+                continue
+
+            counts["supported_image_assets"] += 1
+            local_exists = original_path.exists()
+            has_gps = _valid_photo_coordinate(row["ZLATITUDE"], row["ZLONGITUDE"])
+            taken_at = _apple_time_to_iso(row["ZDATECREATED"])
+            if taken_at:
+                newest_taken_at = newest_taken_at or taken_at
+                oldest_taken_at = taken_at
+
+            if local_exists:
+                counts["local_originals"] += 1
+                counts["local_original_bytes"] += original_path.stat().st_size
+            else:
+                counts["missing_originals"] += 1
+
+            if has_gps:
+                counts["gps_assets"] += 1
+                if local_exists:
+                    counts["gps_local_originals"] += 1
+                else:
+                    counts["gps_missing_originals"] += 1
+            else:
+                counts["no_gps_assets"] += 1
+
+            if sample_limit <= 0:
+                continue
+            sample = _photos_sample(
+                row,
+                original_path,
+                local_exists=local_exists,
+                has_gps=has_gps,
+                include_paths=include_paths,
+                include_coordinates=include_coordinates,
+            )
+            if has_gps and local_exists and len(samples["gps_local_ready"]) < sample_limit:
+                samples["gps_local_ready"].append(sample)
+            elif has_gps and not local_exists and len(samples["gps_missing_original"]) < sample_limit:
+                samples["gps_missing_original"].append(sample)
+            elif local_exists and not has_gps and len(samples["local_without_gps"]) < sample_limit:
+                samples["local_without_gps"].append(sample)
+    finally:
+        conn.close()
+
+    recommendations = []
+    if counts["gps_local_originals"]:
+        recommendations.append("Run preview_photo_card_matches against local originals for immediate Trello-safe matches.")
+    if counts["gps_missing_originals"]:
+        recommendations.append("Use a native PhotoKit export/download worker or Photos 'Download Originals to this Mac' before relying on browser/iCloud.com automation.")
+    if not counts["gps_local_originals"] and not counts["gps_missing_originals"]:
+        recommendations.append("No GPS-ready pool-photo candidates found in this slice; widen days_back or import/download more phone originals.")
+
+    return {
+        "ok": True,
+        "mode": "photos_intake_status",
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "source": {
+            "photos_library_path": str(library_path),
+            "database_path": str(db),
+            "days_back": days_back,
+            "max_assets": limit,
+        },
+        "counts": counts,
+        "extension_counts": dict(sorted(extension_counts.items())),
+        "cloud_local_state_counts": dict(sorted(cloud_local_state_counts.items())),
+        "date_range": {"newest_taken_at": newest_taken_at, "oldest_taken_at": oldest_taken_at},
+        "samples": samples,
+        "recommendations": recommendations,
+        "safety": {
+            "read_only": True,
+            "trello_writes": False,
+            "photos_writes": False,
+            "icloud_web_automation": False,
+            "raw_gps_returned": include_coordinates,
+            "source_paths_returned": include_paths,
+            "secrets_returned": False,
+        },
+    }
+
+
+def _compile_photokit_exporter() -> dict[str, Any]:
+    if not PHOTOKIT_EXPORTER_SOURCE.exists():
+        return {"ok": False, "error": "exporter_source_missing", "source": str(PHOTOKIT_EXPORTER_SOURCE)}
+    macos_dir = PHOTOKIT_EXPORTER_APP / "Contents" / "MacOS"
+    macos_dir.mkdir(parents=True, exist_ok=True)
+    info_plist = PHOTOKIT_EXPORTER_APP / "Contents" / "Info.plist"
+    info_plist.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>en</string>
+  <key>CFBundleExecutable</key>
+  <string>photos_photokit_export</string>
+  <key>CFBundleIdentifier</key>
+  <string>com.godmanautomations.codex.photokitexport</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>CodeX PhotoKit Export</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>1.0</string>
+  <key>CFBundleVersion</key>
+  <string>1</string>
+  <key>NSPhotoLibraryUsageDescription</key>
+  <string>CodeX uses Photos access to export Stephen's pool-job originals for Trello matching.</string>
+  <key>NSPhotoLibraryAddUsageDescription</key>
+  <string>CodeX does not add to Photos; this exists only to satisfy macOS Photos privacy metadata.</string>
+</dict>
+</plist>
+""",
+        encoding="utf-8",
+    )
+    started = time.monotonic()
+    result = subprocess.run(
+        [
+            "swiftc",
+            "-framework",
+            "Photos",
+            "-framework",
+            "UniformTypeIdentifiers",
+            str(PHOTOKIT_EXPORTER_SOURCE),
+            "-o",
+            str(PHOTOKIT_EXPORTER_BIN),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    sign_result = None
+    if result.returncode == 0:
+        sign_result = subprocess.run(
+            ["codesign", "--force", "--deep", "--sign", "-", str(PHOTOKIT_EXPORTER_APP)],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    return {
+        "ok": result.returncode == 0 and (sign_result is None or sign_result.returncode == 0),
+        "source": str(PHOTOKIT_EXPORTER_SOURCE),
+        "app": str(PHOTOKIT_EXPORTER_APP),
+        "binary": str(PHOTOKIT_EXPORTER_BIN),
+        "bundle_identifier": "com.godmanautomations.codex.photokitexport",
+        "elapsed_seconds": round(time.monotonic() - started, 3),
+        "stderr": (result.stderr or "").strip()[:1000] or None,
+        "codesign_stderr": (sign_result.stderr or "").strip()[:1000] if sign_result else None,
+    }
+
+
+def _photos_missing_original_assets(
+    library_path: Path,
+    *,
+    days_back: int = 365,
+    max_assets: int = 10000,
+    limit: int = 100,
+    include_paths: bool = False,
+    include_coordinates: bool = False,
+) -> list[dict[str, Any]]:
+    library_path = library_path.expanduser()
+    db = _photos_db_path(library_path)
+    where = [
+        "ZTRASHEDSTATE = 0",
+        "ZHIDDEN = 0",
+        "ZFILENAME IS NOT NULL",
+        "ZKIND = 0",
+        "ZLATITUDE IS NOT NULL",
+        "ZLONGITUDE IS NOT NULL",
+    ]
+    params: list[Any] = []
+    if days_back > 0:
+        since = _datetime_to_apple_seconds(datetime.now(timezone.utc) - timedelta(days=days_back))
+        where.append("ZDATECREATED >= ?")
+        params.append(since)
+    query = f"""
+        SELECT ZUUID, ZDIRECTORY, ZFILENAME, ZDATECREATED, ZLATITUDE, ZLONGITUDE,
+               ZWIDTH, ZHEIGHT, ZUNIFORMTYPEIDENTIFIER, ZCLOUDLOCALSTATE
+        FROM ZASSET
+        WHERE {' AND '.join(where)}
+        ORDER BY ZDATECREATED DESC
+        LIMIT ?
+    """
+    params.append(max(1, min(int(max_assets), 50000)))
+    export_limit = max(1, min(int(limit), 5000))
+    assets: list[dict[str, Any]] = []
+    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=5)
+    conn.row_factory = sqlite3.Row
+    try:
+        for row in conn.execute(query, params):
+            if len(assets) >= export_limit:
+                break
+            if not _valid_photo_coordinate(row["ZLATITUDE"], row["ZLONGITUDE"]):
+                continue
+            original_path = _photos_original_path(library_path, row["ZDIRECTORY"], row["ZFILENAME"])
+            if original_path.suffix.lower() not in SUPPORTED_PHOTO_EXTENSIONS:
+                continue
+            if original_path.exists():
+                continue
+            assets.append(
+                _photos_sample(
+                    row,
+                    original_path,
+                    local_exists=False,
+                    has_gps=True,
+                    include_paths=include_paths,
+                    include_coordinates=include_coordinates,
+                )
+            )
+    finally:
+        conn.close()
+    return assets
+
+
+def _run_photokit_exporter(
+    *,
+    manifest_path: Path,
+    output_dir: Path,
+    limit: int,
+    dry_run: bool,
+    timeout_seconds: int,
+) -> dict[str, Any]:
+    if not PHOTOKIT_EXPORTER_BIN.exists():
+        compile_result = _compile_photokit_exporter()
+        if not compile_result.get("ok"):
+            return {"ok": False, "compile": compile_result}
+    run_limit = max(1, min(int(limit), 5000))
+    requested_timeout = max(30, int(timeout_seconds))
+    if dry_run:
+        helper_asset_timeout = min(30, requested_timeout)
+    else:
+        helper_asset_timeout = max(30, min(180, requested_timeout // max(1, min(run_limit, 5))))
+    outer_timeout = max(60, helper_asset_timeout * min(run_limit, 25) + 45)
+    outer_timeout = min(1800, max(outer_timeout, min(requested_timeout + 30, 1800)))
+    command = [
+        "open",
+        "-W",
+        "-n",
+        str(PHOTOKIT_EXPORTER_APP),
+        "--args",
+        "--manifest",
+        str(manifest_path),
+        "--output-dir",
+        str(output_dir),
+        "--result-json",
+        str(manifest_path.parent / ("photokit-export-dry-run-result.json" if dry_run else "photokit-export-result.json")),
+        "--limit",
+        str(run_limit),
+        "--timeout-seconds",
+        str(helper_asset_timeout),
+    ]
+    command.append("--dry-run" if dry_run else "--apply")
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=outer_timeout)
+    except subprocess.TimeoutExpired:
+        subprocess.run(["pkill", "-f", str(PHOTOKIT_EXPORTER_BIN)], capture_output=True, text=True, timeout=5)
+        return {
+            "ok": False,
+            "error": "photokit_exporter_timeout",
+            "message": "PhotoKit helper did not finish. macOS Photos privacy permission may be waiting or blocked.",
+            "process": {
+                "returncode": None,
+                "stderr": None,
+                "outer_timeout_seconds": outer_timeout,
+                "helper_asset_timeout_seconds": helper_asset_timeout,
+                "command_redacted": [
+                    "open",
+                    "-W",
+                    "-n",
+                    str(PHOTOKIT_EXPORTER_APP),
+                    "--args",
+                    "--manifest",
+                    str(manifest_path),
+                    "--output-dir",
+                    str(output_dir),
+                    "--limit",
+                    str(limit),
+                    "--dry-run" if dry_run else "--apply",
+                ],
+            },
+        }
+    result_json_path = manifest_path.parent / ("photokit-export-dry-run-result.json" if dry_run else "photokit-export-result.json")
+    try:
+        if result_json_path.exists():
+            payload = json.loads(result_json_path.read_text(encoding="utf-8") or "{}")
+        else:
+            payload = json.loads(result.stdout or "{}")
+    except Exception:
+        payload = {"ok": False, "error": "invalid_exporter_json", "stdout": (result.stdout or "")[:1000]}
+    payload.setdefault("process", {})
+    payload["process"].update(
+        {
+            "returncode": result.returncode,
+            "stderr": (result.stderr or "").strip()[:1000] or None,
+            "outer_timeout_seconds": outer_timeout,
+            "helper_asset_timeout_seconds": helper_asset_timeout,
+            "command_redacted": [
+                str(PHOTOKIT_EXPORTER_BIN),
+                "--manifest",
+                str(manifest_path),
+                "--output-dir",
+                str(output_dir),
+                "--limit",
+                str(limit),
+                "--dry-run" if dry_run else "--apply",
+            ],
+        }
+    )
+    return payload
+
+
+def _osxphotos_command_base() -> list[str]:
+    if OSXPHOTOS_AUTHORIZED_PYTHON.exists():
+        return [str(OSXPHOTOS_AUTHORIZED_PYTHON), "-m", "osxphotos"]
+    return [str(OSXPHOTOS_BIN)]
+
+
+def _run_osxphotos_exporter(
+    *,
+    manifest: dict[str, Any],
+    manifest_path: Path,
+    output_dir: Path,
+    limit: int,
+    dry_run: bool,
+    timeout_seconds: int,
+) -> dict[str, Any]:
+    photo_ids = [str(item) for item in manifest.get("photo_ids") or [] if item]
+    if not photo_ids:
+        return {"ok": False, "error": "manifest_has_no_photo_ids"}
+    output_dir.mkdir(parents=True, exist_ok=True)
+    run_limit = max(1, min(int(limit), len(photo_ids), 5000))
+    uuid_file = manifest_path.parent / "osxphotos-uuid-list.txt"
+    uuid_file.write_text("\n".join(photo_ids[:run_limit]) + "\n", encoding="utf-8")
+
+    command = [
+        *_osxphotos_command_base(),
+        "export",
+        str(output_dir),
+        "--library",
+        str(Path(str(manifest.get("source", {}).get("photos_library_path") or DEFAULT_PHOTOS_LIBRARY_PATH)).expanduser()),
+        "--uuid-from-file",
+        str(uuid_file),
+        "--download-missing",
+        "--use-photokit",
+        "--limit",
+        str(run_limit),
+        "--verbose",
+    ]
+    if dry_run:
+        command.append("--dry-run")
+
+    started = time.monotonic()
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=max(60, int(timeout_seconds)),
+        )
+        timed_out = False
+    except subprocess.TimeoutExpired as exc:
+        result = None
+        timed_out = True
+        stdout = exc.stdout.decode(errors="replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
+        stderr = exc.stderr.decode(errors="replace") if isinstance(exc.stderr, bytes) else (exc.stderr or "")
+    else:
+        stdout = result.stdout or ""
+        stderr = result.stderr or ""
+
+    exported_files = []
+    if output_dir.exists():
+        for path in sorted(output_dir.rglob("*")):
+            if path.is_file() and path.name != ".DS_Store":
+                exported_files.append(
+                    {
+                        "path": str(path),
+                        "filename": path.name,
+                        "size": path.stat().st_size,
+                    }
+                )
+
+    ok = bool(result and result.returncode == 0 and not timed_out)
+    auth_denied = "could not get authorization to access Photos library" in stdout + stderr
+    return {
+        "ok": ok,
+        "backend": "osxphotos",
+        "dry_run": dry_run,
+        "elapsed_seconds": round(time.monotonic() - started, 3),
+        "requested_photo_ids": len(photo_ids),
+        "limit": run_limit,
+        "uuid_file": str(uuid_file),
+        "output_dir": str(output_dir),
+        "exported_files": exported_files[:200],
+        "exported_file_count": len(exported_files),
+        "process": {
+            "returncode": None if result is None else result.returncode,
+            "timed_out": timed_out,
+            "stdout_tail": stdout[-4000:] if stdout else None,
+            "stderr_tail": stderr[-4000:] if stderr else None,
+            "authorization_denied": auth_denied,
+            "command_redacted": [
+                *_osxphotos_command_base(),
+                "export",
+                str(output_dir),
+                "--library",
+                "<photos-library>",
+                "--uuid-from-file",
+                str(uuid_file),
+                "--download-missing",
+                "--use-photokit",
+                "--limit",
+                str(run_limit),
+                "--dry-run" if dry_run else "--apply",
+            ],
+        },
+        "safety": {
+            "photos_writes": False,
+            "local_file_writes": not dry_run,
+            "trello_writes": False,
+            "icloud_network_access_allowed": not dry_run,
+            "secrets_returned": False,
+        },
+    }
+
+
+def _osxphotos_status() -> dict[str, Any]:
+    command = [*_osxphotos_command_base(), "--version"]
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=20)
+    except Exception as exc:
+        return {
+            "ok": False,
+            "command_redacted": command,
+            "error_type": type(exc).__name__,
+            "error": str(exc)[:500],
+        }
+    return {
+        "ok": result.returncode == 0,
+        "command_redacted": command,
+        "returncode": result.returncode,
+        "stdout": (result.stdout or "").strip()[:1000] or None,
+        "stderr": (result.stderr or "").strip()[:1000] or None,
+    }
+
+
+def _known_city_context(text: str) -> str | None:
+    value = text.lower()
+    city_map = [
+        ("collierville", "Collierville, TN"),
+        ("germantown", "Germantown, TN"),
+        ("cordova", "Cordova, TN"),
+        ("bartlett", "Bartlett, TN"),
+        ("lakeland", "Lakeland, TN"),
+        ("arlington", "Arlington, TN"),
+        ("eads", "Eads, TN"),
+        ("millington", "Millington, TN"),
+        ("memphis", "Memphis, TN"),
+        ("olive branch", "Olive Branch, MS"),
+        ("southaven", "Southaven, MS"),
+        ("hernando", "Hernando, MS"),
+        ("horn lake", "Horn Lake, MS"),
+        ("west memphis", "West Memphis, AR"),
+        ("holly springs", "Holly Springs, MS"),
+    ]
+    for needle, city in city_map:
+        if needle in value:
+            return city
+    return None
+
+
+def _address_queries(address: str, context: str = "") -> list[str]:
+    base = re.sub(r"\s+", " ", address).strip(" ,")
+    if not base:
+        return []
+    queries = []
+    city = _known_city_context(f"{address}\n{context}")
+    has_city_or_state = bool(re.search(r"\b(TN|MS|AR|Memphis|Collierville|Germantown|Cordova|Bartlett|Lakeland|Arlington|Eads|Millington|Southaven|Hernando|Olive Branch|West Memphis)\b", base, re.I))
+    if has_city_or_state:
+        queries.append(base)
+    else:
+        if city:
+            queries.append(f"{base}, {city}")
+        queries.append(f"{base}, Memphis, TN")
+    queries.append(base)
+    deduped = []
+    seen = set()
+    for query in queries:
+        key = query.lower()
+        if key not in seen:
+            seen.add(key)
+            deduped.append(query)
+    return deduped
+
+
+def _geocode_cache_key(query: str) -> str:
+    return re.sub(r"\s+", " ", query).strip().lower()
+
+
+def _census_geocode(query: str) -> dict[str, Any] | None:
+    response = requests.get(
+        "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress",
+        params={"address": query, "benchmark": "Public_AR_Current", "format": "json"},
+        timeout=10,
+    )
+    if not response.ok:
+        return None
+    matches = ((response.json().get("result") or {}).get("addressMatches") or [])
+    if not matches:
+        return None
+    first = matches[0]
+    coords = first.get("coordinates") or {}
+    if coords.get("x") is None or coords.get("y") is None:
+        return None
+    return {
+        "query": query,
+        "latitude": float(coords["y"]),
+        "longitude": float(coords["x"]),
+        "matched_address": first.get("matchedAddress"),
+        "source": "us_census_geocoder",
+    }
+
+
+def _geocode_address(address: str, context: str = "", *, allow_network: bool = True) -> dict[str, Any] | None:
+    cache = _read_json_file(PHOTO_GEOCODE_CACHE_PATH, {})
+    for query in _address_queries(address, context=context):
+        key = _geocode_cache_key(query)
+        cached = cache.get(key)
+        if isinstance(cached, dict):
+            if cached.get("latitude") is not None and cached.get("longitude") is not None:
+                return cached
+            if cached.get("status") == "no_match":
+                continue
+        if not allow_network:
+            continue
+        try:
+            result = _census_geocode(query)
+        except Exception as exc:
+            cache[key] = {"query": query, "status": "error", "error": str(exc)[:300], "updated_at": datetime.now().isoformat(timespec="seconds")}
+            _write_json_file(PHOTO_GEOCODE_CACHE_PATH, cache)
+            continue
+        if result:
+            result["updated_at"] = datetime.now().isoformat(timespec="seconds")
+            cache[key] = result
+            _write_json_file(PHOTO_GEOCODE_CACHE_PATH, cache)
+            return result
+        cache[key] = {"query": query, "status": "no_match", "updated_at": datetime.now().isoformat(timespec="seconds")}
+        _write_json_file(PHOTO_GEOCODE_CACHE_PATH, cache)
+    return None
+
+
+def _card_locations_for_photo_match(
+    board: str,
+    *,
+    include_complete: bool = False,
+    limit_cards: int = 500,
+    geocode_limit: int = 100,
+) -> dict[str, Any]:
+    trello_filter = "all" if include_complete else "open"
+    cards = _request(
+        "GET",
+        f"boards/{_board_id(board)}/cards",
+        params={"filter": trello_filter, "fields": "id,name,desc,shortUrl,idList,idBoard,closed,due,dateLastActivity"},
+    )
+    cards = cards[: max(1, min(int(limit_cards), 1000))]
+    list_names = {item["id"]: item["name"] for item in get_lists(board=board, filter="all")}
+    locations = []
+    skipped = {"no_address": 0, "not_geocoded": 0, "geocode_limit": 0}
+    geocode_attempts = 0
+    cache = _read_json_file(PHOTO_GEOCODE_CACHE_PATH, {})
+    for card in cards:
+        list_name = list_names.get(card.get("idList"), "UNKNOWN")
+        text = f"{card.get('name', '')}\n{card.get('desc', '')}\n{list_name}"
+        addresses = _extract_address_candidates(text)
+        if not addresses:
+            skipped["no_address"] += 1
+            continue
+        geocoded = None
+        for address in addresses:
+            queries = _address_queries(address, context=text)
+            cached_hit = any(_geocode_cache_key(query) in cache for query in queries)
+            if not cached_hit and geocode_attempts >= max(0, int(geocode_limit)):
+                skipped["geocode_limit"] += 1
+                break
+            if not cached_hit:
+                geocode_attempts += 1
+            geocoded = _geocode_address(address, context=text, allow_network=True)
+            if geocoded:
+                locations.append(
+                    {
+                        "card_id": card.get("id"),
+                        "card_name": card.get("name"),
+                        "card_url": card.get("shortUrl"),
+                        "list": list_name,
+                        "address": address,
+                        "geocode": geocoded,
+                        "latitude": geocoded.get("latitude"),
+                        "longitude": geocoded.get("longitude"),
+                        "closed": bool(card.get("closed")),
+                    }
+                )
+                break
+        if not geocoded:
+            skipped["not_geocoded"] += 1
+    return {
+        "cards_seen": len(cards),
+        "locations": locations,
+        "skipped": skipped,
+        "geocode_attempts": geocode_attempts,
+    }
+
+
+def _photo_confidence(distance_ft: float, second_distance_ft: float | None = None) -> tuple[str, list[str]]:
+    warnings = []
+    if distance_ft <= 100:
+        confidence = "very_strong"
+    elif distance_ft <= 250:
+        confidence = "likely"
+    else:
+        confidence = "review"
+    if second_distance_ft is not None and second_distance_ft - distance_ft <= 75:
+        confidence = "review"
+        warnings.append("near_multiple_card_locations")
+    return confidence, warnings
+
+
+def _scan_photo_source(source_path: str, *, days_back: int = 60, max_files: int = 500, require_local: bool = False) -> list[dict[str, Any]]:
+    root = Path(source_path or str(DEFAULT_PHOTOS_LIBRARY_PATH)).expanduser()
+    if _looks_like_photos_library(root):
+        return _photos_library_assets(root, days_back=days_back, max_files=max_files, require_local=require_local)
+    photos = []
+    for item in scan_pool_photos(str(root), max_files=max_files):
+        item.setdefault("source", "local_folder")
+        item.setdefault("local_exists", Path(str(item.get("path") or "")).exists())
+        if item.get("has_gps") and (not require_local or item.get("local_exists")):
+            item["cover_candidate_score"] = _cover_candidate_score(item)
+            photos.append(item)
+    return photos
+
+
+def _stage_photo_for_plan(photo: dict[str, Any], card_name: str, plan_dir: Path) -> dict[str, Any]:
+    source = Path(str(photo.get("path") or ""))
+    if not source.is_file():
+        return {"staged": False, "error": "source_file_missing", "source_path": str(source)}
+    card_dir = plan_dir / "files" / _safe_name(card_name)
+    card_dir.mkdir(parents=True, exist_ok=True)
+    taken = str(photo.get("taken_at") or "unknown-date")[:10]
+    uuid_part = str(photo.get("photo_id") or source.stem)[:8]
+    target = card_dir / f"{taken}-{uuid_part}-{_safe_name(source.name)}"
+    if not target.exists():
+        shutil.copy2(source, target)
+    return {
+        "staged": True,
+        "source_path": str(source),
+        "staged_path": str(target),
+        "sha256": _sha256(target),
+        "size": target.stat().st_size,
+    }
+
+
+def _load_photo_match_plan(plan_json_path: str) -> dict[str, Any]:
+    path = Path(plan_json_path).expanduser()
+    if not path.exists():
+        raise TrelloError(f"Photo match plan JSON not found: {path}")
+    payload = _read_json_file(path, None)
+    if not isinstance(payload, dict) or payload.get("mode") != "photo_card_match_plan":
+        raise TrelloError("File is not a photo_card_match_plan JSON")
+    return payload
+
+
 def _excel_preview(path: Path, max_rows: int = 40, max_cols: int = 20) -> dict[str, Any]:
     suffix = path.suffix.lower()
     if suffix == ".xlsx":
@@ -662,14 +1598,32 @@ def _flatten_preview_text(preview: dict[str, Any]) -> str:
 
 def _extract_address_candidates(text: str) -> list[str]:
     candidates = []
+    street_pattern = re.compile(
+        r"\b\d{1,6}\s+(?:[A-Za-z0-9'&.-]+\s+){0,8}"
+        r"(?:st|street|rd|road|dr|drive|ave|avenue|ln|lane|ct|court|cv|cove|cir|circle|way|pkwy|parkway|blvd|trail|terrace)\b"
+        r"(?:\s+(?:north|south|east|west|n|s|e|w|\d{1,5})\b)?",
+        re.I,
+    )
+    for raw_url_address in re.findall(r"address=([^)\"]+)", text, flags=re.I):
+        decoded = unquote_plus(raw_url_address).strip(" ,")
+        if decoded:
+            candidates.append(decoded[:220])
     for line in text.splitlines():
-        s = re.sub(r"\s+", " ", line).strip(" -:\t")
+        s = _searchable_fragment(line)
+        s = re.sub(r"\s+", " ", s).strip(" -:\t")
         if not s:
             continue
-        has_number = bool(re.search(r"\b\d{2,6}\b", s))
-        has_street_word = bool(re.search(r"\b(st|street|rd|road|dr|drive|ave|avenue|ln|lane|ct|court|cv|cove|cir|circle|way|pkwy|parkway|blvd|trail|terrace)\b", s, re.I))
-        if has_number and has_street_word:
-            candidates.append(s[:220])
+        for match in street_pattern.finditer(s):
+            address = match.group(0).strip(" ,")
+            tail = s[match.end() : match.end() + 80]
+            city_match = re.match(
+                r"\s*,?\s*((?:Memphis|Collierville|Germantown|Cordova|Bartlett|Lakeland|Arlington|Eads|Millington|Southaven|Hernando|Olive Branch|West Memphis|Corinth|Holly Springs)(?:,\s*(?:TN|MS|AR))?)\b",
+                tail,
+                flags=re.I,
+            )
+            if city_match and city_match.group(1).lower() not in address.lower():
+                address = f"{address}, {city_match.group(1)}"
+            candidates.append(address[:220])
     deduped = []
     for item in candidates:
         if item.lower() not in {x.lower() for x in deduped}:
@@ -953,26 +1907,41 @@ def _dms_to_decimal(values: Any, ref: str) -> float | None:
 def _photo_metadata(path: Path) -> dict[str, Any]:
     from PIL import ExifTags, Image
 
-    with Image.open(path) as img:
-        exif = img.getexif()
-        if not exif:
-            return {"path": str(path), "has_gps": False, "taken_at": None}
-        named = {ExifTags.TAGS.get(k, k): v for k, v in exif.items()}
-        gps_raw = named.get("GPSInfo")
-        gps = {}
-        if gps_raw:
-            gps = {ExifTags.GPSTAGS.get(k, k): v for k, v in gps_raw.items()}
-        lat = _dms_to_decimal(gps.get("GPSLatitude"), gps.get("GPSLatitudeRef")) if gps else None
-        lng = _dms_to_decimal(gps.get("GPSLongitude"), gps.get("GPSLongitudeRef")) if gps else None
+    try:
+        with Image.open(path) as img:
+            exif = img.getexif()
+            if not exif:
+                return {"path": str(path), "filename": path.name, "size": path.stat().st_size, "has_gps": False, "taken_at": None}
+            named = {ExifTags.TAGS.get(k, k): v for k, v in exif.items()}
+            gps_raw = named.get("GPSInfo")
+            gps = {}
+            if gps_raw:
+                gps = {ExifTags.GPSTAGS.get(k, k): v for k, v in gps_raw.items()}
+            lat = _dms_to_decimal(gps.get("GPSLatitude"), gps.get("GPSLatitudeRef")) if gps else None
+            lng = _dms_to_decimal(gps.get("GPSLongitude"), gps.get("GPSLongitudeRef")) if gps else None
+            return {
+                "path": str(path),
+                "filename": path.name,
+                "size": path.stat().st_size,
+                "sha256": _sha256(path),
+                "taken_at": named.get("DateTimeOriginal") or named.get("DateTime"),
+                "latitude": lat,
+                "longitude": lng,
+                "has_gps": lat is not None and lng is not None,
+            }
+    except Exception:
+        if path.suffix.lower() not in {".heic", ".heif"}:
+            raise
         return {
             "path": str(path),
             "filename": path.name,
             "size": path.stat().st_size,
             "sha256": _sha256(path),
-            "taken_at": named.get("DateTimeOriginal") or named.get("DateTime"),
-            "latitude": lat,
-            "longitude": lng,
-            "has_gps": lat is not None and lng is not None,
+            "taken_at": None,
+            "latitude": None,
+            "longitude": None,
+            "has_gps": False,
+            "metadata_note": "HEIC metadata should be read through Photos Library SQLite when possible.",
         }
 
 
@@ -2650,11 +3619,250 @@ def scan_tara_xls_forms(source_path: str, max_files: int = 200) -> list[dict[str
 
 
 @mcp.tool()
+def photos_intake_status(
+    photos_library_path: str = str(DEFAULT_PHOTOS_LIBRARY_PATH),
+    days_back: int = 365,
+    max_assets: int = 10000,
+    sample_limit: int = 20,
+    include_paths: bool = False,
+    include_coordinates: bool = False,
+) -> dict[str, Any]:
+    """Read-only Mac Photos intake status for pool-photo matching.
+
+    This inspects the local Photos Library database and reports how many image
+    assets have GPS, how many originals are local, and how many GPS-bearing
+    originals are still cloud-only from this Mac's point of view. It does not
+    write to Photos, iCloud, or Trello.
+    """
+    if days_back < 0:
+        raise TrelloError("days_back must be >= 0")
+    if sample_limit < 0:
+        raise TrelloError("sample_limit must be >= 0")
+    root = Path(photos_library_path or str(DEFAULT_PHOTOS_LIBRARY_PATH)).expanduser()
+    if not _looks_like_photos_library(root):
+        raise TrelloError(f"Not a Photos Library path: {root}")
+
+    report = _photos_library_intake_status(
+        root,
+        days_back=days_back,
+        max_assets=max_assets,
+        sample_limit=sample_limit,
+        include_paths=include_paths,
+        include_coordinates=include_coordinates,
+    )
+    batch_id = datetime.now().strftime("photos-intake-%Y%m%d-%H%M%S")
+    report_dir = PHOTOS_INTAKE_ROOT / batch_id
+    report_dir.mkdir(parents=True, exist_ok=True)
+    json_path = report_dir / "mac-photos-intake-status.json"
+    markdown_path = report_dir / "mac-photos-intake-status.md"
+    report["reports"] = {"json": str(json_path), "markdown": str(markdown_path)}
+    _write_json_file(json_path, report)
+
+    counts = report["counts"]
+    lines = [
+        "# Mac Photos Intake Status",
+        "",
+        f"- Photos library: {report['source']['photos_library_path']}",
+        f"- Days back: {days_back}",
+        f"- Assets scanned: {counts['assets_scanned']}",
+        f"- Supported image assets: {counts['supported_image_assets']}",
+        f"- Local originals: {counts['local_originals']}",
+        f"- Missing originals: {counts['missing_originals']}",
+        f"- GPS assets: {counts['gps_assets']}",
+        f"- GPS local originals: {counts['gps_local_originals']}",
+        f"- GPS missing originals: {counts['gps_missing_originals']}",
+        "",
+        "## Recommendations",
+        "",
+    ]
+    for item in report["recommendations"]:
+        lines.append(f"- {item}")
+    lines.extend(["", "## Sample Local GPS Originals", ""])
+    for item in report["samples"]["gps_local_ready"][:sample_limit]:
+        lines.append(f"- {item.get('taken_at')} | {item.get('filename')} | {item.get('extension')} | {item.get('width')}x{item.get('height')}")
+    lines.extend(["", "## Sample GPS Assets Missing Originals", ""])
+    for item in report["samples"]["gps_missing_original"][:sample_limit]:
+        lines.append(f"- {item.get('taken_at')} | {item.get('filename')} | {item.get('extension')} | cloud_state={item.get('cloud_local_state')}")
+    markdown_path.write_text("\n".join(lines), encoding="utf-8")
+    return report
+
+
+@mcp.tool()
+def prepare_photokit_export_manifest(
+    photos_library_path: str = str(DEFAULT_PHOTOS_LIBRARY_PATH),
+    days_back: int = 365,
+    max_assets: int = 10000,
+    limit: int = 100,
+    dry_run_helper: bool = True,
+) -> dict[str, Any]:
+    """Prepare an export manifest for cloud-only GPS photos.
+
+    This reads the local Photos database, selects GPS-tagged assets whose
+    original files are not local under the Photos Library, writes a local
+    manifest, checks the PhotoKit exporter, and optionally dry-runs the
+    exporter. It does not export/download originals unless the apply tool is
+    run.
+    """
+    if days_back < 0:
+        raise TrelloError("days_back must be >= 0")
+    root = Path(photos_library_path or str(DEFAULT_PHOTOS_LIBRARY_PATH)).expanduser()
+    if not _looks_like_photos_library(root):
+        raise TrelloError(f"Not a Photos Library path: {root}")
+    batch_id = datetime.now().strftime("photokit-export-%Y%m%d-%H%M%S")
+    export_dir = PHOTOS_INTAKE_ROOT / batch_id
+    output_dir = export_dir / "exported-originals"
+    export_dir.mkdir(parents=True, exist_ok=True)
+
+    assets = _photos_missing_original_assets(root, days_back=days_back, max_assets=max_assets, limit=limit)
+    manifest = {
+        "ok": True,
+        "mode": "photokit_export_manifest",
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "source": {
+            "photos_library_path": str(root),
+            "days_back": days_back,
+            "max_assets": max_assets,
+        },
+        "photo_ids": [str(item["photo_id"]) for item in assets],
+        "assets": assets,
+        "output_dir": str(output_dir),
+        "summary": {
+            "candidate_missing_gps_originals": len(assets),
+            "limit": max(1, min(int(limit), 5000)),
+        },
+        "safety": {
+            "read_only_manifest": True,
+            "local_manifest_write": True,
+            "photos_writes": False,
+            "trello_writes": False,
+            "icloud_network_access": False,
+            "raw_gps_returned": False,
+            "secrets_returned": False,
+            "export_requires_token": "EXPORT_PHOTOS_FROM_ICLOUD",
+        },
+    }
+    manifest_path = export_dir / "photokit-export-manifest.json"
+    markdown_path = export_dir / "photokit-export-manifest.md"
+    _write_json_file(manifest_path, manifest)
+    photokit_result = _compile_photokit_exporter()
+    osxphotos_result = _osxphotos_status()
+    manifest["reports"] = {
+        "manifest_json": str(manifest_path),
+        "manifest_markdown": str(markdown_path),
+        "export_output_dir": str(output_dir),
+        "default_backend": "photokit",
+        "osxphotos_backend": " ".join(_osxphotos_command_base()),
+        "photokit_exporter": str(PHOTOKIT_EXPORTER_BIN),
+    }
+    manifest["photokit"] = photokit_result
+    manifest["osxphotos"] = osxphotos_result
+    if dry_run_helper and assets and photokit_result.get("ok"):
+        manifest["dry_run"] = _run_photokit_exporter(
+            manifest_path=manifest_path,
+            output_dir=output_dir,
+            limit=min(len(assets), max(1, min(int(limit), 25))),
+            dry_run=True,
+            timeout_seconds=120,
+        )
+
+    lines = [
+        "# PhotoKit Export Manifest",
+        "",
+        f"- Photos library: {root}",
+        f"- Candidate missing GPS originals: {len(assets)}",
+        f"- Manifest: {manifest_path}",
+        f"- Export output dir: {output_dir}",
+        f"- PhotoKit exporter ready: {photokit_result.get('ok')}",
+        f"- osxphotos ready: {osxphotos_result.get('ok')}",
+        "",
+        "## Apply Command",
+        "",
+        "Use the MCP apply tool `export_photokit_photo_originals` with backend `photokit` and apply token `EXPORT_PHOTOS_FROM_ICLOUD`.",
+        "",
+        "## Sample Assets",
+        "",
+    ]
+    for item in assets[:25]:
+        lines.append(f"- {item.get('taken_at')} | {item.get('filename')} | {item.get('extension')} | cloud_state={item.get('cloud_local_state')}")
+    markdown_path.write_text("\n".join(lines), encoding="utf-8")
+    _write_json_file(manifest_path, manifest)
+    return manifest
+
+
+@mcp.tool()
+def export_photokit_photo_originals(
+    manifest_json_path: str,
+    dry_run: bool = True,
+    apply_token: str = "",
+    limit: int = 25,
+    timeout_seconds: int = 300,
+    backend: str = "photokit",
+) -> dict[str, Any]:
+    """Export/download Photos originals through the configured Photos backend.
+
+    Defaults to dry-run. A real export writes files only under the manifest's
+    local output directory and requires apply_token=EXPORT_PHOTOS_FROM_ICLOUD.
+    It does not write to Trello or mutate the Photos library. The default
+    backend is the signed PhotoKit helper because it is authorized by macOS
+    Photos privacy controls in this room. The osxphotos backend remains
+    available as a diagnostic fallback.
+    """
+    manifest_path = Path(manifest_json_path).expanduser()
+    if not manifest_path.exists():
+        raise TrelloError(f"Manifest JSON not found: {manifest_path}")
+    manifest = _read_json_file(manifest_path, None)
+    if not isinstance(manifest, dict) or manifest.get("mode") != "photokit_export_manifest":
+        raise TrelloError("File is not a photokit_export_manifest JSON")
+    required_token = "EXPORT_PHOTOS_FROM_ICLOUD"
+    apply_enabled = not dry_run
+    if apply_enabled and apply_token != required_token:
+        raise TrelloError(f"Refusing Photos export. Re-run with apply_token={required_token!r} to export originals.")
+    output_dir = Path(str(manifest.get("output_dir") or manifest_path.parent / "exported-originals")).expanduser()
+    backend_key = (backend or "osxphotos").strip().lower()
+    if backend_key == "osxphotos":
+        result = _run_osxphotos_exporter(
+            manifest=manifest,
+            manifest_path=manifest_path,
+            output_dir=output_dir,
+            limit=limit,
+            dry_run=dry_run,
+            timeout_seconds=timeout_seconds,
+        )
+    elif backend_key in {"photokit", "swift", "helper"}:
+        result = _run_photokit_exporter(
+            manifest_path=manifest_path,
+            output_dir=output_dir,
+            limit=limit,
+            dry_run=dry_run,
+            timeout_seconds=timeout_seconds,
+        )
+    else:
+        raise TrelloError("backend must be 'osxphotos' or 'photokit'")
+    result["mode"] = "photos_original_export"
+    result["manifest_json_path"] = str(manifest_path)
+    result["backend_requested"] = backend_key
+    result["required_apply_token"] = required_token
+    result.setdefault("safety", {})
+    result["safety"].update(
+        {
+            "photos_writes": False,
+            "local_file_writes": not dry_run,
+            "trello_writes": False,
+            "icloud_network_access_allowed": not dry_run,
+            "secrets_returned": False,
+        }
+    )
+    return result
+
+
+@mcp.tool()
 def scan_pool_photos(source_path: str, max_files: int = 500) -> list[dict[str, Any]]:
     """Read-only scan of local photo files for GPS/time metadata."""
     root = Path(source_path).expanduser()
     if not root.exists():
         raise TrelloError(f"Source path does not exist: {root}")
+    if _looks_like_photos_library(root):
+        return _photos_library_assets(root, days_back=3650, max_files=max_files, require_local=False)
     files = [root] if root.is_file() else [p for p in root.rglob("*") if p.suffix.lower() in SUPPORTED_PHOTO_EXTENSIONS]
     results = []
     for path in files[: max(1, min(max_files, 5000))]:
@@ -2703,6 +3911,347 @@ def match_photos_to_locations(
             confidence = "very_strong" if best["distance_ft"] <= 100 else "likely" if best["distance_ft"] <= 300 else "review"
             matches.append({"photo": photo, "best_match": best, "confidence": confidence, "all_matches": ranked[:5]})
     return matches
+
+
+@mcp.tool()
+def preview_photo_card_matches(
+    source_path: str = str(DEFAULT_PHOTOS_LIBRARY_PATH),
+    board: str = "memphis",
+    days_back: int = 60,
+    radius_ft: int = 350,
+    max_photos: int = 500,
+    limit_cards: int = 500,
+    include_complete: bool = False,
+    geocode_limit: int = 100,
+    stage_files: bool = True,
+    max_stage_files: int = 120,
+) -> dict[str, Any]:
+    """Preview phone/Photos-library photo matches to Trello cards.
+
+    This is a guarded dry-run. It reads local Photos metadata, geocodes card
+    address candidates into a local cache, stages matched local originals into a
+    local plan folder, and writes a JSON plan. It does not write to Trello.
+    """
+    if days_back < 0:
+        raise TrelloError("days_back must be >= 0")
+    if radius_ft < 25 or radius_ft > 2000:
+        raise TrelloError("radius_ft must be between 25 and 2000")
+    batch_id = datetime.now().strftime("photo-card-match-%Y%m%d-%H%M%S")
+    plan_dir = PHOTO_MATCH_ROOT / batch_id
+    plan_dir.mkdir(parents=True, exist_ok=True)
+
+    photos = _scan_photo_source(source_path, days_back=days_back, max_files=max_photos, require_local=False)
+    local_photos = [photo for photo in photos if photo.get("local_exists", True)]
+    gps_photos = [photo for photo in local_photos if photo.get("has_gps")]
+    card_location_payload = _card_locations_for_photo_match(
+        board,
+        include_complete=include_complete,
+        limit_cards=limit_cards,
+        geocode_limit=geocode_limit,
+    )
+    locations = card_location_payload["locations"]
+
+    staged_count = 0
+    matches_by_card: dict[str, dict[str, Any]] = {}
+    unmatched_photo_count = 0
+    for photo in gps_photos:
+        ranked = []
+        for loc in locations:
+            if loc.get("latitude") is None or loc.get("longitude") is None:
+                continue
+            distance = _distance_ft(float(photo["latitude"]), float(photo["longitude"]), float(loc["latitude"]), float(loc["longitude"]))
+            if distance <= radius_ft:
+                ranked.append({**loc, "distance_ft": round(distance, 1)})
+        if not ranked:
+            unmatched_photo_count += 1
+            continue
+        ranked.sort(key=lambda item: item["distance_ft"])
+        best = ranked[0]
+        second_distance = ranked[1]["distance_ft"] if len(ranked) > 1 else None
+        confidence, warnings = _photo_confidence(float(best["distance_ft"]), second_distance)
+        card_id = str(best["card_id"])
+        group = matches_by_card.setdefault(
+            card_id,
+            {
+                "card_id": card_id,
+                "card_name": best.get("card_name"),
+                "card_url": best.get("card_url"),
+                "list": best.get("list"),
+                "address": best.get("address"),
+                "geocode": best.get("geocode"),
+                "photos": [],
+            },
+        )
+        photo_id = str(photo.get("photo_id") or photo.get("sha256") or photo.get("path"))
+        photo_item = {
+            "photo_id": photo_id,
+            "filename": photo.get("filename"),
+            "source_path": photo.get("path"),
+            "taken_at": photo.get("taken_at"),
+            "latitude": photo.get("latitude"),
+            "longitude": photo.get("longitude"),
+            "size": photo.get("size"),
+            "sha256": photo.get("sha256"),
+            "width": photo.get("width"),
+            "height": photo.get("height"),
+            "distance_ft": best.get("distance_ft"),
+            "confidence": confidence,
+            "warnings": warnings,
+            "cover_candidate_score": photo.get("cover_candidate_score") or 0,
+            "all_matches": [
+                {
+                    "card_id": item.get("card_id"),
+                    "card_name": item.get("card_name"),
+                    "distance_ft": item.get("distance_ft"),
+                    "address": item.get("address"),
+                }
+                for item in ranked[:5]
+            ],
+            "staged": False,
+        }
+        if stage_files and staged_count < max(0, int(max_stage_files)):
+            stage_result = _stage_photo_for_plan(photo, str(best.get("card_name") or card_id), plan_dir)
+            photo_item.update(stage_result)
+            if stage_result.get("staged"):
+                staged_count += 1
+        group["photos"].append(photo_item)
+
+    cards = list(matches_by_card.values())
+    for group in cards:
+        group["photos"].sort(key=lambda item: (item.get("confidence") != "very_strong", -(item.get("cover_candidate_score") or 0), item.get("taken_at") or ""))
+        staged_photos = [item for item in group["photos"] if item.get("staged")]
+        cover = max(staged_photos or group["photos"], key=lambda item: item.get("cover_candidate_score") or 0, default=None)
+        group["selected_cover_photo_id"] = cover.get("photo_id") if cover else None
+        group["photo_count"] = len(group["photos"])
+        group["staged_photo_count"] = len(staged_photos)
+
+    cards.sort(key=lambda item: (item.get("list") or "", item.get("card_name") or ""))
+    plan = {
+        "ok": True,
+        "mode": "photo_card_match_plan",
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "plan_dir": str(plan_dir),
+        "source": {
+            "source_path": str(Path(source_path).expanduser()),
+            "days_back": days_back,
+            "max_photos": max_photos,
+            "photos_scanned": len(photos),
+            "local_photos_with_originals": len(local_photos),
+            "gps_local_photos": len(gps_photos),
+        },
+        "board": {"alias": board, "id": _board_id(board), "include_complete": include_complete},
+        "settings": {
+            "radius_ft": radius_ft,
+            "limit_cards": limit_cards,
+            "geocode_limit": geocode_limit,
+            "stage_files": stage_files,
+            "max_stage_files": max_stage_files,
+        },
+        "card_location_summary": {
+            "cards_seen": card_location_payload.get("cards_seen"),
+            "geocoded_card_locations": len(locations),
+            "skipped": card_location_payload.get("skipped"),
+            "geocode_attempts": card_location_payload.get("geocode_attempts"),
+        },
+        "summary": {
+            "matched_cards": len(cards),
+            "matched_photos": sum(len(group["photos"]) for group in cards),
+            "staged_photos": staged_count,
+            "unmatched_gps_photos": unmatched_photo_count,
+        },
+        "cards": cards,
+        "safety": {
+            "read_only_preview": True,
+            "local_file_write": bool(stage_files),
+            "trello_writes": False,
+            "photos_writes": False,
+            "google_drive_writes": False,
+            "secrets_returned": False,
+            "apply_requires_token": "APPLY_PHOTO_CARD_MATCH_PLAN",
+        },
+    }
+    json_path = plan_dir / "photo-card-match-plan.json"
+    _write_json_file(json_path, plan)
+    markdown_path = plan_dir / "photo-card-match-plan.md"
+    lines = [
+        "# Photo Card Match Plan",
+        "",
+        f"- Source: {plan['source']['source_path']}",
+        f"- Board: {board}",
+        f"- Matched cards: {plan['summary']['matched_cards']}",
+        f"- Matched photos: {plan['summary']['matched_photos']}",
+        f"- Staged photos: {plan['summary']['staged_photos']}",
+        "",
+    ]
+    for group in cards[:80]:
+        lines.append(f"## {group.get('card_name')}")
+        lines.append(f"- Card: {group.get('card_url')}")
+        lines.append(f"- Address: {group.get('address')}")
+        lines.append(f"- Photos: {group.get('photo_count')} staged {group.get('staged_photo_count')}")
+        if group.get("selected_cover_photo_id"):
+            lines.append(f"- Cover candidate: {group.get('selected_cover_photo_id')}")
+        lines.append("")
+        for photo in group["photos"][:12]:
+            lines.append(f"  - {photo.get('filename')} | {photo.get('confidence')} | {photo.get('distance_ft')} ft | staged={photo.get('staged')}")
+        lines.append("")
+    markdown_path.write_text("\n".join(lines), encoding="utf-8")
+    return {
+        "ok": True,
+        "plan_json_path": str(json_path),
+        "plan_markdown_path": str(markdown_path),
+        "summary": plan["summary"],
+        "source": plan["source"],
+        "card_location_summary": plan["card_location_summary"],
+        "sample_cards": cards[:10],
+        "safety": plan["safety"],
+    }
+
+
+@mcp.tool()
+def apply_photo_card_match_plan(
+    plan_json_path: str,
+    dry_run: bool = True,
+    apply_token: str = "",
+    allowed_confidences_json: str = '["very_strong", "likely"]',
+    limit_cards: int = 25,
+    limit_photos_per_card: int = 10,
+    set_covers: bool = True,
+    skip_existing_names: bool = True,
+) -> dict[str, Any]:
+    """Apply a previewed photo-card match plan to Trello.
+
+    Defaults to dry-run. Real Trello attachment/cover writes only happen when
+    dry_run is false and apply_token is APPLY_PHOTO_CARD_MATCH_PLAN.
+    """
+    plan = _load_photo_match_plan(plan_json_path)
+    try:
+        allowed_raw = json.loads(allowed_confidences_json)
+    except json.JSONDecodeError as exc:
+        raise TrelloError("allowed_confidences_json must be a JSON array") from exc
+    allowed = {str(item).strip() for item in allowed_raw if str(item).strip()}
+    valid = {"very_strong", "likely", "review"}
+    invalid = allowed - valid
+    if invalid:
+        raise TrelloError(f"Unsupported confidence values: {sorted(invalid)}")
+    if not allowed:
+        raise TrelloError("At least one confidence must be allowed")
+
+    apply_enabled = not dry_run
+    required_token = "APPLY_PHOTO_CARD_MATCH_PLAN"
+    if apply_enabled and apply_token != required_token:
+        raise TrelloError(f"Refusing Trello writes. Re-run with apply_token={required_token!r} to apply photo attachments.")
+
+    results = []
+    errors = []
+    cards = (plan.get("cards") or [])[: max(1, min(int(limit_cards), 100))]
+    for group in cards:
+        card_id = str(group.get("card_id") or "")
+        if not card_id:
+            continue
+        existing_by_name: dict[str, dict[str, Any]] = {}
+        if apply_enabled and skip_existing_names:
+            try:
+                for item in get_card_attachments(card_id):
+                    if item.get("name"):
+                        existing_by_name[str(item["name"])] = item
+            except Exception as exc:
+                errors.append({"card_id": card_id, "stage": "list_existing_attachments", "error": str(exc)[:500]})
+                continue
+        card_result = {
+            "card_id": card_id,
+            "card_name": group.get("card_name"),
+            "card_url": group.get("card_url"),
+            "uploads": [],
+            "cover": None,
+        }
+        selected_cover_id = str(group.get("selected_cover_photo_id") or "")
+        selected_cover_attachment_id = None
+        for photo in (group.get("photos") or [])[: max(1, min(int(limit_photos_per_card), 50))]:
+            if str(photo.get("confidence")) not in allowed:
+                continue
+            staged_path = Path(str(photo.get("staged_path") or "")).expanduser()
+            if not staged_path.is_file():
+                card_result["uploads"].append({"photo_id": photo.get("photo_id"), "status": "skipped", "reason": "staged_file_missing"})
+                continue
+            taken = str(photo.get("taken_at") or "unknown-date")[:10]
+            attachment_name = f"Pool photo {taken} {str(photo.get('photo_id') or staged_path.stem)[:8]}{staged_path.suffix.lower()}"[:256]
+            if dry_run:
+                row = {
+                    "photo_id": photo.get("photo_id"),
+                    "status": "would_upload",
+                    "attachment_name": attachment_name,
+                    "staged_path": str(staged_path),
+                    "confidence": photo.get("confidence"),
+                    "distance_ft": photo.get("distance_ft"),
+                }
+            elif skip_existing_names and attachment_name in existing_by_name:
+                existing = existing_by_name[attachment_name]
+                row = {
+                    "photo_id": photo.get("photo_id"),
+                    "status": "skipped_existing_name",
+                    "attachment_name": attachment_name,
+                    "attachment_id": existing.get("id"),
+                }
+                if str(photo.get("photo_id")) == selected_cover_id:
+                    selected_cover_attachment_id = existing.get("id")
+            else:
+                try:
+                    uploaded = attach_file_to_card(
+                        file_path=str(staged_path),
+                        card_id=card_id,
+                        name=attachment_name,
+                        comment=None,
+                    )
+                    attachment = uploaded.get("attachment") or {}
+                    row = {
+                        "photo_id": photo.get("photo_id"),
+                        "status": "uploaded",
+                        "attachment_name": attachment_name,
+                        "attachment_id": attachment.get("id"),
+                    }
+                    if str(photo.get("photo_id")) == selected_cover_id:
+                        selected_cover_attachment_id = attachment.get("id")
+                except Exception as exc:
+                    row = {"photo_id": photo.get("photo_id"), "status": "error", "error": str(exc)[:500]}
+                    errors.append({"card_id": card_id, "photo_id": photo.get("photo_id"), "stage": "upload", "error": str(exc)[:500]})
+            card_result["uploads"].append(row)
+        if dry_run:
+            card_result["cover"] = {"status": "would_set" if set_covers and selected_cover_id else "not_requested", "photo_id": selected_cover_id or None}
+        elif set_covers and selected_cover_attachment_id:
+            try:
+                cover = set_card_cover(card_id=card_id, attachment_id=str(selected_cover_attachment_id))
+                card_result["cover"] = {"status": "set", "attachment_id": cover.get("attachment_id")}
+            except Exception as exc:
+                card_result["cover"] = {"status": "error", "error": str(exc)[:500]}
+                errors.append({"card_id": card_id, "stage": "set_cover", "error": str(exc)[:500]})
+        results.append(card_result)
+
+    upload_count = sum(1 for card in results for item in card.get("uploads", []) if item.get("status") == "uploaded")
+    would_upload_count = sum(1 for card in results for item in card.get("uploads", []) if item.get("status") == "would_upload")
+    return {
+        "ok": not errors,
+        "mode": "dry_run" if dry_run else "applied",
+        "plan_json_path": str(Path(plan_json_path).expanduser()),
+        "allowed_confidences": sorted(allowed),
+        "summary": {
+            "cards_considered": len(results),
+            "uploaded": upload_count,
+            "would_upload": would_upload_count,
+            "errors": len(errors),
+        },
+        "results": results,
+        "errors": errors,
+        "safety": {
+            "trello_writes": bool(apply_enabled),
+            "attachments_written": upload_count if apply_enabled else 0,
+            "cover_writes": bool(apply_enabled and set_covers),
+            "photos_writes": False,
+            "google_drive_writes": False,
+            "secrets_returned": False,
+            "dry_run_default": True,
+            "required_apply_token": required_token,
+        },
+    }
 
 
 @mcp.tool()

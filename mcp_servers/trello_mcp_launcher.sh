@@ -4,6 +4,10 @@ set -euo pipefail
 ENV_FILE="${TRELLO_MCP_ENV_FILE:-/Users/stephengodman/.env.1password}"
 PYTHON_BIN="${TRELLO_MCP_PYTHON:-/Users/stephengodman/000_AI/bin/python3}"
 SERVER_PATH="${TRELLO_MCP_SERVER:-/Users/stephengodman/CodeX/mcp_servers/trello_mcp_server.py}"
+OP_BIN="${OP_BIN:-op}"
+if ! command -v "$OP_BIN" >/dev/null 2>&1 && [[ -x /opt/homebrew/bin/op ]]; then
+  OP_BIN="/opt/homebrew/bin/op"
+fi
 OP_TIMEOUT="${TRELLO_OP_RUN_TIMEOUT_SECONDS:-35}"
 LAST_OP_ENV_STATUS="not_attempted"
 LAST_OP_ENV_DETAIL=""
@@ -20,13 +24,14 @@ load_launchctl_env() {
     value="$(/bin/launchctl getenv "$name" 2>/dev/null || true)"
     [[ -n "$value" ]] && export "$name=$value"
   done
+  return 0
 }
 
 load_op_env() {
   LAST_OP_ENV_STATUS="attempted"
   LAST_OP_ENV_DETAIL=""
 
-  if ! command -v op >/dev/null 2>&1; then
+  if ! command -v "$OP_BIN" >/dev/null 2>&1; then
     LAST_OP_ENV_STATUS="missing_op_cli"
     return 1
   fi
@@ -34,18 +39,14 @@ load_op_env() {
     LAST_OP_ENV_STATUS="env_file_missing"
     return 1
   fi
-  if ! command -v timeout >/dev/null 2>&1; then
-    LAST_OP_ENV_STATUS="missing_timeout_binary"
-    return 1
-  fi
-
   local tmp
   tmp="$(mktemp "${TMPDIR:-/tmp}/trello-mcp-env.XXXXXX")"
   chmod 600 "$tmp"
   trap 'rm -f "$tmp"' RETURN
 
   local op_status=0
-  timeout "$OP_TIMEOUT" op run --env-file "$ENV_FILE" -- "$PYTHON_BIN" -c '
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$OP_TIMEOUT" "$OP_BIN" run --env-file "$ENV_FILE" -- "$PYTHON_BIN" -c '
 import os
 import sys
 from pathlib import Path
@@ -54,6 +55,36 @@ target = Path(sys.argv[1])
 names = ("TRELLO_API_KEY", "TRELLO_KEY", "TRELLO_API_TOKEN", "TRELLO_TOKEN")
 target.write_text("".join("%s=%s\n" % (name, os.environ.get(name, "")) for name in names), encoding="utf-8")
 ' "$tmp" 2>/dev/null || op_status=$?
+  else
+    "$PYTHON_BIN" - "$OP_TIMEOUT" "$OP_BIN" "$ENV_FILE" "$PYTHON_BIN" "$tmp" 2>/dev/null <<'PY' || op_status=$?
+import subprocess
+import sys
+
+timeout_seconds = int(sys.argv[1])
+op_bin = sys.argv[2]
+env_file = sys.argv[3]
+python_bin = sys.argv[4]
+target_path = sys.argv[5]
+probe = """
+import os
+import sys
+from pathlib import Path
+
+target = Path(sys.argv[1])
+names = ("TRELLO_API_KEY", "TRELLO_KEY", "TRELLO_API_TOKEN", "TRELLO_TOKEN")
+target.write_text("".join("%s=%s\\n" % (name, os.environ.get(name, "")) for name in names), encoding="utf-8")
+"""
+
+try:
+    completed = subprocess.run(
+        [op_bin, "run", "--env-file", env_file, "--", python_bin, "-c", probe, target_path],
+        timeout=timeout_seconds,
+    )
+except subprocess.TimeoutExpired:
+    sys.exit(124)
+sys.exit(completed.returncode)
+PY
+  fi
   if [[ "$op_status" -ne 0 ]]; then
     if [[ "$op_status" -eq 124 ]]; then
       LAST_OP_ENV_STATUS="op_run_timeout"
