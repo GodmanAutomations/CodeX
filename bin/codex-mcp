@@ -35,6 +35,10 @@ WRITE_PREFIXES = (
     "download_",
 )
 
+WRITE_TOOL_NAMES = {
+    "sync_pool_photos_to_board",
+}
+
 
 def run(cmd: list[str], timeout: int = 30) -> subprocess.CompletedProcess[str]:
     return subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=timeout)
@@ -61,7 +65,7 @@ def mcp_tools(server_path: Path, server_name: str) -> list[dict[str, str]]:
     names = re.findall(r"(?m)^@mcp\.tool\(\)\n(?:.+\n)*?def\s+([A-Za-z_][A-Za-z0-9_]*)\(", text)
     tools = []
     for name in names:
-        risk = "writes" if name.startswith(WRITE_PREFIXES) else "read-only"
+        risk = "writes" if name.startswith(WRITE_PREFIXES) or name in WRITE_TOOL_NAMES else "read-only"
         if name.startswith("download_"):
             risk = "local-file-write"
         tools.append({"server": server_name, "name": name, "risk": risk})
