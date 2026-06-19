@@ -8,6 +8,7 @@ environment variables first, then Stephen's local credential profile.
 from __future__ import annotations
 
 import argparse
+import base64
 import mimetypes
 import os
 import re
@@ -18,6 +19,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import tempfile
 import time
 import zipfile
 from datetime import datetime, timedelta, timezone
@@ -41,6 +43,8 @@ PHOTOKIT_EXPORTER_SOURCE = Path("/Users/stephengodman/CodeX/mcp_servers/photos_p
 PHOTOKIT_EXPORTER_APP = Path("/Users/stephengodman/Applications/CodeXPhotoKitExport.app")
 PHOTOKIT_EXPORTER_BIN = PHOTOKIT_EXPORTER_APP / "Contents" / "MacOS" / "photos_photokit_export"
 OSXPHOTOS_BIN = Path(os.getenv("OSXPHOTOS_BIN", "/opt/homebrew/bin/osxphotos"))
+GEMINI_COVER_MODEL = os.getenv("GEMINI_COVER_MODEL", "gemini-2.5-flash")
+GEMINI_GENERATE_CONTENT_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 OSXPHOTOS_AUTHORIZED_PYTHON = Path(
     os.getenv(
         "OSXPHOTOS_AUTHORIZED_PYTHON",
@@ -702,6 +706,252 @@ def _cover_candidate_score(photo: dict[str, Any]) -> int:
         score += min(30, int((width * height) / 1_000_000))
     score += min(25, int(size / 1_000_000))
     return score
+
+
+def _gemini_api_key() -> str:
+    return (
+        os.getenv("GEMINI_API_KEY")
+        or os.getenv("GOOGLE_API_KEY")
+        or os.getenv("GOOGLE_GENERATIVE_AI_API_KEY")
+        or ""
+    ).strip()
+
+
+def _extract_json_object(text: str) -> dict[str, Any]:
+    text = (text or "").strip()
+    if not text:
+        raise ValueError("empty Gemini response")
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, dict):
+            return parsed
+    except json.JSONDecodeError:
+        pass
+    start = text.find("{")
+    end = text.rfind("}")
+    if start < 0 or end <= start:
+        raise ValueError("Gemini response did not include a JSON object")
+    parsed = json.loads(text[start : end + 1])
+    if not isinstance(parsed, dict):
+        raise ValueError("Gemini JSON response was not an object")
+    return parsed
+
+
+def _gemini_cover_image_bytes(path: Path) -> tuple[bytes, str, Path | None]:
+    """Return web-friendly image bytes for Gemini, converting HEIC/TIFF via sips."""
+    path = path.expanduser()
+    tmp_path: Path | None = None
+    suffix = path.suffix.lower()
+    if shutil.which("sips"):
+        try:
+            with tempfile.NamedTemporaryFile(prefix="trello-cover-", suffix=".jpg", delete=False) as tmp:
+                tmp_path = Path(tmp.name)
+            result = subprocess.run(
+                ["sips", "-s", "format", "jpeg", "-Z", "1600", str(path), "--out", str(tmp_path)],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if result.returncode == 0 and tmp_path.exists() and tmp_path.stat().st_size > 0:
+                return tmp_path.read_bytes(), "image/jpeg", tmp_path
+        except Exception:
+            if tmp_path and tmp_path.exists():
+                tmp_path.unlink(missing_ok=True)
+            tmp_path = None
+        if tmp_path and tmp_path.exists():
+            tmp_path.unlink(missing_ok=True)
+        tmp_path = None
+    if suffix in {".heic", ".heif", ".tif", ".tiff"}:
+        raise TrelloError("image_conversion_failed")
+    mime_type = mimetypes.guess_type(str(path))[0] or "application/octet-stream"
+    return path.read_bytes(), mime_type, tmp_path
+
+
+def _score_cover_photo_with_gemini(
+    photo: dict[str, Any],
+    *,
+    card_name: str,
+    address: str,
+    model: str = "",
+) -> dict[str, Any]:
+    key = _gemini_api_key()
+    if not key:
+        return {"ok": False, "method": "gemini_vision", "status": "skipped", "reason": "gemini_api_key_missing"}
+
+    image_path = Path(str(photo.get("staged_path") or photo.get("source_path") or ""))
+    if not image_path.is_file():
+        return {"ok": False, "method": "gemini_vision", "status": "skipped", "reason": "image_file_missing"}
+
+    selected_model = (model or GEMINI_COVER_MODEL).strip()
+    cleanup_path: Path | None = None
+    try:
+        image_bytes, mime_type, cleanup_path = _gemini_cover_image_bytes(image_path)
+        prompt = f"""
+Choose whether this should be the Trello cover photo for a swimming pool job card.
+
+Card: {card_name or "unknown"}
+Address: {address or "unknown"}
+
+Score 0-100. Prefer a clear wide shot showing the whole pool, pool shape, and surrounding deck/yard.
+Penalize close-up liner wrinkles, steps-only/detail-only shots, blurry/dark photos, screenshots, documents,
+receipts, work orders, labels, or photos where the pool is not visible enough.
+
+Return only JSON with this exact shape:
+{{"score": 0, "whole_pool": false, "wide_scene": false, "detail_only": false, "usable_cover": false, "reason": "short plain reason"}}
+""".strip()
+        response = requests.post(
+            GEMINI_GENERATE_CONTENT_URL.format(model=selected_model),
+            params={"key": key},
+            json={
+                "contents": [
+                    {
+                        "role": "user",
+                        "parts": [
+                            {"text": prompt},
+                            {
+                                "inlineData": {
+                                    "mimeType": mime_type,
+                                    "data": base64.b64encode(image_bytes).decode("ascii"),
+                                }
+                            },
+                        ],
+                    }
+                ],
+                "generationConfig": {
+                    "temperature": 0,
+                    "responseMimeType": "application/json",
+                },
+            },
+            timeout=45,
+        )
+        if not response.ok:
+            return {
+                "ok": False,
+                "method": "gemini_vision",
+                "status": "error",
+                "model": selected_model,
+                "reason": f"gemini_http_{response.status_code}",
+                "error": response.text[:500],
+            }
+        payload = response.json()
+        text_parts = []
+        for candidate in payload.get("candidates") or []:
+            for part in ((candidate.get("content") or {}).get("parts") or []):
+                if part.get("text"):
+                    text_parts.append(str(part["text"]))
+        parsed = _extract_json_object("\n".join(text_parts))
+        score = max(0, min(100, int(float(parsed.get("score") or 0))))
+        return {
+            "ok": True,
+            "method": "gemini_vision",
+            "status": "scored",
+            "model": selected_model,
+            "score": score,
+            "whole_pool": bool(parsed.get("whole_pool")),
+            "wide_scene": bool(parsed.get("wide_scene")),
+            "detail_only": bool(parsed.get("detail_only")),
+            "usable_cover": bool(parsed.get("usable_cover")),
+            "reason": str(parsed.get("reason") or "")[:240],
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "method": "gemini_vision",
+            "status": "error",
+            "model": selected_model,
+            "reason": type(exc).__name__,
+            "error": str(exc)[:500],
+        }
+    finally:
+        if cleanup_path and cleanup_path.exists():
+            cleanup_path.unlink(missing_ok=True)
+
+
+def _select_cover_photo_for_group(
+    group: dict[str, Any],
+    *,
+    vision_cover_scoring: bool = False,
+    vision_cover_limit: int = 5,
+    vision_cover_model: str = "",
+) -> dict[str, Any] | None:
+    staged_photos = [item for item in group["photos"] if item.get("staged")]
+    candidates = staged_photos or group["photos"]
+    metadata_cover = max(candidates, key=lambda item: item.get("cover_candidate_score") or 0, default=None)
+    selection = {
+        "method": "metadata",
+        "selected_photo_id": metadata_cover.get("photo_id") if metadata_cover else None,
+        "reason": "ranked by orientation, dimensions, and file size",
+        "vision_requested": bool(vision_cover_scoring),
+    }
+
+    if not vision_cover_scoring:
+        group["cover_selection"] = selection
+        return metadata_cover
+
+    if not staged_photos:
+        selection["vision_status"] = "skipped_no_staged_photos"
+        group["cover_selection"] = selection
+        return metadata_cover
+
+    limit = max(1, min(int(vision_cover_limit), 10))
+    vision_candidates = sorted(
+        staged_photos,
+        key=lambda item: (item.get("confidence") != "very_strong", -(item.get("cover_candidate_score") or 0), item.get("taken_at") or ""),
+    )[:limit]
+    scored = []
+    failures = []
+    for photo in vision_candidates:
+        result = _score_cover_photo_with_gemini(
+            photo,
+            card_name=str(group.get("card_name") or ""),
+            address=str(group.get("address") or ""),
+            model=vision_cover_model,
+        )
+        photo["vision_cover_score"] = result
+        if result.get("ok"):
+            scored.append(photo)
+        else:
+            failures.append(
+                {
+                    "photo_id": photo.get("photo_id"),
+                    "status": result.get("status"),
+                    "reason": result.get("reason"),
+                }
+            )
+
+    if not scored:
+        selection["vision_status"] = "failed_or_unavailable"
+        selection["vision_failures"] = failures[:5]
+        group["cover_selection"] = selection
+        return metadata_cover
+
+    def ranked_score(item: dict[str, Any]) -> tuple[int, int, int, int, int, int]:
+        vision = item.get("vision_cover_score") or {}
+        return (
+            20 if vision.get("usable_cover") else 0,
+            12 if vision.get("whole_pool") else 0,
+            8 if vision.get("wide_scene") else 0,
+            -25 if vision.get("detail_only") else 0,
+            int(vision.get("score") or 0),
+            int(item.get("cover_candidate_score") or 0),
+        )
+
+    cover = max(scored, key=ranked_score)
+    vision = cover.get("vision_cover_score") or {}
+    group["cover_selection"] = {
+        "method": "gemini_vision",
+        "selected_photo_id": cover.get("photo_id"),
+        "reason": vision.get("reason"),
+        "score": vision.get("score"),
+        "whole_pool": vision.get("whole_pool"),
+        "wide_scene": vision.get("wide_scene"),
+        "detail_only": vision.get("detail_only"),
+        "usable_cover": vision.get("usable_cover"),
+        "model": vision.get("model"),
+        "scored_photos": len(scored),
+        "vision_failures": failures[:5],
+    }
+    return cover
 
 
 def _photos_library_assets(
@@ -4056,6 +4306,9 @@ def preview_photo_card_matches(
     missing_export_apply_token: str = "",
     target_card_query: str = "",
     target_card_id: str = "",
+    vision_cover_scoring: bool = False,
+    vision_cover_limit: int = 5,
+    vision_cover_model: str = "",
 ) -> dict[str, Any]:
     """Preview phone/Photos-library photo matches to Trello cards.
 
@@ -4188,7 +4441,12 @@ def preview_photo_card_matches(
     for group in cards:
         group["photos"].sort(key=lambda item: (item.get("confidence") != "very_strong", -(item.get("cover_candidate_score") or 0), item.get("taken_at") or ""))
         staged_photos = [item for item in group["photos"] if item.get("staged")]
-        cover = max(staged_photos or group["photos"], key=lambda item: item.get("cover_candidate_score") or 0, default=None)
+        cover = _select_cover_photo_for_group(
+            group,
+            vision_cover_scoring=vision_cover_scoring,
+            vision_cover_limit=vision_cover_limit,
+            vision_cover_model=vision_cover_model,
+        )
         group["selected_cover_photo_id"] = cover.get("photo_id") if cover else None
         group["photo_count"] = len(group["photos"])
         group["staged_photo_count"] = len(staged_photos)
@@ -4221,6 +4479,9 @@ def preview_photo_card_matches(
             "missing_export_timeout_seconds": missing_export_timeout_seconds,
             "target_card_query": (target_card_query or "").strip() or None,
             "target_card_id": (target_card_id or "").strip() or None,
+            "vision_cover_scoring": bool(vision_cover_scoring),
+            "vision_cover_limit": max(1, min(int(vision_cover_limit), 10)),
+            "vision_cover_model": (vision_cover_model or GEMINI_COVER_MODEL).strip() if vision_cover_scoring else None,
         },
         "card_location_summary": {
             "cards_seen": card_location_payload.get("cards_seen"),
@@ -4239,6 +4500,12 @@ def preview_photo_card_matches(
             ),
             "exported_missing_originals": (missing_export_result or {}).get("exported_count", 0),
             "unmatched_gps_photos": unmatched_photo_count,
+            "vision_cover_scored_photos": sum(
+                1
+                for group in cards
+                for photo in group["photos"]
+                if (photo.get("vision_cover_score") or {}).get("ok")
+            ),
         },
         "missing_original_export": missing_export_result,
         "cards": cards,
@@ -4251,6 +4518,7 @@ def preview_photo_card_matches(
             "google_drive_writes": False,
             "secrets_returned": False,
             "apply_requires_token": "APPLY_PHOTO_CARD_MATCH_PLAN",
+            "gemini_network_access": bool(vision_cover_scoring),
         },
     }
     json_path = plan_dir / "photo-card-match-plan.json"
@@ -4277,9 +4545,14 @@ def preview_photo_card_matches(
         lines.append(f"- Photos: {group.get('photo_count')} staged {group.get('staged_photo_count')}")
         if group.get("selected_cover_photo_id"):
             lines.append(f"- Cover candidate: {group.get('selected_cover_photo_id')}")
+        cover_selection = group.get("cover_selection") or {}
+        if cover_selection:
+            lines.append(f"- Cover method: {cover_selection.get('method')} score={cover_selection.get('score')}")
         lines.append("")
         for photo in group["photos"][:12]:
-            lines.append(f"  - {photo.get('filename')} | {photo.get('confidence')} | {photo.get('distance_ft')} ft | staged={photo.get('staged')}")
+            vision = photo.get("vision_cover_score") or {}
+            vision_part = f" | vision={vision.get('score')}" if vision.get("ok") else ""
+            lines.append(f"  - {photo.get('filename')} | {photo.get('confidence')} | {photo.get('distance_ft')} ft | staged={photo.get('staged')}{vision_part}")
         lines.append("")
     markdown_path.write_text("\n".join(lines), encoding="utf-8")
     return {
@@ -4463,6 +4736,9 @@ def attach_pool_photos_to_card(
     allowed_confidences_json: str = '["very_strong", "likely"]',
     set_covers: bool = True,
     skip_existing_names: bool = True,
+    vision_cover_scoring: bool = False,
+    vision_cover_limit: int = 5,
+    vision_cover_model: str = "",
 ) -> dict[str, Any]:
     """Plan, stage, and optionally attach pool photos to one target Trello card.
 
@@ -4496,6 +4772,9 @@ def attach_pool_photos_to_card(
         missing_export_apply_token="EXPORT_PHOTOS_FROM_ICLOUD",
         target_card_query=query,
         target_card_id=card_id,
+        vision_cover_scoring=vision_cover_scoring,
+        vision_cover_limit=vision_cover_limit,
+        vision_cover_model=vision_cover_model,
     )
     apply_result = apply_photo_card_match_plan(
         preview["plan_json_path"],
@@ -4531,6 +4810,7 @@ def attach_pool_photos_to_card(
             "google_drive_writes": False,
             "secrets_returned": False,
             "required_apply_token": required_apply_token,
+            "gemini_network_access": bool(vision_cover_scoring),
         },
     }
 
