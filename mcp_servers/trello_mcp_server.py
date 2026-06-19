@@ -1513,7 +1513,7 @@ def _scan_photo_source(source_path: str, *, days_back: int = 60, max_files: int 
 
 
 def _stage_photo_for_plan(photo: dict[str, Any], card_name: str, plan_dir: Path) -> dict[str, Any]:
-    source = Path(str(photo.get("path") or ""))
+    source = Path(str(photo.get("path") or photo.get("source_path") or ""))
     if not source.is_file():
         return {"staged": False, "error": "source_file_missing", "source_path": str(source)}
     card_dir = plan_dir / "files" / _safe_name(card_name)
@@ -1529,6 +1529,97 @@ def _stage_photo_for_plan(photo: dict[str, Any], card_name: str, plan_dir: Path)
         "staged_path": str(target),
         "sha256": _sha256(target),
         "size": target.stat().st_size,
+    }
+
+
+def _export_missing_originals_for_photo_plan(
+    *,
+    photos: list[dict[str, Any]],
+    photos_library_path: Path,
+    plan_dir: Path,
+    limit: int,
+    timeout_seconds: int,
+) -> dict[str, Any]:
+    selected = []
+    seen: set[str] = set()
+    for photo in photos:
+        photo_id = str(photo.get("photo_id") or "").strip()
+        if not photo_id or photo_id in seen:
+            continue
+        source = Path(str(photo.get("source_path") or photo.get("path") or ""))
+        if source.is_file():
+            continue
+        selected.append(photo)
+        seen.add(photo_id)
+        if len(selected) >= max(1, min(int(limit), 5000)):
+            break
+    if not selected:
+        return {
+            "ok": True,
+            "mode": "photo_plan_missing_original_export",
+            "requested_photo_ids": 0,
+            "exported_by_photo_id": {},
+            "result": None,
+        }
+
+    export_dir = plan_dir / "missing-original-export"
+    output_dir = export_dir / "exported-originals"
+    manifest_path = export_dir / "photokit-export-manifest.json"
+    manifest = {
+        "ok": True,
+        "mode": "photokit_export_manifest",
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "source": {
+            "photos_library_path": str(photos_library_path),
+            "source": "photo_card_match_plan",
+        },
+        "photo_ids": [str(item["photo_id"]) for item in selected],
+        "assets": [
+            {
+                "photo_id": item.get("photo_id"),
+                "filename": item.get("filename"),
+                "taken_at": item.get("taken_at"),
+                "width": item.get("width"),
+                "height": item.get("height"),
+                "cloud_local_state": item.get("cloud_local_state"),
+            }
+            for item in selected
+        ],
+        "output_dir": str(output_dir),
+        "safety": {
+            "photos_writes": False,
+            "local_file_writes": True,
+            "trello_writes": False,
+            "secrets_returned": False,
+        },
+    }
+    _write_json_file(manifest_path, manifest)
+    result = _run_photokit_exporter(
+        manifest_path=manifest_path,
+        output_dir=output_dir,
+        limit=len(selected),
+        dry_run=False,
+        timeout_seconds=timeout_seconds,
+    )
+    exported_by_photo_id = {}
+    for row in result.get("results") or []:
+        if row.get("status") != "exported" or not row.get("exported_path"):
+            continue
+        exported_by_photo_id[str(row.get("photo_id"))] = {
+            "exported_path": row.get("exported_path"),
+            "size": row.get("size"),
+            "uti": row.get("uti"),
+            "status": row.get("status"),
+        }
+    return {
+        "ok": result.get("ok"),
+        "mode": "photo_plan_missing_original_export",
+        "manifest_json_path": str(manifest_path),
+        "output_dir": str(output_dir),
+        "requested_photo_ids": len(selected),
+        "exported_by_photo_id": exported_by_photo_id,
+        "exported_count": len(exported_by_photo_id),
+        "result": result,
     }
 
 
@@ -3818,7 +3909,7 @@ def export_photokit_photo_originals(
     if apply_enabled and apply_token != required_token:
         raise TrelloError(f"Refusing Photos export. Re-run with apply_token={required_token!r} to export originals.")
     output_dir = Path(str(manifest.get("output_dir") or manifest_path.parent / "exported-originals")).expanduser()
-    backend_key = (backend or "osxphotos").strip().lower()
+    backend_key = (backend or "photokit").strip().lower()
     if backend_key == "osxphotos":
         result = _run_osxphotos_exporter(
             manifest=manifest,
@@ -3925,24 +4016,35 @@ def preview_photo_card_matches(
     geocode_limit: int = 100,
     stage_files: bool = True,
     max_stage_files: int = 120,
+    export_missing_originals: bool = False,
+    missing_export_limit: int = 25,
+    missing_export_timeout_seconds: int = 180,
+    missing_export_apply_token: str = "",
 ) -> dict[str, Any]:
     """Preview phone/Photos-library photo matches to Trello cards.
 
     This is a guarded dry-run. It reads local Photos metadata, geocodes card
     address candidates into a local cache, stages matched local originals into a
-    local plan folder, and writes a JSON plan. It does not write to Trello.
+    local plan folder, and writes a JSON plan. When explicitly requested, it can
+    export matched cloud-backed originals into that local plan folder before
+    staging. It does not write to Trello.
     """
     if days_back < 0:
         raise TrelloError("days_back must be >= 0")
     if radius_ft < 25 or radius_ft > 2000:
         raise TrelloError("radius_ft must be between 25 and 2000")
+    required_export_token = "EXPORT_PHOTOS_FROM_ICLOUD"
+    if export_missing_originals and missing_export_apply_token != required_export_token:
+        raise TrelloError(f"Refusing Photos original export. Re-run with missing_export_apply_token={required_export_token!r}.")
     batch_id = datetime.now().strftime("photo-card-match-%Y%m%d-%H%M%S")
     plan_dir = PHOTO_MATCH_ROOT / batch_id
     plan_dir.mkdir(parents=True, exist_ok=True)
 
-    photos = _scan_photo_source(source_path, days_back=days_back, max_files=max_photos, require_local=False)
+    source_root = Path(source_path or str(DEFAULT_PHOTOS_LIBRARY_PATH)).expanduser()
+    photos = _scan_photo_source(str(source_root), days_back=days_back, max_files=max_photos, require_local=False)
     local_photos = [photo for photo in photos if photo.get("local_exists", True)]
-    gps_photos = [photo for photo in local_photos if photo.get("has_gps")]
+    gps_photos = [photo for photo in photos if photo.get("has_gps")]
+    gps_missing_originals = [photo for photo in gps_photos if not photo.get("local_exists", True)]
     card_location_payload = _card_locations_for_photo_match(
         board,
         include_complete=include_complete,
@@ -3954,6 +4056,7 @@ def preview_photo_card_matches(
     staged_count = 0
     matches_by_card: dict[str, dict[str, Any]] = {}
     unmatched_photo_count = 0
+    matched_photo_items: list[dict[str, Any]] = []
     for photo in gps_photos:
         ranked = []
         for loc in locations:
@@ -3987,6 +4090,8 @@ def preview_photo_card_matches(
             "photo_id": photo_id,
             "filename": photo.get("filename"),
             "source_path": photo.get("path"),
+            "local_exists": photo.get("local_exists", True),
+            "cloud_local_state": photo.get("cloud_local_state"),
             "taken_at": photo.get("taken_at"),
             "latitude": photo.get("latitude"),
             "longitude": photo.get("longitude"),
@@ -4009,12 +4114,37 @@ def preview_photo_card_matches(
             ],
             "staged": False,
         }
-        if stage_files and staged_count < max(0, int(max_stage_files)):
-            stage_result = _stage_photo_for_plan(photo, str(best.get("card_name") or card_id), plan_dir)
-            photo_item.update(stage_result)
-            if stage_result.get("staged"):
-                staged_count += 1
         group["photos"].append(photo_item)
+        matched_photo_items.append(photo_item)
+
+    missing_export_result = None
+    if stage_files and export_missing_originals and _looks_like_photos_library(source_root):
+        missing_export_result = _export_missing_originals_for_photo_plan(
+            photos=matched_photo_items,
+            photos_library_path=source_root,
+            plan_dir=plan_dir,
+            limit=min(max(1, int(missing_export_limit)), max(1, int(max_stage_files))),
+            timeout_seconds=missing_export_timeout_seconds,
+        )
+        exported_by_photo_id = missing_export_result.get("exported_by_photo_id") or {}
+        for photo_item in matched_photo_items:
+            exported = exported_by_photo_id.get(str(photo_item.get("photo_id")))
+            if not exported:
+                continue
+            photo_item["source_path"] = exported.get("exported_path")
+            photo_item["exported_original"] = True
+            photo_item["exported_original_size"] = exported.get("size")
+            photo_item["exported_original_uti"] = exported.get("uti")
+
+    if stage_files:
+        for group in matches_by_card.values():
+            for photo_item in group["photos"]:
+                if staged_count >= max(0, int(max_stage_files)):
+                    break
+                stage_result = _stage_photo_for_plan(photo_item, str(group.get("card_name") or group.get("card_id")), plan_dir)
+                photo_item.update(stage_result)
+                if stage_result.get("staged"):
+                    staged_count += 1
 
     cards = list(matches_by_card.values())
     for group in cards:
@@ -4032,12 +4162,14 @@ def preview_photo_card_matches(
         "created_at": datetime.now().isoformat(timespec="seconds"),
         "plan_dir": str(plan_dir),
         "source": {
-            "source_path": str(Path(source_path).expanduser()),
+            "source_path": str(source_root),
             "days_back": days_back,
             "max_photos": max_photos,
             "photos_scanned": len(photos),
             "local_photos_with_originals": len(local_photos),
-            "gps_local_photos": len(gps_photos),
+            "gps_photos": len(gps_photos),
+            "gps_local_photos": len([photo for photo in gps_photos if photo.get("local_exists", True)]),
+            "gps_missing_originals": len(gps_missing_originals),
         },
         "board": {"alias": board, "id": _board_id(board), "include_complete": include_complete},
         "settings": {
@@ -4046,6 +4178,9 @@ def preview_photo_card_matches(
             "geocode_limit": geocode_limit,
             "stage_files": stage_files,
             "max_stage_files": max_stage_files,
+            "export_missing_originals": export_missing_originals,
+            "missing_export_limit": missing_export_limit,
+            "missing_export_timeout_seconds": missing_export_timeout_seconds,
         },
         "card_location_summary": {
             "cards_seen": card_location_payload.get("cards_seen"),
@@ -4057,12 +4192,18 @@ def preview_photo_card_matches(
             "matched_cards": len(cards),
             "matched_photos": sum(len(group["photos"]) for group in cards),
             "staged_photos": staged_count,
+            "missing_original_matched_photos": sum(
+                1 for group in cards for photo in group["photos"] if not photo.get("local_exists", True)
+            ),
+            "exported_missing_originals": (missing_export_result or {}).get("exported_count", 0),
             "unmatched_gps_photos": unmatched_photo_count,
         },
+        "missing_original_export": missing_export_result,
         "cards": cards,
         "safety": {
             "read_only_preview": True,
             "local_file_write": bool(stage_files),
+            "icloud_network_access": bool(export_missing_originals),
             "trello_writes": False,
             "photos_writes": False,
             "google_drive_writes": False,
@@ -4081,6 +4222,8 @@ def preview_photo_card_matches(
         f"- Matched cards: {plan['summary']['matched_cards']}",
         f"- Matched photos: {plan['summary']['matched_photos']}",
         f"- Staged photos: {plan['summary']['staged_photos']}",
+        f"- Missing-original matched photos: {plan['summary']['missing_original_matched_photos']}",
+        f"- Exported missing originals: {plan['summary']['exported_missing_originals']}",
         "",
     ]
     for group in cards[:80]:
