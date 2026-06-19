@@ -4448,6 +4448,94 @@ def apply_photo_card_match_plan(
 
 
 @mcp.tool()
+def attach_pool_photos_to_card(
+    target_card_query: str = "",
+    target_card_id: str = "",
+    board: str = "memphis",
+    dry_run: bool = True,
+    apply_token: str = "",
+    days_back: int = 21,
+    radius_ft: int = 250,
+    max_photos: int = 1000,
+    max_photos_to_attach: int = 5,
+    include_complete: bool = False,
+    geocode_limit: int = 20,
+    allowed_confidences_json: str = '["very_strong", "likely"]',
+    set_covers: bool = True,
+    skip_existing_names: bool = True,
+) -> dict[str, Any]:
+    """Plan, stage, and optionally attach pool photos to one target Trello card.
+
+    This is the operator-friendly wrapper around preview_photo_card_matches and
+    apply_photo_card_match_plan. It defaults to dry_run=True. A real Trello
+    upload still requires apply_token=APPLY_PHOTO_CARD_MATCH_PLAN.
+    """
+    query = (target_card_query or "").strip()
+    card_id = (target_card_id or "").strip()
+    if not query and not card_id:
+        raise TrelloError("target_card_query or target_card_id is required")
+    attach_limit = max(1, min(int(max_photos_to_attach), 25))
+    required_apply_token = "APPLY_PHOTO_CARD_MATCH_PLAN"
+    if not dry_run and apply_token != required_apply_token:
+        raise TrelloError(f"Refusing Trello writes. Re-run with apply_token={required_apply_token!r}.")
+
+    preview = preview_photo_card_matches(
+        source_path=str(DEFAULT_PHOTOS_LIBRARY_PATH),
+        board=board,
+        days_back=days_back,
+        radius_ft=radius_ft,
+        max_photos=max_photos,
+        limit_cards=20,
+        include_complete=include_complete,
+        geocode_limit=geocode_limit,
+        stage_files=True,
+        max_stage_files=attach_limit,
+        export_missing_originals=True,
+        missing_export_limit=attach_limit,
+        missing_export_timeout_seconds=180,
+        missing_export_apply_token="EXPORT_PHOTOS_FROM_ICLOUD",
+        target_card_query=query,
+        target_card_id=card_id,
+    )
+    apply_result = apply_photo_card_match_plan(
+        preview["plan_json_path"],
+        dry_run=dry_run,
+        apply_token=apply_token,
+        allowed_confidences_json=allowed_confidences_json,
+        limit_cards=1,
+        limit_photos_per_card=attach_limit,
+        set_covers=set_covers,
+        skip_existing_names=skip_existing_names,
+    )
+    return {
+        "ok": bool(preview.get("ok")) and bool(apply_result.get("ok")),
+        "mode": "dry_run" if dry_run else "applied",
+        "target": {
+            "card_query": query or None,
+            "card_id": card_id or None,
+            "board": board,
+        },
+        "plan_json_path": preview.get("plan_json_path"),
+        "plan_markdown_path": preview.get("plan_markdown_path"),
+        "preview_summary": preview.get("summary"),
+        "card_location_summary": preview.get("card_location_summary"),
+        "apply_summary": apply_result.get("summary"),
+        "apply_results": apply_result.get("results"),
+        "errors": apply_result.get("errors") or [],
+        "safety": {
+            "dry_run_default": True,
+            "trello_writes": not dry_run,
+            "photos_writes": False,
+            "local_file_write": True,
+            "icloud_network_access": True,
+            "google_drive_writes": False,
+            "secrets_returned": False,
+            "required_apply_token": required_apply_token,
+        },
+    }
+
+
+@mcp.tool()
 def search_pool_records(
     query: str,
     record_kind: str = "any",
