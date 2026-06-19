@@ -737,6 +737,16 @@ def _extract_json_object(text: str) -> dict[str, Any]:
     return parsed
 
 
+def _json_bool(value: Any, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(value)
+
+
 def _gemini_cover_image_bytes(path: Path) -> tuple[bytes, str, Path | None]:
     """Return web-friendly image bytes for Gemini, converting HEIC/TIFF via sips."""
     path = path.expanduser()
@@ -787,17 +797,23 @@ def _score_cover_photo_with_gemini(
     try:
         image_bytes, mime_type, cleanup_path = _gemini_cover_image_bytes(image_path)
         prompt = f"""
-Choose whether this should be the Trello cover photo for a swimming pool job card.
+Classify this photo for a swimming pool job Trello card.
 
 Card: {card_name or "unknown"}
 Address: {address or "unknown"}
 
-Score 0-100. Prefer a clear wide shot showing the whole pool, pool shape, and surrounding deck/yard.
-Penalize close-up liner wrinkles, steps-only/detail-only shots, blurry/dark photos, screenshots, documents,
-receipts, work orders, labels, or photos where the pool is not visible enough.
+Cover score 0-100: prefer a clear wide shot showing the whole pool, pool shape, and surrounding deck/yard.
+Upload score 0-100: prefer useful pool/job evidence, including whole pool shots, liner condition, steps,
+equipment, pool details, or clear installation progress.
+
+Penalize blurry/dark images, screenshots, documents, receipts, labels, non-pool photos, or photos where the
+pool/job evidence is not visible enough.
 
 Return only JSON with this exact shape:
-{{"score": 0, "whole_pool": false, "wide_scene": false, "detail_only": false, "usable_cover": false, "reason": "short plain reason"}}
+{{"score": 0, "upload_score": 0, "photo_type": "unknown", "pool_visible": false, "whole_pool": false, "wide_scene": false, "detail_only": false, "usable_cover": false, "useful_job_photo": false, "upload_recommendation": "review", "reason": "short plain reason"}}
+
+photo_type must be one of: whole_pool, pool_detail, liner_issue, equipment, job_progress, document, screenshot, non_pool, bad_blur, unknown.
+upload_recommendation must be one of: upload, review, reject.
 """.strip()
         response = requests.post(
             GEMINI_GENERATE_CONTENT_URL.format(model=selected_model),
@@ -841,16 +857,48 @@ Return only JSON with this exact shape:
                     text_parts.append(str(part["text"]))
         parsed = _extract_json_object("\n".join(text_parts))
         score = max(0, min(100, int(float(parsed.get("score") or 0))))
+        upload_score = max(0, min(100, int(float(parsed.get("upload_score") if parsed.get("upload_score") is not None else score))))
+        photo_type = str(parsed.get("photo_type") or "unknown").strip().lower().replace(" ", "_")
+        valid_photo_types = {
+            "whole_pool",
+            "pool_detail",
+            "liner_issue",
+            "equipment",
+            "job_progress",
+            "document",
+            "screenshot",
+            "non_pool",
+            "bad_blur",
+            "unknown",
+        }
+        if photo_type not in valid_photo_types:
+            photo_type = "unknown"
+        pool_visible = _json_bool(
+            parsed.get("pool_visible"),
+            default=photo_type in {"whole_pool", "pool_detail", "liner_issue", "job_progress"},
+        )
+        useful_job_photo = _json_bool(
+            parsed.get("useful_job_photo"),
+            default=photo_type in {"whole_pool", "pool_detail", "liner_issue", "equipment", "job_progress"},
+        )
+        recommendation = str(parsed.get("upload_recommendation") or "").strip().lower()
+        if recommendation not in {"upload", "review", "reject"}:
+            recommendation = "upload" if useful_job_photo and upload_score >= 50 else "review"
         return {
             "ok": True,
             "method": "gemini_vision",
             "status": "scored",
             "model": selected_model,
             "score": score,
-            "whole_pool": bool(parsed.get("whole_pool")),
-            "wide_scene": bool(parsed.get("wide_scene")),
-            "detail_only": bool(parsed.get("detail_only")),
-            "usable_cover": bool(parsed.get("usable_cover")),
+            "upload_score": upload_score,
+            "photo_type": photo_type,
+            "pool_visible": pool_visible,
+            "whole_pool": _json_bool(parsed.get("whole_pool")),
+            "wide_scene": _json_bool(parsed.get("wide_scene")),
+            "detail_only": _json_bool(parsed.get("detail_only")),
+            "usable_cover": _json_bool(parsed.get("usable_cover")),
+            "useful_job_photo": useful_job_photo,
+            "upload_recommendation": recommendation,
             "reason": str(parsed.get("reason") or "")[:240],
         }
     except Exception as exc:
@@ -983,6 +1031,87 @@ def _select_cover_photo_for_group(
         "vision_failures": failures[:5],
     }
     return cover
+
+
+def _photo_upload_decision(
+    photo: dict[str, Any],
+    *,
+    upload_policy: str = "all_gps_matches",
+    min_vision_upload_score: int = 50,
+    require_pool_visible: bool = False,
+) -> dict[str, Any]:
+    policy = (upload_policy or "all_gps_matches").strip().lower()
+    if policy not in {"all_gps_matches", "usable_images", "review_only"}:
+        raise TrelloError("upload_policy must be one of: all_gps_matches, usable_images, review_only")
+    if policy == "all_gps_matches":
+        return {"action": "upload", "reason": "upload_policy_all_gps_matches", "policy": policy}
+    vision = photo.get("vision_cover_score") or {}
+    if policy == "review_only":
+        return {
+            "action": "review",
+            "reason": "upload_policy_review_only",
+            "policy": policy,
+            "vision": _photo_vision_decision_summary(vision),
+        }
+    if not vision.get("ok"):
+        return {
+            "action": "review",
+            "reason": "vision_unavailable",
+            "policy": policy,
+            "vision": _photo_vision_decision_summary(vision),
+        }
+
+    photo_type = str(vision.get("photo_type") or "unknown")
+    recommendation = str(vision.get("upload_recommendation") or "review")
+    upload_score = int(vision.get("upload_score") if vision.get("upload_score") is not None else vision.get("score") or 0)
+    hard_reject_types = {"document", "screenshot", "non_pool", "bad_blur"}
+    if photo_type in hard_reject_types or recommendation == "reject":
+        return {
+            "action": "reject",
+            "reason": f"vision_rejected_{photo_type}",
+            "policy": policy,
+            "vision": _photo_vision_decision_summary(vision),
+        }
+    if require_pool_visible and not vision.get("pool_visible"):
+        return {
+            "action": "review",
+            "reason": "pool_not_visible",
+            "policy": policy,
+            "vision": _photo_vision_decision_summary(vision),
+        }
+    if upload_score < max(0, min(int(min_vision_upload_score), 100)):
+        return {
+            "action": "review",
+            "reason": "vision_score_below_threshold",
+            "policy": policy,
+            "vision": _photo_vision_decision_summary(vision),
+        }
+    if not vision.get("useful_job_photo") and recommendation != "upload":
+        return {
+            "action": "review",
+            "reason": "not_marked_useful_job_photo",
+            "policy": policy,
+            "vision": _photo_vision_decision_summary(vision),
+        }
+    return {
+        "action": "upload",
+        "reason": "vision_approved",
+        "policy": policy,
+        "vision": _photo_vision_decision_summary(vision),
+    }
+
+
+def _photo_vision_decision_summary(vision: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "ok": bool(vision.get("ok")),
+        "score": vision.get("score"),
+        "upload_score": vision.get("upload_score"),
+        "photo_type": vision.get("photo_type"),
+        "pool_visible": vision.get("pool_visible"),
+        "useful_job_photo": vision.get("useful_job_photo"),
+        "upload_recommendation": vision.get("upload_recommendation"),
+        "reason": vision.get("reason"),
+    }
 
 
 def _photos_library_assets(
@@ -4740,6 +4869,9 @@ def apply_photo_card_match_plan(
     set_covers: bool = True,
     skip_existing_names: bool = True,
     include_skipped_photos: bool = True,
+    upload_policy: str = "all_gps_matches",
+    min_vision_upload_score: int = 50,
+    require_pool_visible: bool = False,
 ) -> dict[str, Any]:
     """Apply a previewed photo-card match plan to Trello.
 
@@ -4758,6 +4890,10 @@ def apply_photo_card_match_plan(
         raise TrelloError(f"Unsupported confidence values: {sorted(invalid)}")
     if not allowed:
         raise TrelloError("At least one confidence must be allowed")
+    policy = (upload_policy or "all_gps_matches").strip().lower()
+    if policy not in {"all_gps_matches", "usable_images", "review_only"}:
+        raise TrelloError("upload_policy must be one of: all_gps_matches, usable_images, review_only")
+    min_upload_score = max(0, min(int(min_vision_upload_score), 100))
 
     apply_enabled = not dry_run
     required_token = "APPLY_PHOTO_CARD_MATCH_PLAN"
@@ -4786,10 +4922,13 @@ def apply_photo_card_match_plan(
             "card_name": group.get("card_name"),
             "card_url": group.get("card_url"),
             "uploads": [],
+            "needs_review": [],
+            "rejected_photos": [],
             "cover": None,
         }
         selected_cover_id = str(group.get("selected_cover_photo_id") or "")
         selected_cover_attachment_id = None
+        selected_cover_upload_planned = False
         uploadable_seen = 0
         upload_limit = max(1, min(int(limit_photos_per_card), 50))
         for photo in group.get("photos") or []:
@@ -4801,6 +4940,28 @@ def apply_photo_card_match_plan(
                     card_result["uploads"].append({"photo_id": photo.get("photo_id"), "status": "skipped", "reason": "staged_file_missing"})
                 else:
                     skipped_suppressed_count += 1
+                continue
+            upload_decision = _photo_upload_decision(
+                photo,
+                upload_policy=policy,
+                min_vision_upload_score=min_upload_score,
+                require_pool_visible=require_pool_visible,
+            )
+            photo["upload_decision"] = upload_decision
+            if upload_decision["action"] != "upload":
+                quality_row = {
+                    "photo_id": photo.get("photo_id"),
+                    "status": "needs_review" if upload_decision["action"] == "review" else "rejected",
+                    "reason": upload_decision.get("reason"),
+                    "staged_path": str(staged_path),
+                    "confidence": photo.get("confidence"),
+                    "distance_ft": photo.get("distance_ft"),
+                    "vision": upload_decision.get("vision"),
+                }
+                if upload_decision["action"] == "review":
+                    card_result["needs_review"].append(quality_row)
+                else:
+                    card_result["rejected_photos"].append(quality_row)
                 continue
             if uploadable_seen >= upload_limit:
                 if include_skipped_photos:
@@ -4819,7 +4980,10 @@ def apply_photo_card_match_plan(
                     "staged_path": str(staged_path),
                     "confidence": photo.get("confidence"),
                     "distance_ft": photo.get("distance_ft"),
+                    "upload_decision": upload_decision,
                 }
+                if str(photo.get("photo_id")) == selected_cover_id:
+                    selected_cover_upload_planned = True
             elif skip_existing_names and attachment_name in existing_by_name:
                 existing = existing_by_name[attachment_name]
                 row = {
@@ -4827,8 +4991,10 @@ def apply_photo_card_match_plan(
                     "status": "skipped_existing_name",
                     "attachment_name": attachment_name,
                     "attachment_id": existing.get("id"),
+                    "upload_decision": upload_decision,
                 }
                 if str(photo.get("photo_id")) == selected_cover_id:
+                    selected_cover_upload_planned = True
                     selected_cover_attachment_id = existing.get("id")
             else:
                 try:
@@ -4844,15 +5010,22 @@ def apply_photo_card_match_plan(
                         "status": "uploaded",
                         "attachment_name": attachment_name,
                         "attachment_id": attachment.get("id"),
+                        "upload_decision": upload_decision,
                     }
                     if str(photo.get("photo_id")) == selected_cover_id:
+                        selected_cover_upload_planned = True
                         selected_cover_attachment_id = attachment.get("id")
                 except Exception as exc:
                     row = {"photo_id": photo.get("photo_id"), "status": "error", "error": str(exc)[:500]}
                     errors.append({"card_id": card_id, "photo_id": photo.get("photo_id"), "stage": "upload", "error": str(exc)[:500]})
             card_result["uploads"].append(row)
         if dry_run:
-            card_result["cover"] = {"status": "would_set" if set_covers and selected_cover_id else "not_requested", "photo_id": selected_cover_id or None}
+            if set_covers and selected_cover_id and selected_cover_upload_planned:
+                card_result["cover"] = {"status": "would_set", "photo_id": selected_cover_id}
+            elif set_covers and selected_cover_id:
+                card_result["cover"] = {"status": "cover_photo_not_uploadable", "photo_id": selected_cover_id}
+            else:
+                card_result["cover"] = {"status": "not_requested", "photo_id": selected_cover_id or None}
         elif set_covers and selected_cover_attachment_id:
             try:
                 cover = set_card_cover(card_id=card_id, attachment_id=str(selected_cover_attachment_id))
@@ -4864,6 +5037,8 @@ def apply_photo_card_match_plan(
 
     upload_count = sum(1 for card in results for item in card.get("uploads", []) if item.get("status") == "uploaded")
     would_upload_count = sum(1 for card in results for item in card.get("uploads", []) if item.get("status") == "would_upload")
+    needs_review_count = sum(len(card.get("needs_review", [])) for card in results)
+    rejected_count = sum(len(card.get("rejected_photos", [])) for card in results)
     return {
         "ok": not errors,
         "mode": "dry_run" if dry_run else "applied",
@@ -4873,8 +5048,13 @@ def apply_photo_card_match_plan(
             "cards_considered": len(results),
             "uploaded": upload_count,
             "would_upload": would_upload_count,
+            "needs_review": needs_review_count,
+            "rejected": rejected_count,
             "errors": len(errors),
             "skipped_suppressed": skipped_suppressed_count,
+            "upload_policy": policy,
+            "min_vision_upload_score": min_upload_score,
+            "require_pool_visible": bool(require_pool_visible),
         },
         "results": results,
         "errors": errors,
@@ -5009,6 +5189,9 @@ def attach_pool_photos_to_cards(
     vision_cover_scoring: bool = True,
     vision_cover_limit: int = 5,
     vision_cover_model: str = "",
+    upload_policy: str = "usable_images",
+    min_vision_upload_score: int = 50,
+    require_pool_visible: bool = True,
 ) -> dict[str, Any]:
     """Batch plan, stage, and optionally attach phone Photos matches to target Trello cards.
 
@@ -5062,6 +5245,9 @@ def attach_pool_photos_to_cards(
         set_covers=set_covers,
         skip_existing_names=skip_existing_names,
         include_skipped_photos=False,
+        upload_policy=upload_policy,
+        min_vision_upload_score=min_vision_upload_score,
+        require_pool_visible=require_pool_visible,
     )
 
     preview_summary = preview.get("summary") or {}
@@ -5076,6 +5262,10 @@ def attach_pool_photos_to_cards(
         warnings.append({"type": "target_not_matched_to_card", "targets": missing_target_labels[:20]})
     if int(preview_summary.get("matched_cards") or 0) == 0:
         warnings.append({"type": "no_photo_card_matches", "detail": "No target cards had GPS-matched photos within the current radius/days window."})
+    if int(apply_summary.get("needs_review") or 0):
+        warnings.append({"type": "photos_need_review", "count": apply_summary.get("needs_review")})
+    if int(apply_summary.get("rejected") or 0):
+        warnings.append({"type": "photos_rejected_by_quality_gate", "count": apply_summary.get("rejected")})
 
     return {
         "ok": bool(preview.get("ok")) and bool(apply_result.get("ok")),
@@ -5092,6 +5282,11 @@ def attach_pool_photos_to_cards(
         "card_location_summary": card_location_summary,
         "apply_summary": apply_summary,
         "apply_results": apply_result.get("results"),
+        "upload_quality": {
+            "upload_policy": (upload_policy or "usable_images").strip().lower(),
+            "min_vision_upload_score": max(0, min(int(min_vision_upload_score), 100)),
+            "require_pool_visible": bool(require_pool_visible),
+        },
         "warnings": warnings,
         "errors": apply_result.get("errors") or [],
         "safety": {
@@ -6228,6 +6423,9 @@ def _run_cli(argv: list[str]) -> int:
     parser.add_argument("--max-photos-per-card", type=int, default=5)
     parser.add_argument("--geocode-limit", type=int, default=50)
     parser.add_argument("--vision-cover-scoring", default="true")
+    parser.add_argument("--upload-policy", default="usable_images", choices=["usable_images", "all_gps_matches", "review_only"])
+    parser.add_argument("--min-vision-upload-score", type=int, default=50)
+    parser.add_argument("--require-pool-visible", default="true")
     parser.add_argument("--max-text-chars", type=int, default=6000)
     parser.add_argument("--include-complete", default="true")
     parser.add_argument("--limit-cards", type=int, default=1000)
@@ -6293,6 +6491,9 @@ def _run_cli(argv: list[str]) -> int:
                 include_complete=photo_include_complete,
                 geocode_limit=args.geocode_limit,
                 vision_cover_scoring=_cli_bool(args.vision_cover_scoring),
+                upload_policy=args.upload_policy,
+                min_vision_upload_score=args.min_vision_upload_score,
+                require_pool_visible=_cli_bool(args.require_pool_visible),
             )
         elif args.set_cover:
             if not args.card_id or not args.attachment_id:
