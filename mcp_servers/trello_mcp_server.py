@@ -925,6 +925,37 @@ def _select_cover_photo_for_group(
         group["cover_selection"] = selection
         return metadata_cover
 
+    usable_scored = [
+        item
+        for item in scored
+        if not (item.get("vision_cover_score") or {}).get("detail_only")
+        and (
+            (item.get("vision_cover_score") or {}).get("usable_cover")
+            or (item.get("vision_cover_score") or {}).get("whole_pool")
+            or (item.get("vision_cover_score") or {}).get("wide_scene")
+            or int((item.get("vision_cover_score") or {}).get("score") or 0) >= 70
+        )
+    ]
+    if not usable_scored:
+        best_rejected = max(scored, key=lambda item: int((item.get("vision_cover_score") or {}).get("score") or 0))
+        vision = best_rejected.get("vision_cover_score") or {}
+        group["cover_selection"] = {
+            "method": "gemini_vision",
+            "status": "no_usable_cover",
+            "selected_photo_id": None,
+            "rejected_photo_id": best_rejected.get("photo_id"),
+            "reason": vision.get("reason"),
+            "score": vision.get("score"),
+            "whole_pool": vision.get("whole_pool"),
+            "wide_scene": vision.get("wide_scene"),
+            "detail_only": vision.get("detail_only"),
+            "usable_cover": vision.get("usable_cover"),
+            "model": vision.get("model"),
+            "scored_photos": len(scored),
+            "vision_failures": failures[:5],
+        }
+        return None
+
     def ranked_score(item: dict[str, Any]) -> tuple[int, int, int, int, int, int]:
         vision = item.get("vision_cover_score") or {}
         return (
@@ -936,7 +967,7 @@ def _select_cover_photo_for_group(
             int(item.get("cover_candidate_score") or 0),
         )
 
-    cover = max(scored, key=ranked_score)
+    cover = max(usable_scored, key=ranked_score)
     vision = cover.get("vision_cover_score") or {}
     group["cover_selection"] = {
         "method": "gemini_vision",
@@ -1673,6 +1704,94 @@ def _geocode_address(address: str, context: str = "", *, allow_network: bool = T
     return None
 
 
+def _split_photo_target_queries(value: str) -> list[str]:
+    chunks = re.split(r"[\n;|]+", value or "")
+    if len(chunks) == 1 and "," in (value or ""):
+        chunks = re.split(r",+", value or "")
+    return [re.sub(r"\s+", " ", chunk).strip(" .,:;-\"'") for chunk in chunks if chunk.strip(" .,:;-\"'")]
+
+
+def _normalize_photo_target(item: Any) -> dict[str, Any] | None:
+    if isinstance(item, str):
+        query = re.sub(r"\s+", " ", item).strip(" .,:;-\"'")
+        return {"query": query, "card_id": "", "label": query} if query else None
+    if not isinstance(item, dict):
+        raise TrelloError("Photo targets must be strings or objects")
+    query = re.sub(r"\s+", " ", str(item.get("query") or item.get("card_query") or item.get("name") or "")).strip(" .,:;-\"'")
+    card_id = re.sub(r"\s+", " ", str(item.get("card_id") or item.get("id") or "")).strip()
+    label = re.sub(r"\s+", " ", str(item.get("label") or query or card_id)).strip()
+    if not query and not card_id:
+        return None
+    return {
+        "query": query,
+        "card_id": card_id,
+        "label": label or query or card_id,
+    }
+
+
+def _photo_target_entries_from_inputs(
+    *,
+    target_card_query: str = "",
+    target_card_id: str = "",
+    target_cards_json: str = "",
+    target_card_queries: str = "",
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    single = _normalize_photo_target({"query": target_card_query, "card_id": target_card_id})
+    if single:
+        entries.append(single)
+
+    if target_cards_json.strip():
+        try:
+            parsed = json.loads(target_cards_json)
+        except json.JSONDecodeError as exc:
+            raise TrelloError("target_cards_json/targets_json must be valid JSON") from exc
+        if isinstance(parsed, dict) and isinstance(parsed.get("targets"), list):
+            raw_items = parsed["targets"]
+        elif isinstance(parsed, list):
+            raw_items = parsed
+        else:
+            raw_items = [parsed]
+        for raw in raw_items:
+            entry = _normalize_photo_target(raw)
+            if entry:
+                entries.append(entry)
+
+    for query in _split_photo_target_queries(target_card_queries):
+        entry = _normalize_photo_target(query)
+        if entry:
+            entries.append(entry)
+
+    deduped = []
+    seen = set()
+    for entry in entries:
+        key = (entry.get("query", "").lower(), entry.get("card_id", "").lower())
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(entry)
+        if len(deduped) >= max(1, min(int(limit), 100)):
+            break
+    return deduped
+
+
+def _photo_target_matches_card(entry: dict[str, Any], card: dict[str, Any], card_text: str) -> bool:
+    query = str(entry.get("query") or "").strip()
+    wanted_id = str(entry.get("card_id") or "").strip()
+    short_url = str(card.get("shortUrl") or "")
+    if wanted_id:
+        id_match = wanted_id == str(card.get("id") or "") or wanted_id in short_url
+        if not id_match:
+            return False
+    if query:
+        tokens = _match_tokens(query)
+        query_match = query.lower() in card_text.lower() or (tokens and _score_text(tokens, card_text) == len(tokens))
+        if not query_match:
+            return False
+    return bool(query or wanted_id)
+
+
 def _card_locations_for_photo_match(
     board: str,
     *,
@@ -1681,6 +1800,7 @@ def _card_locations_for_photo_match(
     geocode_limit: int = 100,
     target_card_query: str = "",
     target_card_id: str = "",
+    target_entries: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     trello_filter = "all" if include_complete else "open"
     all_cards = _request(
@@ -1691,28 +1811,39 @@ def _card_locations_for_photo_match(
     list_names = {item["id"]: item["name"] for item in get_lists(board=board, filter="all")}
     query = (target_card_query or "").strip()
     wanted_id = (target_card_id or "").strip()
-    target_tokens = _match_tokens(query)
+    targets = target_entries if target_entries is not None else _photo_target_entries_from_inputs(
+        target_card_query=query,
+        target_card_id=wanted_id,
+    )
     target_filtered = 0
     cards = []
+    matched_target_labels: set[str] = set()
     for card in all_cards:
         list_name = list_names.get(card.get("idList"), "UNKNOWN")
         card_text = f"{card.get('name', '')}\n{card.get('desc', '')}\n{list_name}"
-        short_url = str(card.get("shortUrl") or "")
-        id_match = bool(wanted_id) and (
-            wanted_id == str(card.get("id") or "")
-            or wanted_id in short_url
-        )
-        query_match = (
-            not query
-            or query.lower() in card_text.lower()
-            or (target_tokens and _score_text(target_tokens, card_text) == len(target_tokens))
-        )
-        if wanted_id and not id_match:
-            target_filtered += 1
-            continue
-        if query and not query_match:
-            target_filtered += 1
-            continue
+        card_target_matches = []
+        if targets:
+            for entry in targets:
+                if _photo_target_matches_card(entry, card, card_text):
+                    card_target_matches.append({k: v for k, v in entry.items() if k in {"query", "card_id", "label"}})
+                    matched_target_labels.add(str(entry.get("label") or entry.get("query") or entry.get("card_id") or "target"))
+            if not card_target_matches:
+                target_filtered += 1
+                continue
+            card["_photo_target_matches"] = card_target_matches
+        else:
+            if wanted_id:
+                short_url = str(card.get("shortUrl") or "")
+                id_match = wanted_id == str(card.get("id") or "") or wanted_id in short_url
+                if not id_match:
+                    target_filtered += 1
+                    continue
+            if query:
+                target_tokens = _match_tokens(query)
+                query_match = query.lower() in card_text.lower() or (target_tokens and _score_text(target_tokens, card_text) == len(target_tokens))
+                if not query_match:
+                    target_filtered += 1
+                    continue
         cards.append(card)
     matched_card_count_before_limit = len(cards)
     cards = cards[: max(1, min(int(limit_cards), 1000))]
@@ -1749,6 +1880,7 @@ def _card_locations_for_photo_match(
                         "latitude": geocoded.get("latitude"),
                         "longitude": geocoded.get("longitude"),
                         "closed": bool(card.get("closed")),
+                        "target_matches": card.get("_photo_target_matches") or [],
                     }
                 )
                 break
@@ -1763,6 +1895,8 @@ def _card_locations_for_photo_match(
         "target": {
             "card_query": query or None,
             "card_id": wanted_id or None,
+            "target_entries": targets,
+            "matched_target_labels": sorted(matched_target_labels),
             "matched_card_count_before_limit": matched_card_count_before_limit,
         },
     }
@@ -4300,12 +4434,14 @@ def preview_photo_card_matches(
     geocode_limit: int = 100,
     stage_files: bool = True,
     max_stage_files: int = 120,
+    max_stage_files_per_card: int = 0,
     export_missing_originals: bool = False,
     missing_export_limit: int = 25,
     missing_export_timeout_seconds: int = 180,
     missing_export_apply_token: str = "",
     target_card_query: str = "",
     target_card_id: str = "",
+    target_cards_json: str = "",
     vision_cover_scoring: bool = False,
     vision_cover_limit: int = 5,
     vision_cover_model: str = "",
@@ -4334,6 +4470,11 @@ def preview_photo_card_matches(
     local_photos = [photo for photo in photos if photo.get("local_exists", True)]
     gps_photos = [photo for photo in photos if photo.get("has_gps")]
     gps_missing_originals = [photo for photo in gps_photos if not photo.get("local_exists", True)]
+    target_entries = _photo_target_entries_from_inputs(
+        target_card_query=target_card_query,
+        target_card_id=target_card_id,
+        target_cards_json=target_cards_json,
+    )
     card_location_payload = _card_locations_for_photo_match(
         board,
         include_complete=include_complete,
@@ -4341,6 +4482,7 @@ def preview_photo_card_matches(
         geocode_limit=geocode_limit,
         target_card_query=target_card_query,
         target_card_id=target_card_id,
+        target_entries=target_entries,
     )
     locations = card_location_payload["locations"]
 
@@ -4410,8 +4552,19 @@ def preview_photo_card_matches(
 
     missing_export_result = None
     if stage_files and export_missing_originals and _looks_like_photos_library(source_root):
+        export_candidates = matched_photo_items
+        per_card_stage_limit = max(0, int(max_stage_files_per_card))
+        if per_card_stage_limit > 0:
+            export_candidates = []
+            for group in matches_by_card.values():
+                export_candidates.extend(
+                    sorted(
+                        group["photos"],
+                        key=lambda item: (item.get("confidence") != "very_strong", -(item.get("cover_candidate_score") or 0), item.get("taken_at") or ""),
+                    )[:per_card_stage_limit]
+                )
         missing_export_result = _export_missing_originals_for_photo_plan(
-            photos=matched_photo_items,
+            photos=export_candidates,
             photos_library_path=source_root,
             plan_dir=plan_dir,
             limit=min(max(1, int(missing_export_limit)), max(1, int(max_stage_files))),
@@ -4428,14 +4581,21 @@ def preview_photo_card_matches(
             photo_item["exported_original_uti"] = exported.get("uti")
 
     if stage_files:
+        global_stage_limit = max(0, int(max_stage_files))
+        per_card_stage_limit = max(0, int(max_stage_files_per_card))
         for group in matches_by_card.values():
+            group["photos"].sort(key=lambda item: (item.get("confidence") != "very_strong", -(item.get("cover_candidate_score") or 0), item.get("taken_at") or ""))
+            group_staged_count = 0
             for photo_item in group["photos"]:
-                if staged_count >= max(0, int(max_stage_files)):
+                if staged_count >= global_stage_limit:
+                    break
+                if per_card_stage_limit > 0 and group_staged_count >= per_card_stage_limit:
                     break
                 stage_result = _stage_photo_for_plan(photo_item, str(group.get("card_name") or group.get("card_id")), plan_dir)
                 photo_item.update(stage_result)
                 if stage_result.get("staged"):
                     staged_count += 1
+                    group_staged_count += 1
 
     cards = list(matches_by_card.values())
     for group in cards:
@@ -4474,11 +4634,13 @@ def preview_photo_card_matches(
             "geocode_limit": geocode_limit,
             "stage_files": stage_files,
             "max_stage_files": max_stage_files,
+            "max_stage_files_per_card": max_stage_files_per_card,
             "export_missing_originals": export_missing_originals,
             "missing_export_limit": missing_export_limit,
             "missing_export_timeout_seconds": missing_export_timeout_seconds,
             "target_card_query": (target_card_query or "").strip() or None,
             "target_card_id": (target_card_id or "").strip() or None,
+            "target_cards": target_entries,
             "vision_cover_scoring": bool(vision_cover_scoring),
             "vision_cover_limit": max(1, min(int(vision_cover_limit), 10)),
             "vision_cover_model": (vision_cover_model or GEMINI_COVER_MODEL).strip() if vision_cover_scoring else None,
@@ -4577,6 +4739,7 @@ def apply_photo_card_match_plan(
     limit_photos_per_card: int = 10,
     set_covers: bool = True,
     skip_existing_names: bool = True,
+    include_skipped_photos: bool = True,
 ) -> dict[str, Any]:
     """Apply a previewed photo-card match plan to Trello.
 
@@ -4603,6 +4766,7 @@ def apply_photo_card_match_plan(
 
     results = []
     errors = []
+    skipped_suppressed_count = 0
     cards = (plan.get("cards") or [])[: max(1, min(int(limit_cards), 100))]
     for group in cards:
         card_id = str(group.get("card_id") or "")
@@ -4633,10 +4797,16 @@ def apply_photo_card_match_plan(
                 continue
             staged_path = Path(str(photo.get("staged_path") or "")).expanduser()
             if not staged_path.is_file():
-                card_result["uploads"].append({"photo_id": photo.get("photo_id"), "status": "skipped", "reason": "staged_file_missing"})
+                if include_skipped_photos:
+                    card_result["uploads"].append({"photo_id": photo.get("photo_id"), "status": "skipped", "reason": "staged_file_missing"})
+                else:
+                    skipped_suppressed_count += 1
                 continue
             if uploadable_seen >= upload_limit:
-                card_result["uploads"].append({"photo_id": photo.get("photo_id"), "status": "skipped", "reason": "limit_photos_per_card"})
+                if include_skipped_photos:
+                    card_result["uploads"].append({"photo_id": photo.get("photo_id"), "status": "skipped", "reason": "limit_photos_per_card"})
+                else:
+                    skipped_suppressed_count += 1
                 continue
             uploadable_seen += 1
             taken = str(photo.get("taken_at") or "unknown-date")[:10]
@@ -4704,6 +4874,7 @@ def apply_photo_card_match_plan(
             "uploaded": upload_count,
             "would_upload": would_upload_count,
             "errors": len(errors),
+            "skipped_suppressed": skipped_suppressed_count,
         },
         "results": results,
         "errors": errors,
@@ -4766,6 +4937,7 @@ def attach_pool_photos_to_card(
         geocode_limit=geocode_limit,
         stage_files=True,
         max_stage_files=attach_limit,
+        max_stage_files_per_card=attach_limit,
         export_missing_originals=True,
         missing_export_limit=attach_limit,
         missing_export_timeout_seconds=180,
@@ -4785,6 +4957,7 @@ def attach_pool_photos_to_card(
         limit_photos_per_card=attach_limit,
         set_covers=set_covers,
         skip_existing_names=skip_existing_names,
+        include_skipped_photos=True,
     )
     return {
         "ok": bool(preview.get("ok")) and bool(apply_result.get("ok")),
@@ -4800,6 +4973,126 @@ def attach_pool_photos_to_card(
         "card_location_summary": preview.get("card_location_summary"),
         "apply_summary": apply_result.get("summary"),
         "apply_results": apply_result.get("results"),
+        "errors": apply_result.get("errors") or [],
+        "safety": {
+            "dry_run_default": True,
+            "trello_writes": not dry_run,
+            "photos_writes": False,
+            "local_file_write": True,
+            "icloud_network_access": True,
+            "google_drive_writes": False,
+            "secrets_returned": False,
+            "required_apply_token": required_apply_token,
+            "gemini_network_access": bool(vision_cover_scoring),
+        },
+    }
+
+
+@mcp.tool()
+def attach_pool_photos_to_cards(
+    target_card_queries: str = "",
+    targets_json: str = "",
+    board: str = "memphis",
+    dry_run: bool = True,
+    apply_token: str = "",
+    days_back: int = 21,
+    radius_ft: int = 250,
+    max_photos: int = 1500,
+    max_targets: int = 12,
+    max_photos_per_card: int = 5,
+    limit_matching_cards: int = 50,
+    include_complete: bool = False,
+    geocode_limit: int = 50,
+    allowed_confidences_json: str = '["very_strong", "likely"]',
+    set_covers: bool = True,
+    skip_existing_names: bool = True,
+    vision_cover_scoring: bool = True,
+    vision_cover_limit: int = 5,
+    vision_cover_model: str = "",
+) -> dict[str, Any]:
+    """Batch plan, stage, and optionally attach phone Photos matches to target Trello cards.
+
+    target_card_queries accepts newline/semicolon/pipe separated card searches.
+    targets_json accepts a JSON array of strings or objects with query/card_id.
+    Defaults to dry_run=True; Trello writes still require APPLY_PHOTO_CARD_MATCH_PLAN.
+    """
+    target_limit = max(1, min(int(max_targets), 50))
+    targets = _photo_target_entries_from_inputs(
+        target_cards_json=targets_json,
+        target_card_queries=target_card_queries,
+        limit=target_limit,
+    )
+    if not targets:
+        raise TrelloError("target_card_queries or targets_json is required")
+
+    photo_limit = max(1, min(int(max_photos_per_card), 25))
+    matching_card_limit = max(1, min(int(limit_matching_cards), 100))
+    required_apply_token = "APPLY_PHOTO_CARD_MATCH_PLAN"
+    if not dry_run and apply_token != required_apply_token:
+        raise TrelloError(f"Refusing Trello writes. Re-run with apply_token={required_apply_token!r}.")
+
+    preview = preview_photo_card_matches(
+        source_path=str(DEFAULT_PHOTOS_LIBRARY_PATH),
+        board=board,
+        days_back=days_back,
+        radius_ft=radius_ft,
+        max_photos=max_photos,
+        limit_cards=matching_card_limit,
+        include_complete=include_complete,
+        geocode_limit=geocode_limit,
+        stage_files=True,
+        max_stage_files=photo_limit * len(targets),
+        max_stage_files_per_card=photo_limit,
+        export_missing_originals=True,
+        missing_export_limit=photo_limit * len(targets),
+        missing_export_timeout_seconds=240,
+        missing_export_apply_token="EXPORT_PHOTOS_FROM_ICLOUD",
+        target_cards_json=json.dumps(targets),
+        vision_cover_scoring=vision_cover_scoring,
+        vision_cover_limit=vision_cover_limit,
+        vision_cover_model=vision_cover_model,
+    )
+    apply_result = apply_photo_card_match_plan(
+        preview["plan_json_path"],
+        dry_run=dry_run,
+        apply_token=apply_token,
+        allowed_confidences_json=allowed_confidences_json,
+        limit_cards=matching_card_limit,
+        limit_photos_per_card=photo_limit,
+        set_covers=set_covers,
+        skip_existing_names=skip_existing_names,
+        include_skipped_photos=False,
+    )
+
+    preview_summary = preview.get("summary") or {}
+    apply_summary = apply_result.get("summary") or {}
+    card_location_summary = preview.get("card_location_summary") or {}
+    target_summary = card_location_summary.get("target") or {}
+    requested_labels = [str(item.get("label") or item.get("query") or item.get("card_id")) for item in targets]
+    matched_labels = set(target_summary.get("matched_target_labels") or [])
+    warnings = []
+    missing_target_labels = [label for label in requested_labels if label and label not in matched_labels]
+    if missing_target_labels:
+        warnings.append({"type": "target_not_matched_to_card", "targets": missing_target_labels[:20]})
+    if int(preview_summary.get("matched_cards") or 0) == 0:
+        warnings.append({"type": "no_photo_card_matches", "detail": "No target cards had GPS-matched photos within the current radius/days window."})
+
+    return {
+        "ok": bool(preview.get("ok")) and bool(apply_result.get("ok")),
+        "mode": "dry_run" if dry_run else "applied",
+        "target_summary": {
+            "requested_targets": len(targets),
+            "requested_labels": requested_labels,
+            "matched_target_labels": sorted(matched_labels),
+            "missing_target_labels": missing_target_labels,
+        },
+        "plan_json_path": preview.get("plan_json_path"),
+        "plan_markdown_path": preview.get("plan_markdown_path"),
+        "preview_summary": preview_summary,
+        "card_location_summary": card_location_summary,
+        "apply_summary": apply_summary,
+        "apply_results": apply_result.get("results"),
+        "warnings": warnings,
         "errors": apply_result.get("errors") or [],
         "safety": {
             "dry_run_default": True,
@@ -5910,6 +6203,7 @@ def _run_cli(argv: list[str]) -> int:
     parser.add_argument("--search-cards", action="store_true", help="Search Trello cards by name/description and exit.")
     parser.add_argument("--read-work-order", action="store_true", help="Read a work-order-like attachment from a Trello card and exit.")
     parser.add_argument("--attach-file", action="store_true", help="Attach a local file to a Trello card and exit. This writes to Trello.")
+    parser.add_argument("--attach-pool-photos", action="store_true", help="Plan/apply phone Photos GPS matches to target Trello cards.")
     parser.add_argument("--set-cover", action="store_true", help="Set a Trello card cover attachment and exit. This writes to Trello.")
     parser.add_argument("--primary-board", default="memphis")
     parser.add_argument("--comparison-board", default="legacy_memphis")
@@ -5922,8 +6216,18 @@ def _run_cli(argv: list[str]) -> int:
     parser.add_argument("--name", default=None)
     parser.add_argument("--comment", default=None)
     parser.add_argument("--attachment-id", default=None)
+    parser.add_argument("--target-card-queries", default="")
+    parser.add_argument("--targets-json", default="")
+    parser.add_argument("--apply-token", default="")
     parser.add_argument("--attachment-filter", default="")
     parser.add_argument("--question", default="")
+    parser.add_argument("--days-back", type=int, default=21)
+    parser.add_argument("--radius-ft", type=int, default=250)
+    parser.add_argument("--max-photos", type=int, default=1500)
+    parser.add_argument("--max-targets", type=int, default=12)
+    parser.add_argument("--max-photos-per-card", type=int, default=5)
+    parser.add_argument("--geocode-limit", type=int, default=50)
+    parser.add_argument("--vision-cover-scoring", default="true")
     parser.add_argument("--max-text-chars", type=int, default=6000)
     parser.add_argument("--include-complete", default="true")
     parser.add_argument("--limit-cards", type=int, default=1000)
@@ -5968,6 +6272,28 @@ def _run_cli(argv: list[str]) -> int:
                 name=args.name,
                 comment=args.comment,
             )
+        elif args.attach_pool_photos:
+            photo_include_complete = (
+                _cli_bool(args.include_complete)
+                if any(item == "--include-complete" or item.startswith("--include-complete=") for item in argv)
+                else False
+            )
+            payload = attach_pool_photos_to_cards(
+                target_card_queries=args.target_card_queries,
+                targets_json=args.targets_json,
+                board=args.board,
+                dry_run=not bool(args.apply_token),
+                apply_token=args.apply_token,
+                days_back=args.days_back,
+                radius_ft=args.radius_ft,
+                max_photos=args.max_photos,
+                max_targets=args.max_targets,
+                max_photos_per_card=args.max_photos_per_card,
+                limit_matching_cards=args.limit_cards,
+                include_complete=photo_include_complete,
+                geocode_limit=args.geocode_limit,
+                vision_cover_scoring=_cli_bool(args.vision_cover_scoring),
+            )
         elif args.set_cover:
             if not args.card_id or not args.attachment_id:
                 raise TrelloError("--card-id and --attachment-id are required with --set-cover")
@@ -5982,7 +6308,7 @@ def _run_cli(argv: list[str]) -> int:
                 sample_cards_per_list=args.sample_cards_per_list,
             )
         else:
-            parser.error("choose --runtime-diagnostics, --search-cards, --read-work-order, --attach-file, --set-cover, or --write-cutover-packet")
+            parser.error("choose --runtime-diagnostics, --search-cards, --read-work-order, --attach-file, --attach-pool-photos, --set-cover, or --write-cutover-packet")
             return 2
     except Exception as exc:
         payload = {

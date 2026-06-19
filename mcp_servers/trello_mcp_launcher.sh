@@ -52,7 +52,15 @@ import sys
 from pathlib import Path
 
 target = Path(sys.argv[1])
-names = ("TRELLO_API_KEY", "TRELLO_KEY", "TRELLO_API_TOKEN", "TRELLO_TOKEN")
+names = (
+    "TRELLO_API_KEY",
+    "TRELLO_KEY",
+    "TRELLO_API_TOKEN",
+    "TRELLO_TOKEN",
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+    "GOOGLE_GENERATIVE_AI_API_KEY",
+)
 target.write_text("".join("%s=%s\n" % (name, os.environ.get(name, "")) for name in names), encoding="utf-8")
 ' "$tmp" 2>/dev/null || op_status=$?
   else
@@ -71,7 +79,15 @@ import sys
 from pathlib import Path
 
 target = Path(sys.argv[1])
-names = ("TRELLO_API_KEY", "TRELLO_KEY", "TRELLO_API_TOKEN", "TRELLO_TOKEN")
+names = (
+    "TRELLO_API_KEY",
+    "TRELLO_KEY",
+    "TRELLO_API_TOKEN",
+    "TRELLO_TOKEN",
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+    "GOOGLE_GENERATIVE_AI_API_KEY",
+)
 target.write_text("".join("%s=%s\\n" % (name, os.environ.get(name, "")) for name in names), encoding="utf-8")
 """
 
@@ -97,7 +113,7 @@ PY
 
   while IFS='=' read -r name value; do
     case "$name" in
-      TRELLO_API_KEY|TRELLO_KEY|TRELLO_API_TOKEN|TRELLO_TOKEN)
+      TRELLO_API_KEY|TRELLO_KEY|TRELLO_API_TOKEN|TRELLO_TOKEN|GEMINI_API_KEY|GOOGLE_API_KEY|GOOGLE_GENERATIVE_AI_API_KEY)
         [[ -n "$value" ]] && export "$name=$value"
         ;;
     esac
@@ -151,6 +167,7 @@ payload = {
     "environment": {
         "key_present": bool(os.getenv("TRELLO_API_KEY") or os.getenv("TRELLO_KEY")),
         "token_present": bool(os.getenv("TRELLO_API_TOKEN") or os.getenv("TRELLO_TOKEN")),
+        "gemini_key_present": bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or os.getenv("GOOGLE_GENERATIVE_AI_API_KEY")),
     },
     "paths": {
         "env_file": str(env_file),
