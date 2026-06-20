@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.godman.codex-photo-sync-bridge</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/stephengodman/CodeX/bin/trello-photo-sync-bridge</string>
+    <string>serve</string>
+    <string>--host</string>
+    <string>100.114.106.68</string>
+    <string>--port</string>
+    <string>8768</string>
+  </array>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/stephengodman/CodeX</string>
+
+  <key>StandardOutPath</key>
+  <string>/Users/stephengodman/CodeX/logs/trello-photo-sync-bridge.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/stephengodman/CodeX/logs/trello-photo-sync-bridge.err.log</string>
+</dict>
+</plist>
+

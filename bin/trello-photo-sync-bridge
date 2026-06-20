@@ -1,0 +1,522 @@
+#!/usr/bin/env python3
+"""Token-gated HTTP bridge for Apple Photos -> Trello pool photo sync.
+
+The Apple Photos library lives on Stephen's Mac, while Candice runs on the Pi.
+This bridge gives Pi-side tools a narrow way to ask the Mac to run the existing
+`bin/trello-sync-pool-photos` command without exposing raw secrets.
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import hmac
+import json
+import os
+import secrets
+import subprocess
+import sys
+import threading
+import time
+from datetime import datetime, timezone
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from typing import Any
+from urllib.parse import urlparse
+
+
+ROOT = Path("/Users/stephengodman/CodeX")
+WRAPPER = ROOT / "bin" / "trello-sync-pool-photos"
+TOKEN_PATH = ROOT / "private" / "trello-photo-sync-bridge" / "token"
+RUN_DIR = ROOT / "work-artifacts" / "trello-mcp" / "photo-sync-bridge"
+LOG_DIR = ROOT / "logs"
+DEFAULT_HOST = os.environ.get("CODEX_PHOTO_SYNC_BRIDGE_HOST", "100.114.106.68")
+DEFAULT_PORT = int(os.environ.get("CODEX_PHOTO_SYNC_BRIDGE_PORT", "8768"))
+MAX_BODY_BYTES = 64 * 1024
+MAX_TIMEOUT_SECONDS = 1200
+
+RUN_LOCK = threading.Lock()
+RUN_THREADS: dict[str, threading.Thread] = {}
+
+
+def now_iso() -> str:
+    return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+
+
+def ensure_private_dirs() -> None:
+    TOKEN_PATH.parent.mkdir(parents=True, exist_ok=True)
+    RUN_DIR.mkdir(parents=True, exist_ok=True)
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def ensure_token() -> str:
+    ensure_private_dirs()
+    if TOKEN_PATH.is_file():
+        token = TOKEN_PATH.read_text(encoding="utf-8").strip()
+        if token:
+            try:
+                TOKEN_PATH.chmod(0o600)
+            except OSError:
+                pass
+            return token
+    token = secrets.token_urlsafe(48)
+    TOKEN_PATH.write_text(token + "\n", encoding="utf-8")
+    TOKEN_PATH.chmod(0o600)
+    return token
+
+
+def read_token() -> str:
+    return ensure_token()
+
+
+def token_fingerprint(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()[:12]
+
+
+def run_path(run_id: str) -> Path:
+    safe = "".join(ch for ch in run_id if ch.isalnum() or ch in "-_")
+    return RUN_DIR / f"{safe}.json"
+
+
+def write_run(run_id: str, payload: dict[str, Any]) -> None:
+    ensure_private_dirs()
+    path = run_path(run_id)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def read_run(run_id: str) -> dict[str, Any] | None:
+    path = run_path(run_id)
+    if not path.is_file():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {"ok": False, "run_id": run_id, "status": "corrupt_run_file"}
+
+
+def bool_value(payload: dict[str, Any], key: str, default: bool = False) -> bool:
+    value = payload.get(key, default)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    return str(value).strip().lower() in {"1", "true", "yes", "on", "apply"}
+
+
+def int_value(payload: dict[str, Any], key: str, default: int, low: int, high: int) -> int:
+    try:
+        value = int(payload.get(key, default))
+    except (TypeError, ValueError):
+        value = default
+    return max(low, min(value, high))
+
+
+def str_value(payload: dict[str, Any], key: str, default: str = "") -> str:
+    value = payload.get(key, default)
+    return str(value or default).strip()
+
+
+def build_command(payload: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:
+    board = str_value(payload, "board", "memphis") or "memphis"
+    targets_raw = payload.get("targets") or payload.get("target_card_queries") or []
+    if isinstance(targets_raw, str):
+        targets = [item.strip() for item in targets_raw.replace("\r", "\n").split("\n") if item.strip()]
+    elif isinstance(targets_raw, list):
+        targets = [str(item).strip() for item in targets_raw if str(item).strip()]
+    else:
+        targets = []
+    targets = targets[:12]
+
+    apply = bool_value(payload, "apply", False)
+    evidence = bool_value(payload, "evidence", False)
+    review_only = bool_value(payload, "review_only", False)
+    include_complete = bool_value(payload, "include_complete", False)
+    no_vision = bool_value(payload, "no_vision", False)
+    no_require_pool_visible = bool_value(payload, "no_require_pool_visible", False)
+
+    command = [
+        str(WRAPPER),
+        "--json",
+        "--board",
+        board,
+        "--days-back",
+        str(int_value(payload, "days_back", 90, 1, 365)),
+        "--radius-ft",
+        str(int_value(payload, "radius_ft", 250, 25, 2500)),
+        "--max-photos",
+        str(int_value(payload, "max_photos", 1500, 10, 5000)),
+        "--max-total-photos",
+        str(int_value(payload, "max_total_photos", 20, 1, 200)),
+        "--max-photos-per-card",
+        str(int_value(payload, "max_photos_per_card", 2, 1, 25)),
+        "--limit-cards",
+        str(int_value(payload, "limit_cards", 100, 1, 500)),
+        "--geocode-limit",
+        str(int_value(payload, "geocode_limit", 80, 1, 300)),
+        "--min-vision-upload-score",
+        str(int_value(payload, "min_vision_upload_score", 50, 0, 100)),
+        "--timeout-seconds",
+        str(int_value(payload, "timeout_seconds", 900, 30, MAX_TIMEOUT_SECONDS)),
+    ]
+    if apply:
+        command.append("--apply")
+    if evidence:
+        command.append("--evidence")
+    if review_only:
+        command.append("--review-only")
+    if include_complete:
+        command.append("--include-complete")
+    if no_vision:
+        command.append("--no-vision")
+    if no_require_pool_visible:
+        command.append("--no-require-pool-visible")
+    command.extend(targets)
+
+    summary = {
+        "board": board,
+        "targets": targets,
+        "apply": apply,
+        "mode": "targeted" if targets else "board",
+        "trello_writes_requested": apply,
+    }
+    return command, summary
+
+
+def compact_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    apply_summary = payload.get("apply_summary") or {}
+    preview_summary = payload.get("preview_summary") or {}
+    receipts = payload.get("receipts") or {}
+    return {
+        "ok": payload.get("ok"),
+        "mode": payload.get("mode"),
+        "matched_cards": preview_summary.get("matched_cards"),
+        "matched_photos": preview_summary.get("matched_photos"),
+        "staged_photos": preview_summary.get("staged_photos"),
+        "would_upload": apply_summary.get("would_upload"),
+        "uploaded": apply_summary.get("uploaded"),
+        "already_on_card": apply_summary.get("skipped_existing_name"),
+        "needs_review": apply_summary.get("needs_review"),
+        "rejected": apply_summary.get("rejected"),
+        "errors": apply_summary.get("errors"),
+        "plan_markdown_path": payload.get("plan_markdown_path"),
+        "receipt_markdown_path": receipts.get("markdown"),
+        "warnings": payload.get("warnings") or [],
+    }
+
+
+def execute_run(run_id: str, command: list[str], request_summary: dict[str, Any], timeout_seconds: int) -> None:
+    started = now_iso()
+    write_run(
+        run_id,
+        {
+            "ok": None,
+            "run_id": run_id,
+            "status": "running",
+            "created_at": started,
+            "started_at": started,
+            "request": request_summary,
+            "command": command,
+            "safety": {
+                "secrets_returned": False,
+                "trello_writes": bool(request_summary.get("trello_writes_requested")),
+                "dry_run_default": True,
+            },
+        },
+    )
+    try:
+        result = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            cwd=str(ROOT),
+        )
+        stdout = result.stdout.strip()
+        stderr = result.stderr.strip()
+        try:
+            payload = json.loads(stdout)
+        except json.JSONDecodeError:
+            payload = {"ok": False, "error": stdout[:1200] or stderr[:1200] or f"exit {result.returncode}"}
+        ok = bool(payload.get("ok")) and result.returncode == 0
+        final = {
+            "ok": ok,
+            "run_id": run_id,
+            "status": "succeeded" if ok else "failed",
+            "created_at": started,
+            "started_at": started,
+            "completed_at": now_iso(),
+            "returncode": result.returncode,
+            "request": request_summary,
+            "summary": compact_payload(payload),
+            "payload": payload,
+            "stderr_tail": stderr[-2000:],
+            "safety": {
+                "secrets_returned": False,
+                "trello_writes": bool(request_summary.get("trello_writes_requested")),
+                "dry_run_default": True,
+            },
+        }
+    except subprocess.TimeoutExpired as exc:
+        final = {
+            "ok": False,
+            "run_id": run_id,
+            "status": "timeout",
+            "created_at": started,
+            "started_at": started,
+            "completed_at": now_iso(),
+            "request": request_summary,
+            "summary": {"ok": False, "error": f"timed out after {timeout_seconds}s"},
+            "stdout_tail": (exc.stdout or "")[-2000:] if isinstance(exc.stdout, str) else "",
+            "stderr_tail": (exc.stderr or "")[-2000:] if isinstance(exc.stderr, str) else "",
+            "safety": {
+                "secrets_returned": False,
+                "trello_writes": bool(request_summary.get("trello_writes_requested")),
+                "dry_run_default": True,
+            },
+        }
+    except Exception as exc:
+        final = {
+            "ok": False,
+            "run_id": run_id,
+            "status": "failed",
+            "created_at": started,
+            "started_at": started,
+            "completed_at": now_iso(),
+            "request": request_summary,
+            "summary": {"ok": False, "error": repr(exc)[:500]},
+            "safety": {
+                "secrets_returned": False,
+                "trello_writes": bool(request_summary.get("trello_writes_requested")),
+                "dry_run_default": True,
+            },
+        }
+    write_run(run_id, final)
+
+
+class BridgeHandler(BaseHTTPRequestHandler):
+    server_version = "CodeXTrelloPhotoSyncBridge/1.0"
+
+    def log_message(self, fmt: str, *args: Any) -> None:
+        sys.stderr.write("%s %s\n" % (self.log_date_time_string(), fmt % args))
+
+    def send_json(self, status: int, payload: dict[str, Any]) -> None:
+        body = json.dumps(payload, indent=2, sort_keys=True).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def unauthorized(self) -> None:
+        self.send_json(
+            401,
+            {
+                "ok": False,
+                "error": "unauthorized",
+                "safety": {"secrets_returned": False},
+            },
+        )
+
+    def require_auth(self) -> bool:
+        header = self.headers.get("Authorization", "")
+        expected = "Bearer " + read_token()
+        if not hmac.compare_digest(header, expected):
+            self.unauthorized()
+            return False
+        return True
+
+    def read_body(self) -> dict[str, Any] | None:
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            self.send_json(400, {"ok": False, "error": "invalid content length"})
+            return None
+        if length > MAX_BODY_BYTES:
+            self.send_json(413, {"ok": False, "error": "request body too large"})
+            return None
+        raw = self.rfile.read(length) if length else b"{}"
+        try:
+            data = json.loads(raw.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            self.send_json(400, {"ok": False, "error": "invalid JSON body"})
+            return None
+        if not isinstance(data, dict):
+            self.send_json(400, {"ok": False, "error": "JSON body must be an object"})
+            return None
+        return data
+
+    def do_GET(self) -> None:
+        path = urlparse(self.path).path.rstrip("/")
+        if path == "/health":
+            token = read_token()
+            self.send_json(
+                200,
+                {
+                    "ok": True,
+                    "service": "trello-photo-sync-bridge",
+                    "host": self.server.server_address[0],
+                    "port": self.server.server_address[1],
+                    "token_configured": bool(token),
+                    "token_fingerprint_sha256_12": token_fingerprint(token),
+                    "wrapper_exists": WRAPPER.exists(),
+                    "run_dir": str(RUN_DIR),
+                    "safety": {"secrets_returned": False, "trello_writes": False},
+                },
+            )
+            return
+        if path == "/v1/schema":
+            self.send_json(
+                200,
+                {
+                    "ok": True,
+                    "endpoint": "/v1/photo-sync",
+                    "auth": "Authorization: Bearer <bridge token>",
+                    "defaults": {
+                        "apply": False,
+                        "board": "memphis",
+                        "days_back": 90,
+                        "radius_ft": 250,
+                        "max_total_photos": 20,
+                        "max_photos_per_card": 2,
+                        "wait": False,
+                    },
+                    "body_fields": [
+                        "apply",
+                        "board",
+                        "targets",
+                        "days_back",
+                        "radius_ft",
+                        "max_total_photos",
+                        "max_photos_per_card",
+                        "limit_cards",
+                        "geocode_limit",
+                        "evidence",
+                        "review_only",
+                        "wait",
+                    ],
+                    "safety": {"secrets_returned": False},
+                },
+            )
+            return
+        if path.startswith("/v1/runs/"):
+            if not self.require_auth():
+                return
+            run_id = path.rsplit("/", 1)[-1]
+            payload = read_run(run_id)
+            if not payload:
+                self.send_json(404, {"ok": False, "error": "run not found", "run_id": run_id})
+                return
+            self.send_json(200, payload)
+            return
+        self.send_json(404, {"ok": False, "error": "not found"})
+
+    def do_POST(self) -> None:
+        path = urlparse(self.path).path.rstrip("/")
+        if path != "/v1/photo-sync":
+            self.send_json(404, {"ok": False, "error": "not found"})
+            return
+        if not self.require_auth():
+            return
+        payload = self.read_body()
+        if payload is None:
+            return
+        if not WRAPPER.exists():
+            self.send_json(500, {"ok": False, "error": f"missing wrapper: {WRAPPER}"})
+            return
+        command, request_summary = build_command(payload)
+        timeout_seconds = int_value(payload, "timeout_seconds", 900, 30, MAX_TIMEOUT_SECONDS)
+        wait = bool_value(payload, "wait", False)
+        wait_timeout = int_value(payload, "wait_timeout_seconds", min(timeout_seconds, 60), 1, timeout_seconds)
+        run_id = datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + secrets.token_hex(4)
+        queued = {
+            "ok": None,
+            "run_id": run_id,
+            "status": "queued",
+            "created_at": now_iso(),
+            "request": request_summary,
+            "summary": None,
+            "safety": {
+                "secrets_returned": False,
+                "trello_writes": bool(request_summary.get("trello_writes_requested")),
+                "dry_run_default": True,
+            },
+        }
+        write_run(run_id, queued)
+        thread = threading.Thread(
+            target=execute_run,
+            args=(run_id, command, request_summary, timeout_seconds),
+            daemon=True,
+            name=f"photo-sync-{run_id}",
+        )
+        with RUN_LOCK:
+            RUN_THREADS[run_id] = thread
+            thread.start()
+        if wait:
+            thread.join(timeout=wait_timeout)
+            latest = read_run(run_id) or queued
+            status = 200 if latest.get("status") not in {"failed", "timeout"} else 500
+            self.send_json(status, latest)
+            return
+        self.send_json(
+            202,
+            {
+                "ok": True,
+                "run_id": run_id,
+                "status": "queued",
+                "status_url": f"/v1/runs/{run_id}",
+                "request": request_summary,
+                "safety": {
+                    "secrets_returned": False,
+                    "trello_writes": bool(request_summary.get("trello_writes_requested")),
+                    "dry_run_default": True,
+                },
+            },
+        )
+
+
+def serve(host: str, port: int) -> int:
+    ensure_token()
+    ensure_private_dirs()
+    server = ThreadingHTTPServer((host, port), BridgeHandler)
+    print(json.dumps({"ok": True, "service": "trello-photo-sync-bridge", "host": host, "port": port, "run_dir": str(RUN_DIR)}), flush=True)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+    return 0
+
+
+def print_token_status(json_mode: bool) -> int:
+    token = ensure_token()
+    payload = {
+        "ok": True,
+        "token_path": str(TOKEN_PATH),
+        "token_fingerprint_sha256_12": token_fingerprint(token),
+        "mode": oct(TOKEN_PATH.stat().st_mode & 0o777),
+        "safety": {"secrets_returned": False},
+    }
+    print(json.dumps(payload, indent=2, sort_keys=True) if json_mode else f"token ready at {TOKEN_PATH} fingerprint={payload['token_fingerprint_sha256_12']}")
+    return 0
+
+
+def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(description="Serve the CodeX Trello photo sync bridge")
+    sub = parser.add_subparsers(dest="command", required=True)
+    serve_parser = sub.add_parser("serve")
+    serve_parser.add_argument("--host", default=DEFAULT_HOST)
+    serve_parser.add_argument("--port", type=int, default=DEFAULT_PORT)
+    token_parser = sub.add_parser("ensure-token")
+    token_parser.add_argument("--json", action="store_true")
+    args = parser.parse_args(argv)
+    if args.command == "serve":
+        return serve(args.host, args.port)
+    if args.command == "ensure-token":
+        return print_token_status(args.json)
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))
+
