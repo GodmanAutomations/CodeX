@@ -21,6 +21,7 @@ pulled/
 logs/
 receipts/
 private/
+attachment-vault/
 HEARTBEAT.json
 continuity/one-true-sentence.*
 codex_continuity/tomorrow/

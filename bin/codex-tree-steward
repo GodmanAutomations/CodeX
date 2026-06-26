@@ -1,0 +1,289 @@
+#!/usr/bin/env python3
+"""Classify CodeX git-tree drift and write a cleanup receipt.
+
+This is intentionally conservative. It inventories and classifies the worktree;
+it does not revert, delete, stage, or commit anything.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+ROOT = Path("/Users/stephengodman/CodeX")
+RECEIPT_ROOT = ROOT / "receipts" / "tree-steward"
+
+
+@dataclass
+class Entry:
+    status: str
+    path: str
+    category: str
+    reason: str
+    recommendation: str
+
+
+def run_git(args: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", "-C", str(ROOT), *args],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=20,
+    )
+
+
+def parse_status() -> list[tuple[str, str]]:
+    result = run_git(["status", "--short"])
+    if result.returncode != 0:
+        raise RuntimeError((result.stderr or result.stdout).strip())
+    rows: list[tuple[str, str]] = []
+    for line in result.stdout.splitlines():
+        if not line:
+            continue
+        status = line[:2]
+        path = line[3:] if len(line) > 3 else ""
+        if " -> " in path:
+            path = path.split(" -> ", 1)[1]
+        rows.append((status, path))
+    return rows
+
+
+def file_count(path: str) -> int | None:
+    full = ROOT / path
+    if not full.is_dir():
+        return None
+    count = 0
+    for _, dirs, files in os.walk(full):
+        dirs[:] = [d for d in dirs if d not in {".git", "__pycache__", ".venv", "node_modules"}]
+        count += len(files)
+        if count > 500:
+            break
+    return count
+
+
+def classify(status: str, path: str) -> Entry:
+    lowered = path.lower()
+    is_delete = "D" in status
+    is_untracked = status == "??"
+
+    if is_delete:
+        return Entry(
+            status=status,
+            path=path,
+            category="risky_or_revert_sensitive",
+            reason="tracked deletion; could remove prior receipts or operating history",
+            recommendation="review exact intent before restore, commit, or removal",
+        )
+
+    if any(part in lowered for part in [".env", "credential", "1password", "secret", "token"]):
+        return Entry(
+            status=status,
+            path=path,
+            category="risky_or_revert_sensitive",
+            reason="credential or secret-adjacent surface",
+            recommendation="review manually; do not print secrets or bulk-stage",
+        )
+
+    if path == ".gitignore":
+        return Entry(
+            status=status,
+            path=path,
+            category="safe_to_review",
+            reason="repo hygiene policy",
+            recommendation="review for broad ignore rules before commit",
+        )
+
+    if path.startswith("agents/"):
+        return Entry(
+            status=status,
+            path=path,
+            category="safe_to_review" if "tree-steward" in lowered else "needs_human_review",
+            reason="agent operating instructions",
+            recommendation="verify the agent card is scoped and non-destructive",
+        )
+
+    if path.startswith("bin/") or path.startswith("mcp_servers/") or "launchd/" in path:
+        return Entry(
+            status=status,
+            path=path,
+            category="needs_human_review",
+            reason="executable, MCP, or service-control surface",
+            recommendation="run a focused smoke test before commit",
+        )
+
+    if path.startswith("attachment-vault/"):
+        count = file_count(path)
+        detail = f"; observed at least {count} files" if count else ""
+        return Entry(
+            status=status,
+            path=path,
+            category="ignored_or_archive_candidate" if is_untracked else "needs_human_review",
+            reason=f"large/local project tree outside the Trello MCP slice{detail}",
+            recommendation="adopt intentionally as its own project or keep ignored; do not mix into Trello MCP commits",
+        )
+
+    if path.startswith("work-notes/candice") or "candice" in lowered or "kandice" in lowered:
+        return Entry(
+            status=status,
+            path=path,
+            category="risky_or_revert_sensitive",
+            reason="Candice/Kandice lane is intentionally paused from photo-sync wiring",
+            recommendation="do not rewire; review against latest Stephen instruction",
+        )
+
+    if path.startswith("work-notes/trello") or path.startswith("work-notes/INDEX.md"):
+        return Entry(
+            status=status,
+            path=path,
+            category="safe_to_review",
+            reason="Trello MCP note or work-note index",
+            recommendation="review diff and stage only if it matches the active Trello MCP slice",
+        )
+
+    if path in {"CURRENT.md", "README.md", "ROUTING-CARD.md", "START-HERE.md", "DEPENDENCY-STASH-ARCHIVE.md"}:
+        return Entry(
+            status=status,
+            path=path,
+            category="safe_to_review",
+            reason="CodeX room documentation",
+            recommendation="review for stale paths and commit separately from behavior changes",
+        )
+
+    if lowered.endswith((".md", ".txt")):
+        return Entry(
+            status=status,
+            path=path,
+            category="safe_to_review" if not is_untracked else "needs_human_review",
+            reason="documentation or note file",
+            recommendation="review content before deciding whether it belongs in the repo",
+        )
+
+    return Entry(
+        status=status,
+        path=path,
+        category="needs_human_review",
+        reason="unclassified worktree change",
+        recommendation="inspect before staging, deleting, or building on top of it",
+    )
+
+
+def summarize(entries: list[Entry]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for entry in entries:
+        counts[entry.category] = counts.get(entry.category, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def markdown(payload: dict[str, object]) -> str:
+    entries = [Entry(**item) for item in payload["entries"]]  # type: ignore[arg-type]
+    lines = [
+        "# CodeX Tree Steward Receipt",
+        "",
+        f"- Generated: `{payload['generated_at']}`",
+        f"- Root: `{payload['root']}`",
+        f"- Dirty entries: `{payload['dirty_count']}`",
+        f"- Strict pass: `{payload['strict_pass']}`",
+        "",
+        "## Summary",
+        "",
+    ]
+    for category, count in payload["summary"].items():  # type: ignore[union-attr]
+        lines.append(f"- `{category}`: {count}")
+    lines.extend(["", "## Entries", ""])
+    for entry in entries:
+        lines.extend(
+            [
+                f"### `{entry.path}`",
+                "",
+                f"- Status: `{entry.status.strip() or entry.status}`",
+                f"- Category: `{entry.category}`",
+                f"- Reason: {entry.reason}",
+                f"- Recommendation: {entry.recommendation}",
+                "",
+            ]
+        )
+    if not entries:
+        lines.append("Tree is clean.")
+    lines.extend(
+        [
+            "## Safety",
+            "",
+            "- Git writes: `false`",
+            "- File deletes: `false`",
+            "- Secrets printed: `false`",
+            "- Trello writes: `false`",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Classify dirty CodeX tree state")
+    parser.add_argument("--json", action="store_true", help="Print JSON instead of a plain summary.")
+    parser.add_argument("--no-receipt", action="store_true", help="Do not write receipt files.")
+    parser.add_argument("--strict", action="store_true", help="Exit non-zero when risky or review-needed items exist.")
+    args = parser.parse_args()
+
+    rows = parse_status()
+    entries = [classify(status, path) for status, path in rows]
+    summary = summarize(entries)
+    strict_blockers = sum(
+        1
+        for entry in entries
+        if entry.category in {"needs_human_review", "risky_or_revert_sensitive", "ignored_or_archive_candidate"}
+    )
+    payload = {
+        "ok": True,
+        "root": str(ROOT),
+        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "dirty_count": len(entries),
+        "strict_pass": strict_blockers == 0,
+        "summary": summary,
+        "entries": [asdict(entry) for entry in entries],
+        "safety": {
+            "git_writes": False,
+            "file_deletes": False,
+            "secrets_printed": False,
+            "trello_writes": False,
+        },
+    }
+
+    if not args.no_receipt:
+        RECEIPT_ROOT.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        json_path = RECEIPT_ROOT / f"{stamp}-tree-steward.json"
+        md_path = RECEIPT_ROOT / f"{stamp}-tree-steward.md"
+        json_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        md_path.write_text(markdown(payload), encoding="utf-8")
+        payload["receipt_json"] = str(json_path)
+        payload["receipt_markdown"] = str(md_path)
+
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        print("CodeX Tree Steward")
+        print(f"root={payload['root']}")
+        print(f"dirty_count={payload['dirty_count']}")
+        print(f"strict_pass={payload['strict_pass']}")
+        for category, count in summary.items():
+            print(f"{category}={count}")
+        if not args.no_receipt:
+            print(f"receipt={payload['receipt_markdown']}")
+
+    return 1 if args.strict and strict_blockers else 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except Exception as exc:
+        print(f"codex-tree-steward: {exc}", file=sys.stderr)
+        raise SystemExit(2)
