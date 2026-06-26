@@ -5,13 +5,13 @@ The old in-room dependency/runtime mirror was moved out of the active CodeX room
 ## Current Location
 
 ```text
-/Users/stephengodman/Candice-Code-archives/dependency-stash-2026-06-14
+/Users/stephengodman/CodeX-archives/dependency-stash-2026-06-14
 ```
 
 ## Former Location
 
 ```text
-/Users/stephengodman/Candice-Code/dependency-stash
+/Users/stephengodman/CodeX/dependency-stash
 ```
 
 ## Why It Moved
@@ -25,17 +25,17 @@ It was not needed inside the active room for startup, Twilio, continuity, or ord
 If a future task genuinely needs the archive back in the active room:
 
 ```bash
-mv /Users/stephengodman/Candice-Code-archives/dependency-stash-2026-06-14 /Users/stephengodman/Candice-Code/dependency-stash
+mv /Users/stephengodman/CodeX-archives/dependency-stash-2026-06-14 /Users/stephengodman/CodeX/dependency-stash
 ```
 
 Then rerun:
 
 ```bash
-/Users/stephengodman/Candice-Code/bin/codex-startup
-/Users/stephengodman/Candice-Code/bin/codex-ensure-standalone
+/Users/stephengodman/CodeX/bin/codex-startup
+/Users/stephengodman/CodeX/bin/codex-ensure-standalone
 ```
 
 ## Receipts
 
-- `/Users/stephengodman/Candice-Code/work-notes/codex-room-dependency-stash-slice-2026-06-14.md`
-- `/Users/stephengodman/Candice-Code/work-notes/codex-room-dependency-stash-archive-2026-06-14.md`
+- `/Users/stephengodman/CodeX/work-notes/codex-room-dependency-stash-slice-2026-06-14.md`
+- `/Users/stephengodman/CodeX/work-notes/codex-room-dependency-stash-archive-2026-06-14.md`

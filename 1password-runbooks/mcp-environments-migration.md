@@ -10,8 +10,8 @@ Move CodeX Environments work away from legacy `op://` secret-reference mapping a
 - Command: `/Applications/1Password.app/Contents/MacOS/onepassword-mcp`
 - Local preflight verifies the MCP command path.
 - Room guidance exists in:
-  - `/Users/stephengodman/Candice-Code/AGENTS.md`
-  - `/Users/stephengodman/Candice-Code/CURRENT.md`
+  - `/Users/stephengodman/CodeX/AGENTS.md`
+  - `/Users/stephengodman/CodeX/CURRENT.md`
 
 ## Migration Checklist
 

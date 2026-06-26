@@ -4,7 +4,7 @@
 
 Added a thin field-friendly Trello command:
 
-- `/Users/stephengodman/Candice-Code/bin/trello-read-work-order`
+- `/Users/stephengodman/CodeX/bin/trello-read-work-order`
 
 Naming note:
 
@@ -13,7 +13,7 @@ Naming note:
 
 This wraps the verified Trello MCP launcher:
 
-- `/Users/stephengodman/Candice-Code/mcp_servers/trello_mcp_launcher.sh`
+- `/Users/stephengodman/CodeX/mcp_servers/trello_mcp_launcher.sh`
 
 ## Why
 
@@ -26,38 +26,38 @@ stable local operator path for the field workflow while the MCP index catches up
 Status:
 
 ```bash
-/Users/stephengodman/Candice-Code/bin/trello-read-work-order status
+/Users/stephengodman/CodeX/bin/trello-read-work-order status
 ```
 
 Short field command:
 
 ```bash
-/Users/stephengodman/Candice-Code/bin/trello-read-work-order hauloff Corson
+/Users/stephengodman/CodeX/bin/trello-read-work-order hauloff Corson
 ```
 
 Natural phrase:
 
 ```bash
-/Users/stephengodman/Candice-Code/bin/trello-read-work-order "can you read the workorder on Corson card and tell me if its a hauloff"
+/Users/stephengodman/CodeX/bin/trello-read-work-order "can you read the workorder on Corson card and tell me if its a hauloff"
 ```
 
 Raw JSON:
 
 ```bash
-/Users/stephengodman/Candice-Code/bin/trello-read-work-order --json hauloff Corson
+/Users/stephengodman/CodeX/bin/trello-read-work-order --json hauloff Corson
 ```
 
 ## Verification
 
-- `chmod 755 /Users/stephengodman/Candice-Code/bin/trello-read-work-order`
-- `/Users/stephengodman/000_AI/bin/python3 -m py_compile /Users/stephengodman/Candice-Code/bin/trello-read-work-order` passed.
-- `/Users/stephengodman/Candice-Code/bin/trello-read-work-order status` returned `OK`.
-- `/Users/stephengodman/Candice-Code/bin/trello-read-work-order hauloff Corson` returned:
+- `chmod 755 /Users/stephengodman/CodeX/bin/trello-read-work-order`
+- `/Users/stephengodman/000_AI/bin/python3 -m py_compile /Users/stephengodman/CodeX/bin/trello-read-work-order` passed.
+- `/Users/stephengodman/CodeX/bin/trello-read-work-order status` returned `OK`.
+- `/Users/stephengodman/CodeX/bin/trello-read-work-order hauloff Corson` returned:
   - `NO HAUL OFF`
   - source line: `24 X 44 - FREEFORM - INLAY STEPS - NO HAUL OFF`
 - Natural phrase smoke returned the same result.
 - Negative lookup smoke:
-  - `/Users/stephengodman/Candice-Code/bin/trello-read-work-order hauloff DefinitelyNoSuchPoolCard`
+  - `/Users/stephengodman/CodeX/bin/trello-read-work-order hauloff DefinitelyNoSuchPoolCard`
   - returned a clean no-card-match error.
 
 ## Safety

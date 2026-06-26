@@ -12,11 +12,11 @@ Repaired the CodeX secret-loading path so Codex tools can use API credentials af
 - Added symlink `/Users/stephengodman/bin/codex-load-api-keys-once`.
 - Updated `/Users/stephengodman/000_AI/bin/codex-op` to populate the macOS user environment before launch.
 - Updated `/Users/stephengodman/000_AI/bin/codex-app-op` to populate/import the macOS user environment and launch Codex directly instead of wrapping the whole app in `op run`.
-- Updated `/Users/stephengodman/Candice-Code/mcp_servers/trello_mcp_launcher.sh` so Trello checks inherited env, then `launchctl` macOS user env, then 1Password fallback.
+- Updated `/Users/stephengodman/CodeX/mcp_servers/trello_mcp_launcher.sh` so Trello checks inherited env, then `launchctl` macOS user env, then 1Password fallback.
 - Updated `/Users/stephengodman/.codex/config.toml` Trello MCP timeout from 12 to 35 seconds.
 - Added `/Users/stephengodman/_handoff/codex/TICKET-stale-api-key-env-audit.md` for later stale-key review.
-- Added explicit 1Password/Computer Use permission language to `/Users/stephengodman/.codex/AGENTS.md` and `/Users/stephengodman/Candice-Code/AGENTS.md`.
-- Added CodeX MCP build latitude language to `/Users/stephengodman/Candice-Code/AGENTS.md`.
+- Added explicit 1Password/Computer Use permission language to `/Users/stephengodman/.codex/AGENTS.md` and `/Users/stephengodman/CodeX/AGENTS.md`.
+- Added CodeX MCP build latitude language to `/Users/stephengodman/CodeX/AGENTS.md`.
 
 ## Verification
 

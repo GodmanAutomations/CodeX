@@ -10,7 +10,7 @@ Added a read-only billing preview command for Stephen's Memphis Pool Trello work
 
 The command reads the Memphis board list named `Jobs that I need to bill for`, loads current pricing from the Pi5 runtime source at `/opt/artesian-pools/config.yaml`, and writes local draft billing reports under:
 
-`/Users/stephengodman/Candice-Code/work-artifacts/billing-drafts/`
+`/Users/stephengodman/CodeX/work-artifacts/billing-drafts/`
 
 ## Safety
 
@@ -37,7 +37,7 @@ Latest preview result:
 - Review-line possible total: `$2,450.00`
 - Draft total including review lines: `$9,630.00`
 - Needs review: 4
-- Report: `/Users/stephengodman/Candice-Code/work-artifacts/billing-drafts/stephen-billing-preview-20260616-040914.md`
+- Report: `/Users/stephengodman/CodeX/work-artifacts/billing-drafts/stephen-billing-preview-20260616-040914.md`
 
 ## Known Review Lines
 

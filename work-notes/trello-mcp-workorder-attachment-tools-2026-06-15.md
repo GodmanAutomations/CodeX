@@ -10,12 +10,12 @@ Extended the always-on Trello MCP server:
 
 Server file:
 
-- `/Users/stephengodman/Candice-Code/mcp_servers/trello_mcp_server.py`
-- `/Users/stephengodman/Candice-Code/mcp_servers/trello_mcp_launcher.sh`
+- `/Users/stephengodman/CodeX/mcp_servers/trello_mcp_server.py`
+- `/Users/stephengodman/CodeX/mcp_servers/trello_mcp_launcher.sh`
 
 Backup made before edits:
 
-- `/Users/stephengodman/Candice-Code/mcp_servers/trello_mcp_server.py.before-codex-workorder-tools-20260615-231701`
+- `/Users/stephengodman/CodeX/mcp_servers/trello_mcp_server.py.before-codex-workorder-tools-20260615-231701`
 
 ## Behavior
 
@@ -42,7 +42,7 @@ CLI fallback:
 - Resolves a card by `card_id` or exact/unique `card_query`.
 - Picks the best work-order-like attachment, preferring XLS/XLSX/CSV/PDF work-order, install, measure, liner, and drawing names over photos.
 - Downloads the selected attachment to:
-  - `/Users/stephengodman/Candice-Code/work-artifacts/trello-mcp/work-orders/`
+  - `/Users/stephengodman/CodeX/work-artifacts/trello-mcp/work-orders/`
 - Extracts text from:
   - `.xls` via `strings -a` and `strings -el`
   - `.xlsx` via workbook XML/shared strings
@@ -54,8 +54,8 @@ CLI fallback:
 
 File-level verification:
 
-- `/Users/stephengodman/000_AI/bin/python3 -m py_compile /Users/stephengodman/Candice-Code/mcp_servers/trello_mcp_server.py` passed.
-- `bash -n /Users/stephengodman/Candice-Code/mcp_servers/trello_mcp_launcher.sh` passed.
+- `/Users/stephengodman/000_AI/bin/python3 -m py_compile /Users/stephengodman/CodeX/mcp_servers/trello_mcp_server.py` passed.
+- `bash -n /Users/stephengodman/CodeX/mcp_servers/trello_mcp_launcher.sh` passed.
 - Direct FastMCP manager inspection returned 47 tools and confirmed:
   - `attach_file_to_card`
   - `set_card_cover`
@@ -65,7 +65,7 @@ File-level verification:
 
 Launcher/runtime verification:
 
-- `/Users/stephengodman/Candice-Code/mcp_servers/trello_mcp_launcher.sh --status` passed.
+- `/Users/stephengodman/CodeX/mcp_servers/trello_mcp_launcher.sh --status` passed.
 - Credentials loaded from the existing 1Password env path.
 - Secret values were not printed.
 - Local Trello board config exists and contains board ids only, not credentials.
@@ -74,8 +74,8 @@ Launcher/runtime verification:
 
 Live read-only Trello verification:
 
-- `/Users/stephengodman/Candice-Code/mcp_servers/trello_mcp_launcher.sh --doctor-live` passed.
-- `/Users/stephengodman/Candice-Code/mcp_servers/trello_mcp_launcher.sh --read-work-order --card-query 'Corson' --question 'hauloff?' --max-text-chars 2000` passed.
+- `/Users/stephengodman/CodeX/mcp_servers/trello_mcp_launcher.sh --doctor-live` passed.
+- `/Users/stephengodman/CodeX/mcp_servers/trello_mcp_launcher.sh --read-work-order --card-query 'Corson' --question 'hauloff?' --max-text-chars 2000` passed.
 - Selected card on the new Memphis board:
   - `Chris Corson - Collierville - Inlay Steps - Going Out of Town June 4-11`
 - Selected attachment:

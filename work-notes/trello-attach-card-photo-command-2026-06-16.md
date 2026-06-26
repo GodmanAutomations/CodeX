@@ -4,17 +4,17 @@
 
 Added a clearly named photo attachment command:
 
-- `/Users/stephengodman/Candice-Code/bin/trello-attach-card-photo`
+- `/Users/stephengodman/CodeX/bin/trello-attach-card-photo`
 
 It wraps the verified Trello MCP launcher:
 
-- `/Users/stephengodman/Candice-Code/mcp_servers/trello_mcp_launcher.sh`
+- `/Users/stephengodman/CodeX/mcp_servers/trello_mcp_launcher.sh`
 
 ## Why
 
 This is the field-friendly counterpart to:
 
-- `/Users/stephengodman/Candice-Code/bin/trello-read-work-order`
+- `/Users/stephengodman/CodeX/bin/trello-read-work-order`
 
 The name says exactly what it does: attach photo files to a Trello card.
 
@@ -23,31 +23,31 @@ The name says exactly what it does: attach photo files to a Trello card.
 Dry-run preview, no Trello write:
 
 ```bash
-/Users/stephengodman/Candice-Code/bin/trello-attach-card-photo --card Byrd /path/to/photo.jpg
+/Users/stephengodman/CodeX/bin/trello-attach-card-photo --card Byrd /path/to/photo.jpg
 ```
 
 Dry-run with cover selection:
 
 ```bash
-/Users/stephengodman/Candice-Code/bin/trello-attach-card-photo --card Byrd --cover first /path/to/photo.jpg
+/Users/stephengodman/CodeX/bin/trello-attach-card-photo --card Byrd --cover first /path/to/photo.jpg
 ```
 
 Real Trello attach:
 
 ```bash
-/Users/stephengodman/Candice-Code/bin/trello-attach-card-photo --apply --card Byrd /path/to/photo.jpg
+/Users/stephengodman/CodeX/bin/trello-attach-card-photo --apply --card Byrd /path/to/photo.jpg
 ```
 
 Real Trello attach and cover set:
 
 ```bash
-/Users/stephengodman/Candice-Code/bin/trello-attach-card-photo --apply --card Byrd --cover first /path/to/photo1.jpg /path/to/photo2.jpg
+/Users/stephengodman/CodeX/bin/trello-attach-card-photo --apply --card Byrd --cover first /path/to/photo1.jpg /path/to/photo2.jpg
 ```
 
 Raw JSON:
 
 ```bash
-/Users/stephengodman/Candice-Code/bin/trello-attach-card-photo --json --card Byrd /path/to/photo.jpg
+/Users/stephengodman/CodeX/bin/trello-attach-card-photo --json --card Byrd /path/to/photo.jpg
 ```
 
 ## Behavior
@@ -67,8 +67,8 @@ Raw JSON:
 
 ## Verification
 
-- `chmod 755 /Users/stephengodman/Candice-Code/bin/trello-attach-card-photo`
-- `/Users/stephengodman/000_AI/bin/python3 -m py_compile /Users/stephengodman/Candice-Code/bin/trello-attach-card-photo` passed.
+- `chmod 755 /Users/stephengodman/CodeX/bin/trello-attach-card-photo`
+- `/Users/stephengodman/000_AI/bin/python3 -m py_compile /Users/stephengodman/CodeX/bin/trello-attach-card-photo` passed.
 - Dry-run smoke with a local `.jpg` placeholder returned:
   - `DRY RUN: no Trello writes.`
   - card: `Byrd`

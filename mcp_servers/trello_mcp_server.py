@@ -122,7 +122,6 @@ KNOWN_BOARDS = {
     },
 }
 PROFILE_PATHS = [
-    Path("/Users/stephengodman/.claude/0stephen-profile/credentials.md"),
     Path("/Users/stephengodman/.claude/stephen-profile/credentials.md"),
 ]
 OP_VAULT = "3i56wtg5jxdvaiz7ksc6bmh65y"

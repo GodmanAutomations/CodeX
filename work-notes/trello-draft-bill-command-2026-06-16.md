@@ -16,15 +16,15 @@ Default behavior:
 - Lists `needs_review` lines separately.
 - Writes PDF, CSV, Markdown, and JSON files under:
 
-`/Users/stephengodman/Candice-Code/work-artifacts/billing-drafts/`
+`/Users/stephengodman/CodeX/work-artifacts/billing-drafts/`
 
 ## Current Draft
 
 Generated current draft bill:
 
-- PDF: `/Users/stephengodman/Candice-Code/work-artifacts/billing-drafts/Artesian Bill - 2026-06-16 - DRAFT - 7180.pdf`
-- CSV: `/Users/stephengodman/Candice-Code/work-artifacts/billing-drafts/Artesian Bill - 2026-06-16 - DRAFT - 7180.csv`
-- Markdown: `/Users/stephengodman/Candice-Code/work-artifacts/billing-drafts/Artesian Bill - 2026-06-16 - DRAFT - 7180.md`
+- PDF: `/Users/stephengodman/CodeX/work-artifacts/billing-drafts/Artesian Bill - 2026-06-16 - DRAFT - 7180.pdf`
+- CSV: `/Users/stephengodman/CodeX/work-artifacts/billing-drafts/Artesian Bill - 2026-06-16 - DRAFT - 7180.csv`
+- Markdown: `/Users/stephengodman/CodeX/work-artifacts/billing-drafts/Artesian Bill - 2026-06-16 - DRAFT - 7180.md`
 
 Current totals:
 
