@@ -19,6 +19,7 @@ RECON_SERVER = ROOT / "mcp_servers" / "recon_mcp_server.py"
 RECON_RATES = ROOT / "config" / "stephen-billing-rates.json"
 ENV_LOADER = Path("/Users/stephengodman/bin/codex-load-api-keys-once")
 TRELLO_FIND = ROOT / "bin" / "trello-find-card"
+TREE_STEWARD = ROOT / "bin" / "codex-tree-steward"
 
 WRITE_PREFIXES = (
     "create_",
@@ -138,6 +139,73 @@ def print_status(json_mode: bool) -> int:
     return 0 if payload.get("ok") else 1
 
 
+def compact_trello_status(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "ok": bool(payload.get("ok")),
+        "credential_source": payload.get("credential_source"),
+        "op_status": (payload.get("op_resolution") or {}).get("status"),
+        "launcher_mode": (payload.get("paths") or {}).get("launcher_mode"),
+        "server_exists": (payload.get("paths") or {}).get("server_exists"),
+        "error": payload.get("error"),
+    }
+
+
+def compact_recon_status(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "ok": bool(payload.get("ok")),
+        "data_root": payload.get("data_root"),
+        "reports_count": (payload.get("reports") or {}).get("count"),
+        "stale_path_warnings": len(payload.get("stale_path_warnings") or []),
+        "error": payload.get("error"),
+    }
+
+
+def preflight(json_mode: bool) -> int:
+    tree = json_command([str(TREE_STEWARD), "--json", "--preflight", "trello-mcp"], timeout=20)
+    trello = json_command([str(TRELLO_LAUNCHER), "--status"], timeout=20)
+    recon = json_command([str(RECON_LAUNCHER), "--status"], timeout=20)
+    payload = {
+        "ok": bool(tree.get("strict_pass")) and bool(trello.get("ok")) and bool(recon.get("ok")),
+        "tree": {
+            "ok": bool(tree.get("strict_pass")),
+            "dirty_count": tree.get("dirty_count"),
+            "strict_pass": tree.get("strict_pass"),
+            "strict_blockers": tree.get("strict_blockers"),
+            "summary": tree.get("summary") or {},
+            "findings_count": len(tree.get("findings") or []),
+            "block_findings": [
+                item for item in (tree.get("findings") or []) if item.get("severity") == "block"
+            ],
+            "policy_path": tree.get("policy_path"),
+        },
+        "trello": compact_trello_status(trello),
+        "recon": compact_recon_status(recon),
+        "safety": {
+            "secrets_returned": False,
+            "trello_writes": False,
+            "git_writes": False,
+            "file_deletes": False,
+        },
+    }
+    if json_mode:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        print("CodeX MCP Preflight")
+        print("")
+        print(f"Status: {'OK' if payload.get('ok') else 'NO'}")
+        print(f"Tree strict pass: {'OK' if payload['tree'].get('strict_pass') else 'NO'}")
+        print(f"Dirty count: {payload['tree'].get('dirty_count')}")
+        print(f"Tree blockers: {payload['tree'].get('strict_blockers')}")
+        print(f"Policy findings: {payload['tree'].get('findings_count')}")
+        print(f"Trello: {'OK' if trello.get('ok') else 'NO'}")
+        print(f"Trello credential source: {trello.get('credential_source') or 'unknown'}")
+        print(f"Recon: {'OK' if recon.get('ok') else 'NO'}")
+        if not payload.get("ok"):
+            print("")
+            print("Blocked: read the tree-steward receipt/output before Trello MCP edits.")
+    return 0 if payload.get("ok") else 1
+
+
 def print_tools(json_mode: bool, writes: bool) -> int:
     tools = trello_tools() + recon_tools()
     if not writes:
@@ -232,6 +300,8 @@ def main(argv: list[str]) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     status = sub.add_parser("status")
     status.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+    preflight_parser = sub.add_parser("preflight")
+    preflight_parser.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
     tools = sub.add_parser("tools")
     tools.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
     tools.add_argument("--include-writes", action="store_true")
@@ -247,6 +317,8 @@ def main(argv: list[str]) -> int:
 
     if args.command == "status":
         return print_status(args.json)
+    if args.command == "preflight":
+        return preflight(args.json)
     if args.command == "tools":
         return print_tools(args.json, args.include_writes)
     if args.command == "trello-test":

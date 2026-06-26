@@ -7,8 +7,10 @@ it does not revert, delete, stage, or commit anything.
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import json
 import os
+import re
 import subprocess
 import sys
 from dataclasses import asdict, dataclass
@@ -18,6 +20,12 @@ from pathlib import Path
 
 ROOT = Path("/Users/stephengodman/CodeX")
 RECEIPT_ROOT = ROOT / "receipts" / "tree-steward"
+POLICY_PATH = ROOT / "config" / "tree-steward-policy.json"
+DEFAULT_BLOCK_CATEGORIES = {
+    "needs_human_review",
+    "risky_or_revert_sensitive",
+    "ignored_or_archive_candidate",
+}
 
 
 @dataclass
@@ -27,6 +35,15 @@ class Entry:
     category: str
     reason: str
     recommendation: str
+
+
+@dataclass
+class Finding:
+    name: str
+    path: str
+    severity: str
+    message: str
+    line: int | None = None
 
 
 def run_git(args: list[str]) -> subprocess.CompletedProcess[str]:
@@ -55,6 +72,29 @@ def parse_status() -> list[tuple[str, str]]:
     return rows
 
 
+def load_policy() -> dict[str, object]:
+    if not POLICY_PATH.exists():
+        return {}
+    return json.loads(POLICY_PATH.read_text(encoding="utf-8"))
+
+
+def tracked_files() -> list[str]:
+    result = run_git(["ls-files"])
+    if result.returncode != 0:
+        return []
+    return [line for line in result.stdout.splitlines() if line]
+
+
+def match_pattern(path: str, pattern: str) -> bool:
+    if pattern.endswith("/**"):
+        return path.startswith(pattern[:-3])
+    return fnmatch.fnmatch(path, pattern)
+
+
+def excluded(path: str, patterns: list[str]) -> bool:
+    return any(match_pattern(path, pattern) for pattern in patterns)
+
+
 def file_count(path: str) -> int | None:
     full = ROOT / path
     if not full.is_dir():
@@ -68,10 +108,27 @@ def file_count(path: str) -> int | None:
     return count
 
 
-def classify(status: str, path: str) -> Entry:
+def policy_rule(policy: dict[str, object], path: str) -> dict[str, str] | None:
+    for item in policy.get("path_rules", []):
+        if not isinstance(item, dict):
+            continue
+        pattern = str(item.get("pattern") or "")
+        if pattern and match_pattern(path, pattern):
+            return {
+                "category": str(item.get("category") or "needs_human_review"),
+                "reason": str(item.get("reason") or "policy rule matched"),
+                "recommendation": str(item.get("recommendation") or "review before staging"),
+            }
+    return None
+
+
+def classify(status: str, path: str, policy: dict[str, object]) -> Entry:
     lowered = path.lower()
     is_delete = "D" in status
     is_untracked = status == "??"
+    credential_tokens = [
+        str(item).lower() for item in policy.get("credential_path_tokens", []) if str(item).strip()
+    ] or [".env", "credential", "1password", "secret", "token"]
 
     if is_delete:
         return Entry(
@@ -82,7 +139,7 @@ def classify(status: str, path: str) -> Entry:
             recommendation="review exact intent before restore, commit, or removal",
         )
 
-    if any(part in lowered for part in [".env", "credential", "1password", "secret", "token"]):
+    if any(part in lowered for part in credential_tokens):
         return Entry(
             status=status,
             path=path,
@@ -91,78 +148,16 @@ def classify(status: str, path: str) -> Entry:
             recommendation="review manually; do not print secrets or bulk-stage",
         )
 
-    if path == ".gitignore":
-        return Entry(
-            status=status,
-            path=path,
-            category="safe_to_review",
-            reason="repo hygiene policy",
-            recommendation="review for broad ignore rules before commit",
-        )
-
-    if path.startswith("agents/"):
-        return Entry(
-            status=status,
-            path=path,
-            category="safe_to_review" if "tree-steward" in lowered else "needs_human_review",
-            reason="agent operating instructions",
-            recommendation="verify the agent card is scoped and non-destructive",
-        )
-
-    if path.startswith("bin/") or path.startswith("mcp_servers/") or "launchd/" in path:
-        return Entry(
-            status=status,
-            path=path,
-            category="needs_human_review",
-            reason="executable, MCP, or service-control surface",
-            recommendation="run a focused smoke test before commit",
-        )
-
-    if path.startswith("attachment-vault/"):
+    rule = policy_rule(policy, path)
+    if rule:
         count = file_count(path)
-        detail = f"; observed at least {count} files" if count else ""
+        detail = f"; observed at least {count} files" if count and path.endswith("/") else ""
         return Entry(
             status=status,
             path=path,
-            category="ignored_or_archive_candidate" if is_untracked else "needs_human_review",
-            reason=f"large/local project tree outside the Trello MCP slice{detail}",
-            recommendation="adopt intentionally as its own project or keep ignored; do not mix into Trello MCP commits",
-        )
-
-    if path.startswith("work-notes/candice") or "candice" in lowered or "kandice" in lowered:
-        return Entry(
-            status=status,
-            path=path,
-            category="risky_or_revert_sensitive",
-            reason="Candice/Kandice lane is intentionally paused from photo-sync wiring",
-            recommendation="do not rewire; review against latest Stephen instruction",
-        )
-
-    if path.startswith("work-notes/trello") or path.startswith("work-notes/INDEX.md"):
-        return Entry(
-            status=status,
-            path=path,
-            category="safe_to_review",
-            reason="Trello MCP note or work-note index",
-            recommendation="review diff and stage only if it matches the active Trello MCP slice",
-        )
-
-    if path in {"CURRENT.md", "README.md", "ROUTING-CARD.md", "START-HERE.md", "DEPENDENCY-STASH-ARCHIVE.md"}:
-        return Entry(
-            status=status,
-            path=path,
-            category="safe_to_review",
-            reason="CodeX room documentation",
-            recommendation="review for stale paths and commit separately from behavior changes",
-        )
-
-    if lowered.endswith((".md", ".txt")):
-        return Entry(
-            status=status,
-            path=path,
-            category="safe_to_review" if not is_untracked else "needs_human_review",
-            reason="documentation or note file",
-            recommendation="review content before deciding whether it belongs in the repo",
+            category=rule["category"],
+            reason=rule["reason"] + detail,
+            recommendation=rule["recommendation"],
         )
 
     return Entry(
@@ -179,6 +174,88 @@ def summarize(entries: list[Entry]) -> dict[str, int]:
     for entry in entries:
         counts[entry.category] = counts.get(entry.category, 0) + 1
     return dict(sorted(counts.items()))
+
+
+def scan_content(policy: dict[str, object]) -> list[Finding]:
+    patterns = []
+    for item in policy.get("content_checks", []):
+        if not isinstance(item, dict):
+            continue
+        try:
+            compiled = re.compile(str(item.get("pattern") or ""))
+        except re.error:
+            continue
+        patterns.append((item, compiled))
+    if not patterns:
+        return []
+
+    excludes = [str(item) for item in policy.get("content_scan_excludes", [])]
+    findings: list[Finding] = []
+    for relative in tracked_files():
+        if excluded(relative, excludes):
+            continue
+        path = ROOT / relative
+        if not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+        except OSError:
+            continue
+        for line_number, line in enumerate(text.splitlines(), start=1):
+            for item, compiled in patterns:
+                if compiled.search(line):
+                    name = str(item.get("name") or "content_check")
+                    if name == "raw_secret_assignment" and any(
+                        sentinel in line
+                        for sentinel in [
+                            "APPLY_PHOTO_CARD_MATCH_PLAN",
+                            "APPLY_RECORD_MATCH_ACTION_PLAN",
+                            "EXPORT_PHOTOS_FROM_ICLOUD",
+                        ]
+                    ):
+                        continue
+                    findings.append(
+                        Finding(
+                            name=name,
+                            path=relative,
+                            severity=str(item.get("severity") or "warn"),
+                            message=str(item.get("message") or "policy content check matched"),
+                            line=line_number,
+                        )
+                    )
+    return findings
+
+
+def strict_pass(
+    entries: list[Entry],
+    findings: list[Finding],
+    policy: dict[str, object],
+    preflight: str | None = None,
+) -> tuple[bool, int]:
+    block_categories = set(
+        str(item)
+        for item in policy.get("strict_block_categories", [])
+        if str(item).strip()
+    ) or DEFAULT_BLOCK_CATEGORIES
+    block_severities = {"block"}
+    if preflight == "trello-mcp":
+        preflight_policy = policy.get("trello_mcp_preflight", {})
+        if isinstance(preflight_policy, dict):
+            block_categories = set(
+                str(item)
+                for item in preflight_policy.get("blocked_categories", [])
+                if str(item).strip()
+            ) or block_categories
+            block_severities = set(
+                str(item)
+                for item in preflight_policy.get("blocked_content_severities", [])
+                if str(item).strip()
+            ) or block_severities
+    blockers = sum(1 for entry in entries if entry.category in block_categories)
+    blockers += sum(1 for finding in findings if finding.severity in block_severities)
+    return blockers == 0, blockers
 
 
 def markdown(payload: dict[str, object]) -> str:
@@ -211,6 +288,23 @@ def markdown(payload: dict[str, object]) -> str:
         )
     if not entries:
         lines.append("Tree is clean.")
+    findings = [Finding(**item) for item in payload.get("findings", [])]  # type: ignore[arg-type]
+    lines.extend(["", "## Policy Findings", ""])
+    if findings:
+        for finding in findings:
+            location = finding.path if finding.line is None else f"{finding.path}:{finding.line}"
+            lines.extend(
+                [
+                    f"### `{finding.name}`",
+                    "",
+                    f"- Location: `{location}`",
+                    f"- Severity: `{finding.severity}`",
+                    f"- Message: {finding.message}",
+                    "",
+                ]
+            )
+    else:
+        lines.append("No policy content findings.")
     lines.extend(
         [
             "## Safety",
@@ -230,24 +324,32 @@ def main() -> int:
     parser.add_argument("--json", action="store_true", help="Print JSON instead of a plain summary.")
     parser.add_argument("--no-receipt", action="store_true", help="Do not write receipt files.")
     parser.add_argument("--strict", action="store_true", help="Exit non-zero when risky or review-needed items exist.")
+    parser.add_argument(
+        "--preflight",
+        choices=["trello-mcp"],
+        help="Apply a named preflight policy while classifying the tree.",
+    )
     args = parser.parse_args()
 
+    policy = load_policy()
     rows = parse_status()
-    entries = [classify(status, path) for status, path in rows]
+    entries = [classify(status, path, policy) for status, path in rows]
+    findings = scan_content(policy)
     summary = summarize(entries)
-    strict_blockers = sum(
-        1
-        for entry in entries
-        if entry.category in {"needs_human_review", "risky_or_revert_sensitive", "ignored_or_archive_candidate"}
-    )
+    strict_ok, strict_blockers = strict_pass(entries, findings, policy, args.preflight)
     payload = {
         "ok": True,
         "root": str(ROOT),
+        "policy_path": str(POLICY_PATH) if POLICY_PATH.exists() else None,
+        "policy_version": policy.get("version"),
+        "preflight": args.preflight,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "dirty_count": len(entries),
-        "strict_pass": strict_blockers == 0,
+        "strict_pass": strict_ok,
+        "strict_blockers": strict_blockers,
         "summary": summary,
         "entries": [asdict(entry) for entry in entries],
+        "findings": [asdict(finding) for finding in findings],
         "safety": {
             "git_writes": False,
             "file_deletes": False,
@@ -273,8 +375,16 @@ def main() -> int:
         print(f"root={payload['root']}")
         print(f"dirty_count={payload['dirty_count']}")
         print(f"strict_pass={payload['strict_pass']}")
+        print(f"strict_blockers={payload['strict_blockers']}")
+        if args.preflight:
+            print(f"preflight={args.preflight}")
         for category, count in summary.items():
             print(f"{category}={count}")
+        if findings:
+            print(f"policy_findings={len(findings)}")
+            for finding in findings[:8]:
+                location = finding.path if finding.line is None else f"{finding.path}:{finding.line}"
+                print(f"- {finding.severity}: {finding.name} at {location}")
         if not args.no_receipt:
             print(f"receipt={payload['receipt_markdown']}")
 

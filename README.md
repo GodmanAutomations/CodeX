@@ -12,13 +12,7 @@ This room is managed as a local git control repo. The physical checkout is:
 /Users/stephengodman/CodeX
 ```
 
-The stable CodeX path is restored as a compatibility symlink:
-
-```bash
-/Users/stephengodman/CodeX -> /Users/stephengodman/CodeX
-```
-
-Use `/Users/stephengodman/CodeX` in room docs and launchers unless there is a specific filesystem reason to inspect the physical checkout.
+Use `/Users/stephengodman/CodeX` in room docs and launchers unless Stephen explicitly points elsewhere.
 
 ## Start Here
 
@@ -51,6 +45,13 @@ Room health check:
 /Users/stephengodman/CodeX/bin/codex-doctor-room
 ```
 
+Tree / Trello MCP preflight:
+
+```bash
+/Users/stephengodman/CodeX/bin/codex-tree-steward --strict
+/Users/stephengodman/CodeX/bin/codex-mcp preflight
+```
+
 Phone / away mode:
 
 ```bash
@@ -63,6 +64,7 @@ MCP control panel:
 
 ```bash
 /Users/stephengodman/CodeX/bin/codex-mcp status
+/Users/stephengodman/CodeX/bin/codex-mcp preflight
 /Users/stephengodman/CodeX/bin/codex-mcp tools --include-writes
 /Users/stephengodman/CodeX/bin/codex-mcp trello-test Byrd
 ```

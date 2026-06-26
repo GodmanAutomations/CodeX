@@ -16,6 +16,7 @@ ROOT = Path("/Users/stephengodman/CodeX")
 CONFIG = Path("/Users/stephengodman/.codex/config.toml")
 TRELLO_LAUNCHER = ROOT / "mcp_servers" / "trello_mcp_launcher.sh"
 TRELLO_SERVER = ROOT / "mcp_servers" / "trello_mcp_server.py"
+TREE_STEWARD = ROOT / "bin" / "codex-tree-steward"
 WORK_NOTES = ROOT / "work-notes"
 HANDOFF = Path("/Users/stephengodman/_handoff/codex")
 PI_HOST = "pi@100.100.32.58"
@@ -75,6 +76,23 @@ def count_trello_tools() -> int:
     return len(re.findall(r"(?m)^@mcp\.tool\(\)\n(?:.+\n)*?def\s+[A-Za-z_][A-Za-z0-9_]*\(", text))
 
 
+def tree_health() -> dict[str, Any]:
+    if not TREE_STEWARD.exists():
+        return {"ok": False, "error": "missing", "path": str(TREE_STEWARD)}
+    payload = json_command([str(TREE_STEWARD), "--json", "--no-receipt"], timeout=20)
+    return {
+        "ok": bool(payload.get("strict_pass")),
+        "path": str(TREE_STEWARD),
+        "dirty_count": payload.get("dirty_count"),
+        "strict_pass": payload.get("strict_pass"),
+        "strict_blockers": payload.get("strict_blockers"),
+        "summary": payload.get("summary") or {},
+        "findings_count": len(payload.get("findings") or []),
+        "policy_path": payload.get("policy_path"),
+        "error": payload.get("error"),
+    }
+
+
 def latest_files(folder: Path, limit: int = 5) -> list[dict[str, str]]:
     if not folder.exists():
         return []
@@ -107,6 +125,7 @@ def pi_status() -> dict[str, Any]:
 
 def build_status(include_pi: bool = True) -> dict[str, Any]:
     trello = json_command([str(TRELLO_LAUNCHER), "--status"], timeout=20)
+    tree = tree_health()
     env = {
         name: {
             "current_process": bool(os.environ.get(name)),
@@ -115,7 +134,7 @@ def build_status(include_pi: bool = True) -> dict[str, Any]:
         for name in KEY_NAMES
     }
     return {
-        "ok": bool(trello.get("ok")),
+        "ok": bool(trello.get("ok")) and bool(tree.get("ok")),
         "app_only": True,
         "codex_app_running": any_process_running(
             [
@@ -138,6 +157,7 @@ def build_status(include_pi: bool = True) -> dict[str, Any]:
             "op_attempted": trello.get("op_resolution", {}).get("status") not in {None, "not_attempted"},
             "tool_count": count_trello_tools(),
         },
+        "tree": tree,
         "pi": pi_status() if include_pi else {"ok": None, "status": "skipped"},
         "latest_receipts": latest_files(WORK_NOTES, 5),
         "latest_handoffs": latest_files(HANDOFF, 5),
@@ -173,8 +193,15 @@ def format_status(status: dict[str, Any]) -> str:
         lines.append(f"- {name}: current={current}, mac-user-env={mac}")
 
     trello = status.get("trello_mcp", {})
+    tree = status.get("tree", {})
     lines.extend(
         [
+            "",
+            "Tree steward:",
+            f"- strict pass: {yn(tree.get('strict_pass'))}",
+            f"- dirty count: {tree.get('dirty_count')}",
+            f"- blockers: {tree.get('strict_blockers')}",
+            f"- policy findings: {tree.get('findings_count')}",
             "",
             "Trello MCP:",
             f"- status: {yn(trello.get('ok'))}",

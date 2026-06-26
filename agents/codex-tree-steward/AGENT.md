@@ -14,6 +14,18 @@ This agent does not own Trello behavior. It owns worktree clarity.
 
 Use `--json` when another tool or agent needs machine-readable output.
 
+Policy:
+
+```bash
+/Users/stephengodman/CodeX/config/tree-steward-policy.json
+```
+
+Subagent packet:
+
+```bash
+/Users/stephengodman/CodeX/agents/codex-tree-steward/HANDOFF.md
+```
+
 ## Operating Rules
 
 - Read before changing anything.
@@ -35,10 +47,20 @@ Use `--json` when another tool or agent needs machine-readable output.
 Before a Trello MCP build slice, run:
 
 ```bash
-/Users/stephengodman/CodeX/bin/codex-tree-steward --strict
+/Users/stephengodman/CodeX/bin/codex-mcp preflight
 ```
 
-If strict mode exits non-zero, read the latest receipt before editing. Continue only when the dirty state is understood and your intended files do not overlap unknown work.
+If preflight exits non-zero, read the tree-steward output before editing. Continue only when the dirty state is understood and your intended files do not overlap unknown work.
+
+Direct steward form:
+
+```bash
+/Users/stephengodman/CodeX/bin/codex-tree-steward --strict --preflight trello-mcp
+```
+
+## Status Integration
+
+`/Users/stephengodman/CodeX/bin/codex-status` reports tree health by calling the steward with `--json --no-receipt`. A dirty or policy-blocked tree makes status non-OK so future Trello MCP work starts with the real state.
 
 ## Cleanup Policy
 
