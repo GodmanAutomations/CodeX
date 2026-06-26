@@ -9,6 +9,9 @@ Use this card to route ordinary prompts into the right CodeX lane.
 - "What is broken?", "what is live?", "check CodeX", "status":
   run `/Users/stephengodman/CodeX/bin/codex-status`.
 
+- "I'm away from the computer", "phone mode", "away mode", "running you from my phone":
+  read `/Users/stephengodman/CodeX/PHONE-MODE.md`, then run `/Users/stephengodman/CodeX/bin/codex-phone-mode --apply`.
+
 - MCP, Trello MCP, tool list, reload MCP, doctor MCP:
   run `/Users/stephengodman/CodeX/bin/codex-mcp status` first.
 

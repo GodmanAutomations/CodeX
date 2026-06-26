@@ -51,6 +51,14 @@ Room health check:
 /Users/stephengodman/CodeX/bin/codex-doctor-room
 ```
 
+Phone / away mode:
+
+```bash
+/Users/stephengodman/CodeX/bin/codex-phone-mode --status
+/Users/stephengodman/CodeX/bin/codex-phone-mode --apply
+/Users/stephengodman/CodeX/bin/codex-phone-mode --restore-sleep
+```
+
 MCP control panel:
 
 ```bash

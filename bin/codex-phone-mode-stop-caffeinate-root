@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+
+/bin/launchctl bootout system/com.godman.caffeinate 2>/dev/null || true
+
+/usr/bin/pgrep -x caffeinate 2>/dev/null | while IFS= read -r pid; do
+  command="$(/bin/ps -p "$pid" -o command= 2>/dev/null || true)"
+  if [ "$command" = "/usr/bin/caffeinate -dimsu" ]; then
+    /bin/kill -TERM "$pid" 2>/dev/null || true
+  fi
+done

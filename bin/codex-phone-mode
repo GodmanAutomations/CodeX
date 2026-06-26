@@ -1,0 +1,544 @@
+#!/usr/bin/env bash
+set -u
+
+ROOT="/Users/stephengodman/CodeX"
+STATE_DIR="$ROOT/.tmp"
+CAFFEINATE_PID="$STATE_DIR/codex-phone-mode-caffeinate.pid"
+CAFFEINATE_LABEL="com.codex.phone-mode.caffeinate"
+CAFFEINATE_PLIST="$HOME/Library/LaunchAgents/$CAFFEINATE_LABEL.plist"
+PROFILE_CREDENTIALS="/Users/stephengodman/.claude/stephen-profile/credentials.md"
+ONE_UNLOCK_LOADER="/Users/stephengodman/bin/codex-load-api-keys-once"
+PHONE_MODE_ENV="/Users/stephengodman/.codex-phone-mode.env"
+STOP_CAFFEINATE_HELPER="/usr/local/sbin/codex-phone-mode-stop-caffeinate"
+
+APPLY=0
+STATUS=0
+NO_SLEEP=0
+LID_CLOSED=1
+RESTORE_SLEEP=0
+SKIP_CREDENTIALS=0
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  /Users/stephengodman/CodeX/bin/codex-phone-mode --status
+  /Users/stephengodman/CodeX/bin/codex-phone-mode
+  /Users/stephengodman/CodeX/bin/codex-phone-mode --apply [--no-lid-closed] [--no-sleep-display] [--skip-credentials]
+  /Users/stephengodman/CodeX/bin/codex-phone-mode --restore-sleep
+
+Default is a dry-run preview. --apply enters phone/away mode.
+--apply requests macOS disablesleep by default so Codex can survive lid close.
+USAGE
+}
+
+say() {
+  printf '%s\n' "$*"
+}
+
+run_or_show() {
+  if [[ "$APPLY" -eq 1 ]]; then
+    "$@"
+  else
+    printf 'would run:'
+    printf ' %q' "$@"
+    printf '\n'
+  fi
+}
+
+run_shell_or_show() {
+  local desc="$1"
+  shift
+  if [[ "$APPLY" -eq 1 ]]; then
+    "$@"
+  else
+    say "would $desc"
+  fi
+}
+
+running_pidfile() {
+  [[ -f "$CAFFEINATE_PID" ]] || return 1
+  local pid
+  pid="$(cat "$CAFFEINATE_PID" 2>/dev/null || true)"
+  [[ -n "$pid" ]] || return 1
+  local command
+  command="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+  [[ "$command" == *"caffeinate -dimsu"* ]]
+}
+
+caffeinate_agent_pid() {
+  launchctl print "gui/$(id -u)/$CAFFEINATE_LABEL" 2>/dev/null \
+    | awk -F'= ' '/^[[:space:]]*pid = / {print $2; exit}'
+}
+
+phone_mode_caffeinate_pids() {
+  local pid command
+  pgrep -x caffeinate 2>/dev/null | while IFS= read -r pid; do
+    command="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+    if [[ "$command" == "/usr/bin/caffeinate -dimsu" ]]; then
+      printf '%s\n' "$pid"
+    fi
+  done
+}
+
+write_caffeinate_agent() {
+  mkdir -p "$HOME/Library/LaunchAgents"
+  cat > "$CAFFEINATE_PLIST" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>$CAFFEINATE_LABEL</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/caffeinate</string>
+    <string>-dimsu</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/tmp/codex-phone-mode-caffeinate.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/codex-phone-mode-caffeinate.log</string>
+</dict>
+</plist>
+PLIST
+  chmod 0600 "$CAFFEINATE_PLIST"
+}
+
+ensure_caffeinate() {
+  mkdir -p "$STATE_DIR"
+  if running_pidfile; then
+    say "caffeinate: already active from phone-mode pid $(cat "$CAFFEINATE_PID")"
+    return 0
+  fi
+  rm -f "$CAFFEINATE_PID"
+  local agent_pid
+  agent_pid="$(caffeinate_agent_pid)"
+  if [[ -n "$agent_pid" ]]; then
+    echo "$agent_pid" > "$CAFFEINATE_PID"
+    say "caffeinate: already active from phone-mode launch agent pid $agent_pid"
+    return 0
+  fi
+  if pgrep -x caffeinate >/dev/null 2>&1; then
+    say "caffeinate: already active outside phone-mode"
+    return 0
+  fi
+  if [[ "$APPLY" -eq 1 ]]; then
+    write_caffeinate_agent
+    launchctl bootstrap "gui/$(id -u)" "$CAFFEINATE_PLIST" >/dev/null 2>&1 || true
+    launchctl kickstart -k "gui/$(id -u)/$CAFFEINATE_LABEL" >/dev/null 2>&1 || true
+    sleep 1
+    agent_pid="$(caffeinate_agent_pid)"
+    if [[ -n "$agent_pid" ]]; then
+      echo "$agent_pid" > "$CAFFEINATE_PID"
+      say "caffeinate: started phone-mode launch agent pid $agent_pid"
+    else
+      say "caffeinate: launch agent requested but no pid reported"
+    fi
+  else
+    say "would start phone-mode LaunchAgent for caffeinate -dimsu"
+  fi
+}
+
+visible_apps() {
+  osascript -e 'tell application "System Events" to get name of every process where background only is false' 2>/dev/null || true
+}
+
+power_status() {
+  pmset -g batt 2>/dev/null || true
+  pmset -g live 2>/dev/null | awk '/SleepDisabled|sleep |displaysleep / {print}' || true
+}
+
+credential_status() {
+  "$ROOT/bin/codex-status" --skip-pi 2>/dev/null | sed -n '1,34p' || true
+}
+
+listener_status() {
+  lsof -nP -iTCP -sTCP:LISTEN 2>/dev/null \
+    | awk 'NR==1 || $3=="stephengodman" {print}' \
+    | sed -n '1,80p'
+}
+
+print_status() {
+  say "CodeX Phone Mode Status"
+  say ""
+  say "Power:"
+  power_status
+  say ""
+  say "Visible apps:"
+  visible_apps
+  say ""
+  say "Credential readiness:"
+  credential_status
+  say ""
+  say "Listening services:"
+  listener_status
+  say ""
+  say "Safety: secrets_returned=false"
+}
+
+load_runtime_credentials() {
+  if [[ "$SKIP_CREDENTIALS" -eq 1 ]]; then
+    say "credentials: skipped"
+    return 0
+  fi
+
+  if [[ "$APPLY" -ne 1 ]]; then
+    say "would preload runtime credentials from $PHONE_MODE_ENV, then 1Password/env path, with local profile fallback"
+    return 0
+  fi
+
+  if [[ -r "$PHONE_MODE_ENV" ]]; then
+    local loaded=()
+    local skipped=()
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      [[ -n "$line" ]] || continue
+      [[ "$line" != \#* ]] || continue
+      [[ "$line" == *=* ]] || continue
+      local name="${line%%=*}"
+      local value="${line#*=}"
+      if [[ "$name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ && -n "$value" ]]; then
+        launchctl setenv "$name" "$value"
+        loaded+=("$name")
+      else
+        skipped+=("$name")
+      fi
+    done < "$PHONE_MODE_ENV"
+    say "credentials: cache_loaded=${loaded[*]}"
+    if [[ "${#skipped[@]}" -gt 0 ]]; then
+      say "credentials: cache_skipped=${skipped[*]}"
+    fi
+    say "credentials: secrets_returned=false"
+    return 0
+  fi
+
+  if [[ -x "$ONE_UNLOCK_LOADER" ]]; then
+    if /usr/bin/env PATH="/opt/homebrew/bin:$PATH" python3 - "$ONE_UNLOCK_LOADER" <<'PY' 2>/dev/null
+import subprocess
+import sys
+
+cmd = [sys.argv[1]]
+try:
+    result = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=8)
+except subprocess.TimeoutExpired:
+    raise SystemExit(124)
+
+if result.returncode == 0:
+    print("credentials: 1Password loader completed")
+    for line in (result.stdout or "").splitlines():
+        if line.startswith(("loaded=", "missing=")):
+            print("credentials: " + line)
+    raise SystemExit(0)
+raise SystemExit(result.returncode)
+PY
+    then
+      say "credentials: secrets_returned=false"
+      return 0
+    fi
+    say "credentials: 1Password loader unavailable or blocked; using local profile fallback"
+  else
+    say "credentials: one-unlock loader missing; using local profile fallback"
+  fi
+
+  if [[ ! -r "$PROFILE_CREDENTIALS" ]]; then
+    say "credentials: local profile not readable"
+    return 1
+  fi
+
+  python3 - "$PROFILE_CREDENTIALS" <<'PY'
+from pathlib import Path
+import re
+import subprocess
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text(encoding="utf-8", errors="replace")
+sections = {}
+current = None
+for line in text.splitlines():
+    if line.startswith("### "):
+        current = line[4:].strip()
+        sections[current] = []
+    elif current:
+        sections[current].append(line)
+
+def field(section, label="API Key"):
+    pattern = re.compile(r"- \*\*" + re.escape(label) + r":?\*\*\s*(.+)$")
+    for line in sections.get(section, []):
+        match = pattern.match(line)
+        if not match:
+            continue
+        value = match.group(1).strip()
+        if value and not value.startswith("["):
+            return value
+    return None
+
+mapping = {
+    "ANTHROPIC_API_KEY": ("Anthropic", "API Key"),
+    "BRAVE_SEARCH_API_KEY": ("Brave", "Search API Key (godman-automations)"),
+    "CLOUDFLARE_API_TOKEN": ("Cloudflare API", "Ace Full Access (no IP restriction)"),
+    "FIRECRAWL_API_KEY": ("Firecrawl", "API Key"),
+    "GEMINI_API_KEY": ("Google / Gemini / GCP", "API Key"),
+    "GODMAN_API_KEY": ("Godman Automations", "API Key"),
+    "GOOGLE_API_KEY": ("Google / Gemini / GCP", "API Key"),
+    "GOOGLE_GENERATIVE_AI_API_KEY": ("Google / Gemini / GCP", "API Key"),
+    "GROQ_API_KEY": ("Groq", "API Key"),
+    "LIVEKIT_API_KEY": ("LiveKit Cloud", "API Key"),
+    "LMSTUDIO_API_KEY": ("LM Studio", "API Key"),
+    "XAI_API_KEY": ("xAI", "API Key"),
+}
+
+loaded = []
+missing = []
+for env_name, (section, label) in mapping.items():
+    value = field(section, label)
+    if not value:
+        missing.append(env_name)
+        continue
+    subprocess.run(["/bin/launchctl", "setenv", env_name, value], check=True)
+    loaded.append(env_name)
+
+print("credentials: loaded=" + ",".join(loaded))
+if missing:
+    print("credentials: missing=" + ",".join(missing))
+print("credentials: secrets_returned=false")
+PY
+}
+
+quit_low_risk_apps() {
+  local apps=(
+    "Messages"
+    "Mail"
+    "Calendar"
+    "Contacts"
+    "Music"
+    "TV"
+    "Podcasts"
+    "Photos"
+    "Safari"
+    "Google Chrome"
+    "LM Studio"
+  )
+  local app
+  for app in "${apps[@]}"; do
+    if [[ "$APPLY" -eq 1 ]]; then
+      osascript >/dev/null 2>&1 <<APPLESCRIPT || true
+try
+  if application "$app" is running then
+    ignoring application responses
+      tell application "$app" to quit
+    end ignoring
+  end if
+end try
+APPLESCRIPT
+    else
+      say "would quit low-risk app if running: $app"
+    fi
+  done
+}
+
+hide_document_apps() {
+  if [[ "$APPLY" -eq 1 ]]; then
+    osascript >/dev/null 2>&1 <<'APPLESCRIPT' || true
+try
+  tell application "System Events"
+    set visible of every application process whose background only is false and name is not "Codex" to false
+  end tell
+end try
+try
+  tell application "Finder" to close every window
+end try
+APPLESCRIPT
+  else
+    say "would hide non-Codex visible apps and close Finder windows"
+  fi
+}
+
+stop_launchagent_plists() {
+  local uid
+  uid="$(id -u)"
+  local plists=(
+    "$HOME/Library/LaunchAgents/com.godman.sillytavern.plist"
+    "$HOME/Library/LaunchAgents/com.rook.telegram.plist"
+    "$HOME/Library/LaunchAgents/com.godman.lmstudio-headless.plist"
+    "$HOME/Library/LaunchAgents/com.godman.comfyui.venice.plist"
+    "$HOME/Library/LaunchAgents/homebrew.mxcl.ollama.plist"
+    "$HOME/Library/LaunchAgents/homebrew.mxcl.redis.plist"
+    "$HOME/Library/LaunchAgents/homebrew.mxcl.postgresql@16.plist"
+  )
+  local plist
+  for plist in "${plists[@]}"; do
+    [[ -f "$plist" ]] || continue
+    run_or_show launchctl bootout "gui/$uid" "$plist" 2>/dev/null || true
+  done
+}
+
+stop_known_processes() {
+  if [[ "$APPLY" -eq 1 ]]; then
+    pkill -TERM -f '/Users/stephengodman/Applications/SillyTavern/.*server\.js|/Users/stephengodman/.nvm/versions/node/.*/bin/node server\.js' 2>/dev/null || true
+    pkill -TERM -f 'rook_telegram_bot\.py' 2>/dev/null || true
+    pkill -TERM -f '/Applications/LM Studio\.app/Contents/MacOS/LM Studio' 2>/dev/null || true
+    pkill -TERM -f '/Users/stephengodman/Rook/venice/ComfyUI/main\.py' 2>/dev/null || true
+    pkill -TERM -f 'ollama serve' 2>/dev/null || true
+    pkill -TERM -f 'redis-server 127\.0\.0\.1:6379' 2>/dev/null || true
+    pkill -TERM -f 'postgres -D /opt/homebrew/var/postgresql@16' 2>/dev/null || true
+  else
+    say "would stop known non-phone processes: SillyTavern, Rook Telegram, LM Studio, ComfyUI/Venice, Ollama, Redis, Postgres"
+  fi
+}
+
+apply_privacy_power_posture() {
+  if [[ "$APPLY" -eq 1 ]]; then
+    osascript >/dev/null 2>&1 <<'APPLESCRIPT' || true
+set volume output muted true
+set volume alert volume 0
+APPLESCRIPT
+    defaults write com.apple.screensaver askForPassword -int 1
+    defaults write com.apple.screensaver askForPasswordDelay -int 0
+    osascript -e 'get volume settings' 2>/dev/null || true
+    osascript -e 'tell application "System Events" to keystroke "q" using {control down, command down}' >/dev/null 2>&1 || true
+    if [[ "$NO_SLEEP" -eq 0 ]]; then
+      /usr/bin/pmset displaysleepnow || true
+    fi
+  else
+    say "would mute output, set alert volume to 0, require password immediately, lock screen, and sleep display"
+  fi
+}
+
+sudo_pmset() {
+  sudo -n "$@" >/dev/null 2>&1 && return 0
+  say "sudo: unavailable non-interactively; lid-closed sleep disable was not changed"
+  say "sudo: install or unlock scoped pmset permission for lid-closed survival"
+  return 1
+}
+
+enable_lid_closed_survival() {
+  if [[ "$APPLY" -eq 1 ]]; then
+    if sudo_pmset /usr/bin/pmset -a disablesleep 1; then
+      say "lid-closed survival: enabled with pmset disablesleep=1"
+    else
+      say "lid-closed survival: blocked at sudo"
+    fi
+  else
+    say "would enable lid-closed survival: sudo /usr/bin/pmset -a disablesleep 1"
+  fi
+}
+
+restore_sleep() {
+  say "CodeX phone/away mode sleep restore"
+  if sudo_pmset /usr/bin/pmset -a disablesleep 0; then
+    say "lid-closed survival: restored disablesleep=0"
+  fi
+  if launchctl print "gui/$(id -u)/$CAFFEINATE_LABEL" >/dev/null 2>&1; then
+    launchctl bootout "gui/$(id -u)/$CAFFEINATE_LABEL" >/dev/null 2>&1 || true
+    sleep 1
+    say "caffeinate: stopped phone-mode launch agent"
+  fi
+  rm -f "$CAFFEINATE_PLIST"
+  if running_pidfile; then
+    local pid
+    pid="$(cat "$CAFFEINATE_PID" 2>/dev/null || true)"
+    if [[ -n "$pid" ]]; then
+      kill "$pid" 2>/dev/null || true
+      sleep 1
+      rm -f "$CAFFEINATE_PID"
+      say "caffeinate: stopped phone-mode pid $pid"
+    fi
+  else
+    local pids
+    pids="$(phone_mode_caffeinate_pids)"
+    if [[ -n "$pids" ]]; then
+      while IFS= read -r pid; do
+        [[ -n "$pid" ]] || continue
+        kill "$pid" 2>/dev/null || true
+        if kill -0 "$pid" 2>/dev/null; then
+          if [[ -x "$STOP_CAFFEINATE_HELPER" ]] && sudo -n "$STOP_CAFFEINATE_HELPER" >/dev/null 2>&1; then
+            :
+          fi
+        fi
+        sleep 1
+        if kill -0 "$pid" 2>/dev/null; then
+          say "caffeinate: persistent pid $pid still running"
+        else
+          say "caffeinate: stopped persistent pid $pid"
+        fi
+      done <<< "$pids"
+    fi
+  fi
+  rm -f "$CAFFEINATE_PID"
+  print_status
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --apply)
+      APPLY=1
+      ;;
+    --status)
+      STATUS=1
+      ;;
+    --no-sleep-display)
+      NO_SLEEP=1
+      ;;
+    --skip-credentials)
+      SKIP_CREDENTIALS=1
+      ;;
+    --lid-closed)
+      LID_CLOSED=1
+      ;;
+    --no-lid-closed)
+      LID_CLOSED=0
+      ;;
+    --restore-sleep)
+      RESTORE_SLEEP=1
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      usage >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
+
+if [[ "$RESTORE_SLEEP" -eq 1 ]]; then
+  restore_sleep
+  exit 0
+fi
+
+if [[ "$STATUS" -eq 1 ]]; then
+  print_status
+  exit 0
+fi
+
+say "CodeX phone/away mode"
+say "mode: $([[ "$APPLY" -eq 1 ]] && echo apply || echo dry-run)"
+say ""
+say "Keeps: Codex, iTerm, Tailscale, Cloudflare tunnel, Unified Remote, CodeX MCP helpers, photo bridge."
+say "Stops: obvious user apps and heavy/unrelated local stacks."
+say "Secrets: load the local phone-mode env cache and existing credential paths; never commit values."
+if [[ "$LID_CLOSED" -eq 1 ]]; then
+  say "Lid closed: request pmset disablesleep=1 even on battery/portable power."
+fi
+say ""
+
+ensure_caffeinate
+if [[ "$LID_CLOSED" -eq 1 ]]; then
+  enable_lid_closed_survival
+fi
+load_runtime_credentials
+quit_low_risk_apps
+hide_document_apps
+stop_launchagent_plists
+stop_known_processes
+sleep 2
+apply_privacy_power_posture
+
+say ""
+print_status

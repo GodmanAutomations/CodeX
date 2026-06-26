@@ -21,6 +21,7 @@ This is the front door for the CodeX room.
 - `CONTINUITY.md` - continuity lane map.
 - `CODEX-SKILLS.md` - Stephen-specific skill index.
 - `ROUTING-CARD.md` - ordinary-language routing.
+- `PHONE-MODE.md` - away-from-computer / phone-only operating contract.
 - `SYSTEM-TREE.md` - path discovery and NotebookLM system tree notes.
 
 ## Rule
