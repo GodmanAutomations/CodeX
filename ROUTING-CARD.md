@@ -24,6 +24,10 @@ Use this card to route ordinary prompts into the right CodeX lane.
   `/Users/stephengodman/CodeX/CODEX-PERSONAL-MODES.md`; answer from the
   matching personal mode instead of explaining identity architecture.
 
+- "run the regression", "check the voice layer", "test the lane", "make sure this still loads":
+  run `/Users/stephengodman/CodeX/bin/codex-identity-regression`, then fix any
+  failed startup, personal voice, or identity-regression check before closing.
+
 - "what route", "which tool", "how should you check", "look into this":
   read `/Users/stephengodman/CodeX/CODEX-TOOL-ROUTING.md` or run
   `/Users/stephengodman/CodeX/bin/codex-tool-route "<prompt>"`, then use the
