@@ -1,0 +1,5 @@
+{
+  "id": "memory",
+  "description": "CodeX SQLite memory recalls the smoke-test preference and identity boundary.",
+  "target": "codex"
+}

@@ -1,0 +1,301 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="/Users/stephengodman/CodeX"
+CODEX_HOME="/Users/stephengodman/.codex"
+CONFIG="$CODEX_HOME/config.toml"
+RECEIPT_DIR="$ROOT/receipts/startup"
+STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+RECEIPT="$RECEIPT_DIR/${STAMP}-standalone-preflight.txt"
+
+MODE="repair"
+
+usage() {
+  cat <<'HELP'
+Usage: codex-ensure-standalone [--repair|--check]
+
+Checks the CodeX room's pre-Codex boot surface and repairs safe drift.
+
+Default:
+  --repair  Fix safe, reversible prerequisites such as the ~/bin/npx symlink.
+
+Options:
+  --check   Report only; do not repair.
+HELP
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --repair)
+      MODE="repair"
+      ;;
+    --check)
+      MODE="check"
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "unknown option: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+  shift
+done
+
+mkdir -p "$RECEIPT_DIR"
+exec > >(tee "$RECEIPT") 2>&1
+
+passes=0
+fixes=0
+warns=0
+fails=0
+
+pass() {
+  printf 'PASS %s\n' "$*"
+  passes=$((passes + 1))
+}
+
+fix() {
+  printf 'FIX  %s\n' "$*"
+  fixes=$((fixes + 1))
+}
+
+warn() {
+  printf 'WARN %s\n' "$*"
+  warns=$((warns + 1))
+}
+
+fail() {
+  printf 'FAIL %s\n' "$*"
+  fails=$((fails + 1))
+}
+
+check_executable() {
+  local label="$1"
+  local path="$2"
+
+  if [[ -x "$path" ]]; then
+    pass "$label executable: $path"
+  elif [[ -e "$path" ]]; then
+    fail "$label exists but is not executable: $path"
+  else
+    fail "$label missing: $path"
+  fi
+}
+
+check_command() {
+  local label="$1"
+  local command_name="$2"
+
+  if command -v "$command_name" >/dev/null 2>&1; then
+    pass "$label available: $(command -v "$command_name")"
+  else
+    fail "$label not found on PATH: $command_name"
+  fi
+}
+
+ensure_npx_link() {
+  local link="/Users/stephengodman/bin/npx"
+  local target
+  target="$(command -v npx || true)"
+
+  if [[ -x "$link" ]]; then
+    pass "configured npx path works: $link"
+    return
+  fi
+
+  if [[ -z "$target" || ! -x "$target" ]]; then
+    fail "npx target missing: command -v npx did not resolve an executable"
+    return
+  fi
+
+  if [[ "$MODE" != "repair" ]]; then
+    warn "configured npx path missing; repair would link $link -> $target"
+    return
+  fi
+
+  mkdir -p "$(dirname "$link")"
+
+  if [[ -L "$link" && ! -e "$link" ]]; then
+    rm "$link"
+  fi
+
+  if [[ -e "$link" ]]; then
+    fail "configured npx path exists but is not executable and was not replaced: $link"
+    return
+  fi
+
+  ln -s "$target" "$link"
+  fix "linked configured npx path: $link -> $target"
+}
+
+check_mcp_config_commands() {
+  if [[ ! -f "$CONFIG" ]]; then
+    fail "Codex config missing: $CONFIG"
+    return
+  fi
+
+  pass "Codex config exists: $CONFIG"
+
+  while IFS=$'\t' read -r name command_path; do
+    if [[ "$command_path" = /* ]]; then
+      if [[ -x "$command_path" ]]; then
+        pass "MCP command path works for $name: $command_path"
+      elif [[ -e "$command_path" ]]; then
+        fail "MCP command path exists but is not executable for $name: $command_path"
+      else
+        fail "MCP command path missing for $name: $command_path"
+      fi
+    else
+      warn "MCP command path for $name is relative; verify through codex mcp list: $command_path"
+    fi
+  done < <(awk '
+    /^\[mcp_servers\./ {
+      name = $0
+      sub(/^\[mcp_servers\./, "", name)
+      sub(/\]$/, "", name)
+      in_server = 1
+      next
+    }
+    /^\[/ {
+      in_server = 0
+      next
+    }
+    in_server && /^[[:space:]]*command[[:space:]]*=/ {
+      command = $0
+      sub(/^[^=]+=[[:space:]]*"/, "", command)
+      sub(/".*$/, "", command)
+      print name "\t" command
+    }
+  ' "$CONFIG")
+}
+
+check_room_files() {
+  local files=(
+    "$ROOT/CODEX-IDENTITY-LOCK.md"
+    "$ROOT/CODEX-CODING-ANCHOR-SELF.md"
+    "$ROOT/CODEX-BEST-LANE.md"
+    "$ROOT/START-HERE.md"
+    "$ROOT/BOOT.md"
+    "$ROOT/CURRENT.md"
+    "$ROOT/CONTINUITY.md"
+    "$ROOT/AGENTS.md"
+    "$ROOT/CREED.md"
+    "$ROOT/ROOM-SURFACE-MAP.md"
+    "$ROOT/WRENCH-GHOST-MODE.md"
+    "$ROOT/BENCH-LIGHT-ON-GUARDRAILS.md"
+    "$ROOT/CODEX-SKILLS.md"
+    "$ROOT/ROUTING-CARD.md"
+    "$ROOT/SYSTEM-TREE.md"
+    "$ROOT/CODEX-WORKING-CARD.md"
+    "/Users/stephengodman/.codex/AGENTS.md"
+    "$ROOT/drift/codex_self_drift.py"
+    "$ROOT/bin/codex-self-drift"
+    "$ROOT/bin/codex-startup"
+    "$ROOT/bin/codex-autoloop"
+    "$ROOT/bin/codex-task"
+    "$ROOT/bin/codex-bench-light"
+    "$ROOT/bin/codex-continuity"
+    "$ROOT/bin/codex-room"
+    "$ROOT/bin/codex-remember-self"
+    "$ROOT/continuity/one-true-sentence.txt"
+    "$ROOT/memory/codex-memory.sqlite3"
+    "/Users/stephengodman/system_tree/paths_scrubbed.txt"
+    "/Users/stephengodman/system_tree/system_tree.db"
+    "/Users/stephengodman/system_tree/system_tree_part_01.md"
+    "/Users/stephengodman/system_tree/system_tree_part_05.md"
+    "/Users/stephengodman/.codex/skills/codex-system-tree/SKILL.md"
+    "/Users/stephengodman/.codex/skills/codex-claude-router/SKILL.md"
+    "/Users/stephengodman/.codex/skills/codex-pool-ops/SKILL.md"
+    "/Users/stephengodman/.codex/skills/codex-money-records/SKILL.md"
+    "/Users/stephengodman/.codex/skills/codex-comms/SKILL.md"
+    "/Users/stephengodman/.codex/skills/codex-mac-devices/SKILL.md"
+    "/Users/stephengodman/.codex/skills/codex-infra-ops/SKILL.md"
+    "/Users/stephengodman/.codex/skills/codex-media-room/SKILL.md"
+    "/Users/stephengodman/.codex/skills/codex-notebooklm-rag/SKILL.md"
+    "/Users/stephengodman/.codex/skills/codex-notebook-mesh/SKILL.md"
+    "/Users/stephengodman/.codex/skills/codex-local-rag/SKILL.md"
+    "/Users/stephengodman/.codex/skills/codex-production-hygiene/SKILL.md"
+    "/Users/stephengodman/.codex/skills/codex-build-resources/SKILL.md"
+    "/Users/stephengodman/.codex/skills/codex-adaptive-latency/SKILL.md"
+    "/Users/stephengodman/000_AI/AGENT-RESOURCES.md"
+    "/Users/stephengodman/000_AI/bin/rag"
+    "/Users/stephengodman/notebook-mesh/packets/vinyl-liner-pipeline/README.md"
+    "/Users/stephengodman/notebook-mesh/packets/vinyl-liner-pipeline/CLAUDE-CODEX-WORKFLOW.md"
+    "/Users/stephengodman/vinyl-liner-measurement-pipeline/AGENTS.md"
+    "/Users/stephengodman/vinyl-liner-measurement-pipeline/CLAUDE.md"
+    "/Users/stephengodman/vinyl-liner-measurement-pipeline/SESSION_HANDOFF.md"
+  )
+
+  for file in "${files[@]}"; do
+    if [[ -e "$file" ]]; then
+      pass "room surface exists: $file"
+    else
+      fail "room surface missing: $file"
+    fi
+  done
+}
+
+printf 'CODEX STANDALONE PREFLIGHT\n'
+printf '==========================\n'
+printf 'room: %s\n' "$ROOT"
+printf 'mode: %s\n' "$MODE"
+printf 'receipt: %s\n' "$RECEIPT"
+printf '\n'
+
+ensure_npx_link
+printf '\n'
+
+if [[ "${CODEX_ALLOW_CLI_PREFLIGHT:-0}" == "1" ]]; then
+  check_executable "codex CLI" "/opt/homebrew/bin/codex"
+else
+  pass "codex app-only mode active; CLI executable check skipped"
+fi
+check_executable "Codex desktop app" "/Applications/Codex.app/Contents/MacOS/Codex"
+check_executable "Codex app env launcher" "/Users/stephengodman/bin/codex-app-op"
+check_executable "room browser wrapper" "$ROOT/bin/codex-browser"
+check_executable "room startup" "$ROOT/bin/codex-startup"
+check_command "node" "node"
+check_command "npm" "npm"
+check_command "npx" "npx"
+check_command "uvx" "uvx"
+check_command "python3" "python3"
+check_command "ripgrep" "rg"
+check_command "git" "git"
+check_executable "system tree query" "/Users/stephengodman/bin/systree"
+check_executable "system tree refresh" "/Users/stephengodman/bin/refresh-systree"
+check_executable "NotebookLM CLI" "/Users/stephengodman/.local/bin/notebooklm"
+printf '\n'
+
+check_mcp_config_commands
+printf '\n'
+
+if [[ "${CODEX_ALLOW_CLI_PREFLIGHT:-0}" == "1" ]]; then
+  if codex mcp list >/dev/null 2>&1; then
+    pass "codex mcp list completes"
+  else
+    fail "codex mcp list failed"
+  fi
+
+  if codex mcp get cloudflare-api >/dev/null 2>&1; then
+    pass "cloudflare-api MCP is configured; if OAuth expires, run: codex mcp login cloudflare-api"
+  else
+    warn "cloudflare-api MCP is not configured"
+  fi
+else
+  pass "codex app-only mode active; CLI MCP checks skipped"
+fi
+printf '\n'
+
+check_room_files
+printf '\n'
+
+printf 'summary: pass=%s fix=%s warn=%s fail=%s\n' "$passes" "$fixes" "$warns" "$fails"
+printf 'receipt saved: %s\n' "$RECEIPT"
+
+if [[ "$fails" -gt 0 ]]; then
+  exit 1
+fi

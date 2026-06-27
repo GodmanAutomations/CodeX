@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+set -euo pipefail
+exec /usr/bin/python3 /Users/stephengodman/CodeX/continuity/codex_continuity.py "$@"

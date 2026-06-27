@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PYTHON="/Users/stephengodman/GodmanAutomations/godman-lab/.venv/bin/python"
+SCRIPT="/Users/stephengodman/CodeX/browser/codex_browser.py"
+
+exec "$PYTHON" "$SCRIPT" "$@"

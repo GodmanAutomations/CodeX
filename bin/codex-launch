@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="/Users/stephengodman/CodeX"
+
+"$ROOT/bin/codex-ensure-standalone" --repair
+cd "$ROOT"
+exec /Users/stephengodman/bin/codex-app-op "$@"

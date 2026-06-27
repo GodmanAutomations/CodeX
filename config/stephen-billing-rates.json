@@ -1,0 +1,125 @@
+{
+  "source": "Active Artesian 2026 pricing config",
+  "source_path": "/Users/stephengodman/000_AI/active/artesian-pools/automation/config.yaml",
+  "source_lines": "pricing.base, lines 55-77",
+  "version": "2026 Price Sheet - submitted to Memphis Pool March 2026",
+  "authority": "Stephen confirmed this active Mac-side Artesian config as the billing authority on 2026-06-17; it supersedes older Pi runtime pricing and derived price-sheet artifacts for Recon billing drafts",
+  "base": {
+    "measure": 150,
+    "measure_out_of_town": 225,
+    "ab_measure": 225,
+    "measure_ab": 225,
+    "ab_measure_out_of_town": 300,
+    "liner_install": 1150,
+    "liner_install_mps_drain_clean": 700,
+    "liner_install_out_of_town": 1450,
+    "liner_install_inlays": 1500,
+    "liner_install_inlet": 1500,
+    "liner_reset": 600,
+    "snap_in": 100,
+    "snap_in_plus": 175,
+    "step_replacement": 1700,
+    "liner_loc_entire_pool": 300,
+    "cleanup_hourly": 100,
+    "startup_system": 80,
+    "skimmer_replacement": 500,
+    "safety_cover": 650,
+    "safety_cover_cable_kit": 850,
+    "safety_cover_out_of_town": 750,
+    "safety_cover_cable_kit_out_of_town": 900,
+    "remove_poly_cover": 100,
+    "remove_safety_cover": 100,
+    "winterize_system": 100,
+    "install_wall_foam": 150
+  },
+  "addons": {
+    "liner_install": [
+      {"pattern": "haul\\s*off|h/?o|haulaway", "price": 80, "description": "Haul off"},
+      {"pattern": "sand\\s*bottom|sand\\s*&", "price": 250, "description": "Sand bottom"},
+      {"pattern": "inlet\\s*steps?|inlet\\s*step|swim\\s*out|swimout", "price": 500, "description": "Inlet steps/swimout"},
+      {"pattern": "clean\\s*up", "price": 30, "description": "Clean up"},
+      {"pattern": "inlay\\s*steps?", "price": 300, "description": "Inlay steps"},
+      {"pattern": "friday\\s*steps?", "price": 0, "description": "Friday steps (included)"},
+      {"pattern": "liner\\s*loc", "price": 300, "description": "Liner lock (full pool)"},
+      {"pattern": "liner\\s*lock", "price": 50, "description": "Liner lock (partial)"},
+      {"pattern": "eliminate\\w*\\s*light|pulled?\\s*light", "price": 50, "description": "Eliminated light"},
+      {"pattern": "pool\\s*crete|concrete", "price": 100, "description": "Pool crete work"},
+      {"pattern": "dirt\\s*work", "price": 50, "description": "Dirt work"},
+      {"pattern": "rework", "price": 100, "description": "Rework"},
+      {"pattern": "start\\s*up|startup", "price": 80, "description": "Startup"},
+      {"pattern": "bench", "price": 200, "description": "Bench"},
+      {"pattern": "sun\\s*shelf", "price": 500, "description": "Sun shelf"},
+      {"pattern": "run\\s*lights?|new\\s*lights?", "price": 200, "description": "New/run lights"},
+      {"pattern": "step\\s*strips?", "price": 100, "description": "Step strips"}
+    ],
+    "liner_install_inlays": [
+      {"pattern": "haul\\s*off|h/?o|haulaway", "price": 80, "description": "Haul off"},
+      {"pattern": "sand\\s*bottom|sand\\s*&", "price": 250, "description": "Sand bottom"},
+      {"pattern": "clean\\s*up", "price": 30, "description": "Clean up"},
+      {"pattern": "inlay\\s*steps?", "price": 300, "description": "Inlay steps"},
+      {"pattern": "bench", "price": 200, "description": "Bench"},
+      {"pattern": "liner\\s*loc", "price": 300, "description": "Liner lock (full pool)"},
+      {"pattern": "liner\\s*lock", "price": 50, "description": "Liner lock (partial)"},
+      {"pattern": "eliminate\\w*\\s*light|pulled?\\s*light", "price": 50, "description": "Eliminated light"},
+      {"pattern": "pool\\s*crete|concrete", "price": 100, "description": "Pool crete work"},
+      {"pattern": "dirt\\s*work", "price": 50, "description": "Dirt work"},
+      {"pattern": "rework", "price": 100, "description": "Rework"},
+      {"pattern": "start\\s*up|startup", "price": 75, "description": "Startup"},
+      {"pattern": "sun\\s*shelf", "price": 500, "description": "Sun shelf"},
+      {"pattern": "run\\s*lights?|new\\s*lights?", "price": 200, "description": "New/run lights"},
+      {"pattern": "step\\s*strips?", "price": 100, "description": "Step strips"}
+    ],
+    "liner_install_inlet": "alias:liner_install_inlays",
+    "liner_reset": [
+      {"pattern": "drain|vac", "price": 300, "description": "Drain & vac (+$300 over water-out)"},
+      {"pattern": "putty", "price": 50, "description": "Putty work"},
+      {"pattern": "\\blights?\\b", "price": 30, "description": "Light work"},
+      {"pattern": "liner\\s*loc|liner\\s*lock", "price": 300, "description": "Liner lock (full pool)"},
+      {"pattern": "adjust(ment)?", "price": 25, "description": "Adjustment"},
+      {"pattern": "partial|half\\s*reset", "price": -200, "description": "Partial/half reset discount"}
+    ],
+    "snap_in": [
+      {"pattern": "liner\\s*loc|corners", "price": 40, "description": "Liner lock/corners"},
+      {"pattern": "drain\\s*cover", "price": 25, "description": "Drain cover"},
+      {"pattern": "patch", "price": 25, "description": "Patch"},
+      {"pattern": "track", "price": 40, "description": "Track work"},
+      {"pattern": "haul\\s*off|haulaway", "price": 30, "description": "Haul off"}
+    ],
+    "safety_cover": [
+      {"pattern": "cable\\s*kit|cable", "price": 200, "description": "Cable kit (upgrade to cable kit rate)"},
+      {"pattern": "black\\s*material|\\bblack\\b", "price": 100, "description": "Black material"},
+      {"pattern": "yard\\s*stakes?", "price": 50, "description": "All yard stakes"},
+      {"pattern": "up\\s*and\\s*over", "price": 50, "description": "Up and over"},
+      {"pattern": "raised\\s*wall", "price": 50, "description": "Raised wall"},
+      {"pattern": "haul\\s*off", "price": 80, "description": "Haul off"}
+    ],
+    "measure": [
+      {"pattern": "a/?b|inlet", "price": 75, "description": "A/B or inlet measurement (upgrade to AB measure rate)"}
+    ],
+    "repair": [
+      {"pattern": "skimmer\\s*replace", "price": 500, "description": "Skimmer replacement"},
+      {"pattern": "skimmer", "price": 200, "description": "Skimmer work"}
+    ]
+  },
+  "distance_premiums": [
+    {"pattern": "oxford", "price": 200, "description": "Oxford drive"},
+    {"pattern": "batesville", "price": 200, "description": "Batesville drive"},
+    {"pattern": "senatobia", "price": 100, "description": "Senatobia drive"},
+    {"pattern": "brownsville", "price": 100, "description": "Brownsville drive"},
+    {"pattern": "sardis", "price": 150, "description": "Sardis drive"},
+    {"pattern": "hernando", "price": 50, "description": "Hernando"},
+    {"pattern": "palestine", "price": 100, "description": "Palestine drive"}
+  ],
+  "notes": {
+    "liner_install": "Regular installs: rectangles, kidneys, and anything not with liner over/inlay steps.",
+    "liner_install_inlays": "Inlay/liner-over-step installs. Recon keeps liner_install_inlet as a legacy alias.",
+    "liner_install_inlet": "Legacy alias for liner_install_inlays.",
+    "measure": "Non A/B pool measurement.",
+    "ab_measure": "A/B measurement from active config.yaml.",
+    "measure_ab": "Legacy alias for ab_measure.",
+    "snap_in": "Standard snap-in work.",
+    "snap_in_plus": "Higher snap-in tier from active config.",
+    "source_confirmation": "Stephen confirmed this active Artesian config is the one to use on 2026-06-17.",
+    "addon_status": "Add-on and distance rules are exposed as source data first. Recon should only auto-apply them when matching is explicit enough to avoid overbilling."
+  }
+}

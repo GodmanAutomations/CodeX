@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+set -euo pipefail
+exec /Users/stephengodman/CodeX/router/codex_route.py "$@"

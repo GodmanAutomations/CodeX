@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="/Users/stephengodman/CodeX"
+TASK_DIR="$ROOT/receipts/tasks"
+mkdir -p "$TASK_DIR"
+
+TYPE="auto"
+NAME="task"
+FILES="TBD"
+ACTION="TBD"
+VERIFY="TBD"
+DONE="TBD"
+NAME_SET=0
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  codex-task "task name" [--files FILES] [--action ACTION] [--verify VERIFY] [--done DONE] [--type TYPE]
+
+Creates an ignored XML handhold for one bounded, verification-gated CodeX slice.
+
+The file is written under receipts/tasks/ so it is available locally without
+being staged into the CodeX control repo.
+USAGE
+}
+
+xml_escape() {
+  printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/"/\&quot;/g' -e "s/'/\&apos;/g" -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --files)
+      shift
+      [ "$#" -gt 0 ] || { printf 'missing value for --files\n' >&2; exit 2; }
+      FILES="$1"
+      ;;
+    --action)
+      shift
+      [ "$#" -gt 0 ] || { printf 'missing value for --action\n' >&2; exit 2; }
+      ACTION="$1"
+      ;;
+    --verify)
+      shift
+      [ "$#" -gt 0 ] || { printf 'missing value for --verify\n' >&2; exit 2; }
+      VERIFY="$1"
+      ;;
+    --done)
+      shift
+      [ "$#" -gt 0 ] || { printf 'missing value for --done\n' >&2; exit 2; }
+      DONE="$1"
+      ;;
+    --type)
+      shift
+      [ "$#" -gt 0 ] || { printf 'missing value for --type\n' >&2; exit 2; }
+      TYPE="$1"
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      if [ "$NAME_SET" -eq 0 ]; then
+        NAME="$1"
+        NAME_SET=1
+      else
+        printf 'unexpected argument: %s\n' "$1" >&2
+        exit 2
+      fi
+      ;;
+  esac
+  shift
+done
+
+SAFE_SLUG="$(printf '%s' "$NAME" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9._-' '-' | sed 's/^-//; s/-$//' | cut -c1-80)"
+[ -n "$SAFE_SLUG" ] || SAFE_SLUG="task"
+
+STAMP="$(date '+%Y%m%d-%H%M%S')"
+FILE="$TASK_DIR/$STAMP-$SAFE_SLUG.xml"
+
+cat > "$FILE" <<XML
+<task type="$(xml_escape "$TYPE")">
+  <name>$(xml_escape "$NAME")</name>
+  <files>$(xml_escape "$FILES")</files>
+  <action>$(xml_escape "$ACTION")</action>
+  <verify>$(xml_escape "$VERIFY")</verify>
+  <done>$(xml_escape "$DONE")</done>
+</task>
+XML
+
+printf '%s\n' "$FILE"

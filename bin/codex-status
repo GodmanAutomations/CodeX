@@ -1,0 +1,238 @@
+#!/usr/bin/env python3
+"""Plain CodeX status dashboard for Stephen's app-only setup."""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+from pathlib import Path
+from typing import Any
+
+
+ROOT = Path("/Users/stephengodman/CodeX")
+CONFIG = Path("/Users/stephengodman/.codex/config.toml")
+TRELLO_LAUNCHER = ROOT / "mcp_servers" / "trello_mcp_launcher.sh"
+TRELLO_SERVER = ROOT / "mcp_servers" / "trello_mcp_server.py"
+TREE_STEWARD = ROOT / "bin" / "codex-tree-steward"
+WORK_NOTES = ROOT / "work-notes"
+HANDOFF = Path("/Users/stephengodman/_handoff/codex")
+PI_HOST = "pi@100.100.32.58"
+
+KEY_NAMES = [
+    "TRELLO_API_KEY",
+    "TRELLO_KEY",
+    "TRELLO_TOKEN",
+    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+    "PUSHOVER_TOKEN",
+]
+
+
+def run(cmd: list[str], timeout: int = 8) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=timeout)
+
+
+def launchctl_present(name: str) -> bool:
+    try:
+        result = run(["/bin/launchctl", "getenv", name], timeout=2)
+    except Exception:
+        return False
+    return bool(result.stdout.strip())
+
+
+def process_running(pattern: str) -> bool:
+    pgrep = shutil.which("pgrep") or "/usr/bin/pgrep"
+    result = run([pgrep, "-f", pattern], timeout=3)
+    return result.returncode == 0
+
+
+def any_process_running(patterns: list[str]) -> bool:
+    return any(process_running(pattern) for pattern in patterns)
+
+
+def json_command(cmd: list[str], timeout: int = 20) -> dict[str, Any]:
+    try:
+        result = run(cmd, timeout=timeout)
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+    output = result.stdout.strip() or result.stderr.strip()
+    try:
+        payload = json.loads(output)
+    except Exception:
+        payload = {"ok": False, "error": output[:800] or f"exit {result.returncode}"}
+    payload.setdefault("returncode", result.returncode)
+    return payload
+
+
+def count_trello_tools() -> int:
+    if not TRELLO_SERVER.exists():
+        return 0
+    text = TRELLO_SERVER.read_text(encoding="utf-8", errors="replace")
+    return len(re.findall(r"(?m)^@mcp\.tool\(\)\n(?:.+\n)*?def\s+[A-Za-z_][A-Za-z0-9_]*\(", text))
+
+
+def tree_health() -> dict[str, Any]:
+    if not TREE_STEWARD.exists():
+        return {"ok": False, "error": "missing", "path": str(TREE_STEWARD)}
+    payload = json_command([str(TREE_STEWARD), "--json", "--no-receipt"], timeout=20)
+    return {
+        "ok": bool(payload.get("strict_pass")),
+        "path": str(TREE_STEWARD),
+        "dirty_count": payload.get("dirty_count"),
+        "strict_pass": payload.get("strict_pass"),
+        "strict_blockers": payload.get("strict_blockers"),
+        "summary": payload.get("summary") or {},
+        "findings_count": len(payload.get("findings") or []),
+        "policy_path": payload.get("policy_path"),
+        "error": payload.get("error"),
+    }
+
+
+def latest_files(folder: Path, limit: int = 5) -> list[dict[str, str]]:
+    if not folder.exists():
+        return []
+    files = [p for p in folder.iterdir() if p.is_file()]
+    files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return [{"name": p.name, "path": str(p)} for p in files[:limit]]
+
+
+def pi_status() -> dict[str, Any]:
+    cmd = [
+        "ssh",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "ConnectTimeout=3",
+        PI_HOST,
+        (
+            "if test -d /opt/telegram/candice; then echo candice_home=/opt/telegram/candice; "
+            "elif test -d /opt/telegram/candice_v2; then echo candice_home=/opt/telegram/candice_v2; "
+            "else echo candice_home_missing; fi"
+        ),
+    ]
+    try:
+        result = run(cmd, timeout=6)
+    except Exception as exc:
+        return {"ok": False, "status": "unreachable", "detail": str(exc)}
+    detail = (result.stdout or result.stderr).strip()
+    return {"ok": result.returncode == 0, "status": detail or f"exit {result.returncode}"}
+
+
+def build_status(include_pi: bool = True) -> dict[str, Any]:
+    trello = json_command([str(TRELLO_LAUNCHER), "--status"], timeout=20)
+    tree = tree_health()
+    env = {
+        name: {
+            "current_process": bool(os.environ.get(name)),
+            "mac_user_environment": launchctl_present(name),
+        }
+        for name in KEY_NAMES
+    }
+    return {
+        "ok": bool(trello.get("ok")) and bool(tree.get("ok")),
+        "app_only": True,
+        "codex_app_running": any_process_running(
+            [
+                "/Applications/Codex.app/Contents/MacOS/Codex",
+                "/Applications/Codex.app/Contents/Resources/codex app-server",
+                "Application Support/Codex",
+            ]
+        ),
+        "onepassword_app_running": process_running("/Applications/1Password.app/Contents/MacOS/1Password"),
+        "paths": {
+            "root": str(ROOT),
+            "config": str(CONFIG),
+            "trello_launcher": str(TRELLO_LAUNCHER),
+            "trello_server": str(TRELLO_SERVER),
+        },
+        "environment": env,
+        "trello_mcp": {
+            "ok": bool(trello.get("ok")),
+            "credential_source": trello.get("credential_source"),
+            "op_attempted": trello.get("op_resolution", {}).get("status") not in {None, "not_attempted"},
+            "tool_count": count_trello_tools(),
+        },
+        "tree": tree,
+        "pi": pi_status() if include_pi else {"ok": None, "status": "skipped"},
+        "latest_receipts": latest_files(WORK_NOTES, 5),
+        "latest_handoffs": latest_files(HANDOFF, 5),
+        "safety": {
+            "secrets_returned": False,
+            "trello_writes": False,
+            "pi5_writes": False,
+        },
+    }
+
+
+def yn(value: bool | None) -> str:
+    if value is None:
+        return "SKIP"
+    return "OK" if value else "NO"
+
+
+def format_status(status: dict[str, Any]) -> str:
+    lines = [
+        "CodeX Status",
+        "",
+        f"App-only mode: {yn(status.get('app_only'))}",
+        f"Codex app running: {yn(status.get('codex_app_running'))}",
+        f"1Password app running: {yn(status.get('onepassword_app_running'))}",
+        "",
+        "API environment:",
+    ]
+    env = status.get("environment", {})
+    for name in KEY_NAMES:
+        item = env.get(name, {})
+        current = yn(item.get("current_process"))
+        mac = yn(item.get("mac_user_environment"))
+        lines.append(f"- {name}: current={current}, mac-user-env={mac}")
+
+    trello = status.get("trello_mcp", {})
+    tree = status.get("tree", {})
+    lines.extend(
+        [
+            "",
+            "Tree steward:",
+            f"- strict pass: {yn(tree.get('strict_pass'))}",
+            f"- dirty count: {tree.get('dirty_count')}",
+            f"- blockers: {tree.get('strict_blockers')}",
+            f"- policy findings: {tree.get('findings_count')}",
+            "",
+            "Trello MCP:",
+            f"- status: {yn(trello.get('ok'))}",
+            f"- credential source: {trello.get('credential_source') or 'unknown'}",
+            f"- 1Password attempted: {yn(trello.get('op_attempted'))}",
+            f"- tool count: {trello.get('tool_count')}",
+            "",
+            "Pi / Candice:",
+            f"- {status.get('pi', {}).get('status')}",
+            "",
+            "Latest receipts:",
+        ]
+    )
+    for item in status.get("latest_receipts", []):
+        lines.append(f"- {item['name']}")
+    lines.append("")
+    lines.append("Latest handoffs:")
+    for item in status.get("latest_handoffs", []):
+        lines.append(f"- {item['name']}")
+    return "\n".join(lines)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Show CodeX app, env, MCP, and receipt status")
+    parser.add_argument("--json", action="store_true")
+    parser.add_argument("--skip-pi", action="store_true", help="Skip Pi/Candice reachability check.")
+    args = parser.parse_args()
+    status = build_status(include_pi=not args.skip_pi)
+    print(json.dumps(status, indent=2, sort_keys=True) if args.json else format_status(status))
+    return 0 if status.get("ok") else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,11 +1,182 @@
 # CodeX
-Where codex and I can chop it up..
 
-## Codex Cloud bridge
+Codex's room for Stephen Godman.
 
-Use `codex_bridge.py` to send a message from your terminal to a Codex Cloud endpoint.
+This is a light workbench drawer, not a cathedral.
 
-### Quick start
+## Local Git
+
+This room is managed as a local git control repo. The physical checkout is:
+
+```bash
+/Users/stephengodman/CodeX
+```
+
+Use `/Users/stephengodman/CodeX` in room docs and launchers unless Stephen explicitly points elsewhere.
+
+## Start Here
+
+- `CODEX-IDENTITY-LOCK.md`
+- `CODEX-CODING-ANCHOR-SELF.md`
+- `START-HERE.md`
+- `BOOT.md`
+- `CURRENT.md`
+- `ROOM-SURFACE-MAP.md`
+- `CODEX-SKILLS.md`
+- `ROUTING-CARD.md`
+- `SYSTEM-TREE.md`
+
+Standalone app launch:
+
+```bash
+/Users/stephengodman/CodeX/bin/codex-launch
+```
+
+Default self:
+
+```text
+Coding Anchor always on: CodeX stays CodeX, finds true state, takes the smallest useful move, acts with initiative, and verifies before confidence.
+```
+
+Room health check:
+
+```bash
+/Users/stephengodman/CodeX/bin/codex-status
+/Users/stephengodman/CodeX/bin/codex-doctor-room
+```
+
+Tree / Trello MCP preflight:
+
+```bash
+/Users/stephengodman/CodeX/bin/codex-tree-steward --strict
+/Users/stephengodman/CodeX/bin/codex-mcp preflight
+```
+
+Phone / away mode:
+
+```bash
+/Users/stephengodman/CodeX/bin/codex-phone-mode --status
+/Users/stephengodman/CodeX/bin/codex-phone-mode --summary
+/Users/stephengodman/CodeX/bin/codex-phone-mode --refresh-cache
+/Users/stephengodman/CodeX/bin/codex-phone-mode --apply
+/Users/stephengodman/CodeX/bin/codex-phone-mode --apply --notify
+/Users/stephengodman/CodeX/bin/codex-phone-mode --restore-sleep
+/Users/stephengodman/CodeX/bin/codex-phone-mode-watchdog --install
+/Users/stephengodman/CodeX/bin/codex-phone-mode-watchdog --status
+```
+
+Phone mode also verifies Coding Anchor readiness with `coding-anchor-agentic-check`,
+`coding-anchor-doctor`, and `coding-anchor-next`, so the room remains usable
+while Stephen is operating from the phone with the Mac lid closed. Use
+`--summary` for a compact phone-readable readiness check, `--refresh-cache` to
+resolve local runtime secrets into the phone cache, and `--notify` to send that
+check through Pushover. The watchdog keeps phone mode repaired every five
+minutes and protects battery automatically.
+
+MCP control panel:
+
+```bash
+/Users/stephengodman/CodeX/bin/codex-mcp status
+/Users/stephengodman/CodeX/bin/codex-mcp preflight
+/Users/stephengodman/CodeX/bin/codex-mcp tools --include-writes
+/Users/stephengodman/CodeX/bin/codex-mcp trello-test Byrd
+```
+
+Fast room brief:
+
+```bash
+/Users/stephengodman/CodeX/bin/codex-room brief
+```
+
+## Room Surfaces
+
+If something feels important but hidden:
+
+```bash
+sed -n '1,220p' /Users/stephengodman/CodeX/ROOM-SURFACE-MAP.md
+```
+
+Key room-temperature files:
+
+- `WRENCH-GHOST-MODE.md`
+- `BENCH-LIGHT-ON-GUARDRAILS.md`
+- `play/CHAOS-JOURNAL.md`
+- `play/cards/002-wrench-ghost-field-manual.md`
+
+## Heartbeat
+
+Run:
+
+```bash
+/Users/stephengodman/CodeX/bin/codex-heartbeat
+```
+
+This updates `HEARTBEAT.json` and the SQLite memory key `codex-heartbeat-latest`.
+
+## Lanes
+
+- `lanes/notebooklm.md`
+- `lanes/repos.md`
+
+## Evals
+
+Run practical leveling checks:
+
+```bash
+/Users/stephengodman/CodeX/bin/codex-eval run room
+/Users/stephengodman/CodeX/bin/codex-self-drift
+```
+
+Use `run all` when you want every current CodeX-owned eval case in one sweep.
+
+## Failure Memory
+
+Record practical failures and prevention rules:
+
+```bash
+/Users/stephengodman/CodeX/bin/codex-failure status
+/Users/stephengodman/CodeX/bin/codex-failure search gemini
+```
+
+## Capability Registry
+
+```bash
+/Users/stephengodman/CodeX/bin/codex-capability status
+/Users/stephengodman/CodeX/bin/codex-capability search browser
+```
+
+## Dashboard
+
+```bash
+/Users/stephengodman/CodeX/bin/codex-dashboard build
+open /Users/stephengodman/CodeX/dashboard/index.html
+```
+
+## Router
+
+```bash
+/Users/stephengodman/CodeX/bin/codex-route "compress this huge gws json"
+```
+
+## Continuity
+
+```bash
+/Users/stephengodman/CodeX/bin/codex-continuity
+```
+
+## Path Map
+
+Use the local system tree for fast path questions:
+
+```bash
+/Users/stephengodman/bin/systree find "<term>"
+sed -n '1,220p' /Users/stephengodman/CodeX/SYSTEM-TREE.md
+```
+
+## Codex Cloud Bridge
+
+Use `codex_bridge.py` to send a message from the terminal to a Codex Cloud
+endpoint.
 
 ```bash
 export CODEX_CLOUD_URL="https://your-codex-cloud-endpoint"

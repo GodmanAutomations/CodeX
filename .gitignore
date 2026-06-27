@@ -1,2 +1,102 @@
+# CodeX local control repo ignore policy
+#
+# Track durable room instructions, scripts, MCP servers, and concise receipts.
+# Do not track private journals, secret files, generated artifacts, caches,
+# logs, local databases, screenshots, bulky reference archives, or nested repos.
+
+.DS_Store
+**/.DS_Store
+
+# Local app/agent state
+.claude/
+.codex/
+.mcp.json
+.playwright-mcp/
+.pytest_cache/
+.remember/
+.tmp/
+tmp/
+output/
+pulled/
+logs/
+receipts/
+private/
+attachment-vault/
+HEARTBEAT.json
+continuity/one-true-sentence.*
+codex_continuity/tomorrow/
+browser/artifacts/
+evals/results/
+notebooklm-packets/
+
+# Databases, caches, generated Python state
 __pycache__/
-*.pyc
+*.py[cod]
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.sqlite3-*
+*.db
+*.db-*
+*.log
+
+# Secrets and local env
+.env
+.env.*
+*.pem
+*.key
+*.token
+*.secret
+
+# Generated or bulky artifacts
+backups/
+work-artifacts/
+dashboard/index.html
+mcp_servers/*.before-*
+research/
+play/
+venice/results/
+venice/characters/
+list_of_superskills.py
+1password-missing-telemetry-report.md
+GPTREVIEWOFCHAT.md
+INSPECTOR-GADGET-NEO4J-MCP-CAMOUFOX-GUIDE.md
+OPENWEBUI-ADDING-STUFF-GUIDE.md
+*.png
+*.jpg
+*.jpeg
+*.heic
+*.mov
+*.mp4
+*.zip
+*.tar
+*.tar.gz
+
+# Large/reference bundles kept local
+Codex's Secret Sauce/
+Coding Anchor Files/
+measurement-pipeline-v2/
+
+# Keep work notes opt-in so the repo stays readable.
+work-notes/*
+!work-notes/README.md
+!work-notes/INDEX.md
+!work-notes/codex-one-unlock-api-environment-loader-2026-06-16.md
+!work-notes/codex-friction-control-surface-2026-06-16.md
+!work-notes/codex-local-git-control-repo-2026-06-16.md
+!work-notes/trello-read-work-order-command-2026-06-16.md
+!work-notes/trello-attach-card-photo-command-2026-06-16.md
+!work-notes/trello-find-card-command-2026-06-16.md
+!work-notes/trello-mcp-workorder-attachment-tools-2026-06-15.md
+!work-notes/trello-billing-preview-command-2026-06-16.md
+!work-notes/trello-draft-bill-command-2026-06-16.md
+!work-notes/trello-publish-bill-command-2026-06-16.md
+!work-notes/trello-route-stops-command-2026-06-16.md
+!work-notes/stephen-billing-rate-overrides-2026-06-16.md
+
+# Keep core control subtrees opt-in and small.
+capabilities/*.sqlite3
+codex_continuity/*.sqlite3
+evals/*.sqlite3
+failures/*.sqlite3
+memory/*.sqlite3

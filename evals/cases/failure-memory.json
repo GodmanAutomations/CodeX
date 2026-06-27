@@ -1,0 +1,5 @@
+{
+  "id": "failure-memory",
+  "description": "CodeX remembers practical failures, fixes, and prevention rules.",
+  "target": "codex"
+}

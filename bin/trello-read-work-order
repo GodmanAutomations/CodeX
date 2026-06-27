@@ -1,0 +1,153 @@
+#!/usr/bin/env python3
+"""Field-friendly Trello operator wrapper.
+
+This stays thin on purpose: the Trello MCP launcher remains the source of
+truth for credentials, board config, attachment download, and parsing.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+
+LAUNCHER = Path("/Users/stephengodman/CodeX/mcp_servers/trello_mcp_launcher.sh")
+
+
+def clean_card_query(value: str) -> str:
+    value = re.sub(r"\s+", " ", value or "").strip(" .,:;-\"'")
+    value = re.sub(r"\b(?:trello\s+)?card\b", "", value, flags=re.I)
+    value = re.sub(r"\b(?:work\s*order|workorder|install\s+sheet|measure\s+sheet|measurement\s+sheet)\b", "", value, flags=re.I)
+    value = re.sub(r"\b(?:please|can you|could you|tell me|read|check|find|look at|the|a|an|on|for|if|whether|haul\s*-?\s*off|hauloff)\b", " ", value, flags=re.I)
+    return re.sub(r"\s+", " ", value).strip(" .,:;-\"'")
+
+
+def extract_card_query(text: str) -> str:
+    raw = (text or "").strip()
+    patterns = (
+        r"\bon\s+(?:the\s+)?(.+?)\s+(?:trello\s+)?card\b",
+        r"\b(?:check|read|find|look\s+at)\s+(?:the\s+)?(.+?)\s+(?:trello\s+)?card\b",
+        r"\b(?:work\s*order|workorder|install\s+sheet|measure\s+sheet|measurement\s+sheet)\s+(?:on|for)\s+(?:the\s+)?(.+?)(?:\s+(?:card|job))?(?:\s+(?:and|for|to|if)\b|$)",
+        r"\b(?:on|for)\s+(?:the\s+)?(.+?)\s+(?:work\s*order|workorder|job)\b",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, raw, re.I)
+        if match:
+            candidate = re.sub(r"\b(?:and|for|to|if)\b.*$", "", match.group(1), flags=re.I)
+            cleaned = clean_card_query(candidate)
+            if cleaned:
+                return cleaned
+    return clean_card_query(raw)
+
+
+def is_hauloff_question(text: str) -> bool:
+    return bool(re.search(r"\bha(?:u)?l\s*-?\s*off\b|hauloff", text or "", re.I))
+
+
+def run_launcher(args: list[str]) -> dict:
+    result = subprocess.run(
+        [str(LAUNCHER), *args],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=90,
+    )
+    output = result.stdout.strip() or result.stderr.strip()
+    try:
+        payload = json.loads(output)
+    except json.JSONDecodeError:
+        payload = {
+            "ok": False,
+            "error": output[:1200] or f"launcher exited {result.returncode}",
+            "returncode": result.returncode,
+        }
+    if result.returncode != 0 and payload.get("ok") is not False:
+        payload["ok"] = False
+        payload["returncode"] = result.returncode
+    return payload
+
+
+def format_work_order(payload: dict, question: str) -> str:
+    if not payload.get("ok"):
+        return f"Trello: {payload.get('error') or 'work-order read failed'}"
+
+    card = (payload.get("card") or {}).get("name") or "Card"
+    attachment = (payload.get("attachment") or {}).get("name") or "work order"
+    hints = payload.get("hints") or {}
+
+    if is_hauloff_question(question):
+        haul = hints.get("haul_off")
+        lines = hints.get("haul_lines") or []
+        source_line = next(
+            (
+                line for line in lines
+                if re.search(r"\bno\s+haul\s*-?\s*off\b|\bno\s+hauloff\b", line, re.I)
+            ),
+            lines[0] if lines else "",
+        )
+        if haul:
+            source = f"\nSource: {source_line}" if source_line else ""
+            return f"{card}: {haul}{source}"
+        return f"{card}: work order read, but no clear haul-off line found in {attachment}."
+
+    important = hints.get("important_lines") or []
+    if important:
+        lines = "\n".join(f"- {line}" for line in important[:10])
+        return f"{card}: read {attachment}.\n{lines}"
+
+    text = (payload.get("text") or "").strip()
+    if text:
+        return f"{card}: read {attachment}.\n{text[:1200]}"
+    return f"{card}: read {attachment}, but no useful text came out."
+
+
+def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(description="Read a Trello card work order by card name")
+    parser.add_argument("words", nargs="*", help="Natural phrase, or: hauloff Corson / workorder Corson")
+    parser.add_argument("--json", action="store_true", help="Return raw JSON from the MCP launcher.")
+    parser.add_argument("--board", default="memphis", help="Board alias. Default: memphis.")
+    parser.add_argument("--max-text-chars", type=int, default=1200)
+    args = parser.parse_args(argv)
+
+    if not args.words:
+        parser.print_help()
+        return 2
+
+    phrase = " ".join(args.words).strip()
+    first = args.words[0].lower()
+    if first in {"status", "doctor"}:
+        payload = run_launcher(["--doctor-live" if first == "doctor" else "--status"])
+        print(json.dumps(payload, indent=2, sort_keys=True) if args.json else ("OK" if payload.get("ok") else payload.get("error", "not ok")))
+        return 0 if payload.get("ok") else 1
+
+    if first in {"hauloff", "haul-off", "workorder", "work-order", "read"} and len(args.words) > 1:
+        card_query = extract_card_query(" ".join(args.words[1:]))
+    else:
+        card_query = extract_card_query(phrase)
+
+    if not card_query:
+        print("Trello: tell me which card to read.", file=sys.stderr)
+        return 2
+
+    payload = run_launcher(
+        [
+            "--read-work-order",
+            "--board",
+            args.board,
+            "--card-query",
+            card_query,
+            "--question",
+            phrase,
+            "--max-text-chars",
+            str(args.max_text_chars),
+        ]
+    )
+    print(json.dumps(payload, indent=2, sort_keys=True) if args.json else format_work_order(payload, phrase))
+    return 0 if payload.get("ok") else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

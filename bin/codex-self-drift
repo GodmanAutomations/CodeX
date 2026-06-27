@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+set -euo pipefail
+exec /Users/stephengodman/CodeX/drift/codex_self_drift.py "$@"

@@ -1,0 +1,378 @@
+#!/Users/stephengodman/000_AI/bin/python3
+"""Build a driving route from Trello pool job names."""
+from __future__ import annotations
+
+import argparse
+import importlib.util
+import json
+import math
+import os
+import re
+import subprocess
+import sys
+import time
+import urllib.parse
+import urllib.request
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+
+ROOT = Path("/Users/stephengodman/CodeX")
+TRELLO_SERVER = ROOT / "mcp_servers" / "trello_mcp_server.py"
+OUT_DIR = ROOT / "work-artifacts" / "routes"
+WAREHOUSE_NAME = "Warehouse"
+WAREHOUSE_ADDRESS = "3765 Winchester Rd, Memphis, TN"
+WAREHOUSE_COORDS = (-89.8641623, 35.0492439)
+STOPWORDS = {"the", "a", "an", "and", "or", "for", "in", "to", "of", "snap", "snapping", "snapin"}
+JOB_WORDS = (
+    "measure",
+    "install",
+    "liner",
+    "snap",
+    "warranty",
+    "reset",
+    "safety",
+    "cover",
+    "repair",
+    "inlay",
+    "steps",
+    "pump",
+)
+
+
+def load_launchctl_env() -> None:
+    for name in ("TRELLO_API_KEY", "TRELLO_KEY", "TRELLO_TOKEN"):
+        if os.environ.get(name):
+            continue
+        result = subprocess.run(
+            ["/bin/launchctl", "getenv", name],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        value = result.stdout.strip()
+        if value:
+            os.environ[name] = value
+
+
+def load_trello_module() -> Any:
+    load_launchctl_env()
+    spec = importlib.util.spec_from_file_location("codex_trello_mcp_server", TRELLO_SERVER)
+    if not spec or not spec.loader:
+        raise RuntimeError(f"Could not load Trello MCP server: {TRELLO_SERVER}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def tokens(value: str) -> set[str]:
+    return {
+        token
+        for token in re.findall(r"[a-z0-9]+", value.lower())
+        if len(token) > 2 and token not in STOPWORDS
+    }
+
+
+def score_card(query: str, card: dict[str, Any]) -> int:
+    q = tokens(query)
+    haystack = f"{card.get('name') or ''}\n{card.get('desc') or ''}"
+    c = tokens(haystack)
+    score = len(q & c) * 10
+    lower = haystack.lower()
+    for token in q:
+        if token in lower:
+            score += 2
+    if "snap" in query.lower() and "snap" in lower:
+        score += 12
+    if "warranty" in query.lower() and "warranty" in lower:
+        score += 8
+    return score
+
+
+def resolve_card(trello: Any, query: str, board: str) -> dict[str, Any]:
+    cards = trello.get_cards(board=board, filter="open", limit=500)
+    ranked = sorted(cards, key=lambda card: score_card(query, card), reverse=True)
+    if not ranked or score_card(query, ranked[0]) <= 0:
+        raise RuntimeError(f"No open Trello card matched: {query}")
+    card = trello.get_card(ranked[0]["id"])
+    card["_route_match_score"] = score_card(query, ranked[0])
+    card["_route_query"] = query
+    return card
+
+
+def attachment_names(trello: Any, card_id: str) -> list[str]:
+    try:
+        return [str(item.get("name") or "") for item in trello.get_card_attachments(card_id)]
+    except Exception:
+        return []
+
+
+def address_from_apple_maps(desc: str) -> str:
+    match = re.search(r"https://maps\.apple\.com/\?address=([^\s)\"<>]+)", desc or "")
+    if not match:
+        return ""
+    return urllib.parse.unquote_plus(match.group(1)).replace(",", ", ").strip()
+
+
+def address_from_attachment_name(name: str, city_hint: str) -> str:
+    if Path(name).suffix.lower() in {".jpg", ".jpeg", ".png", ".gif", ".heic", ".webp", ".tif", ".tiff"}:
+        return ""
+    stem = Path(name).stem.replace("_", " ")
+    match = re.search(r"\b(\d{1,6}\s+.+)", stem)
+    if not match:
+        return ""
+    tail = re.sub(r"\s+", " ", match.group(1)).strip()
+    stop_positions = []
+    lower = tail.lower()
+    for word in JOB_WORDS:
+        pos = lower.find(f" {word}")
+        if pos > 0:
+            stop_positions.append(pos)
+    if stop_positions:
+        tail = tail[: min(stop_positions)].strip()
+    tail = tail.strip(" -")
+    if not tail:
+        return ""
+    if not re.search(
+        r"\b(?:road|rd|drive|dr|cove|cv|lane|ln|street|st|circle|cir|court|ct|avenue|ave|way|place|pl|trail|trl|boulevard|blvd|pike|parkway|pkwy)\b",
+        tail,
+        re.I,
+    ):
+        return ""
+    if re.search(r"\bTN\b|tennessee|\d{5}", tail, re.I):
+        return tail
+    city = city_hint or "Collierville"
+    return f"{tail}, {city}, TN"
+
+
+def city_hint(card_name: str) -> str:
+    lower = card_name.lower()
+    for city in ("Collierville", "Germantown", "Memphis", "Cordova", "Olive Branch"):
+        if city.lower() in lower:
+            return city
+    return "Collierville"
+
+
+def resolve_address(trello: Any, card: dict[str, Any]) -> tuple[str, str]:
+    hint = city_hint(str(card.get("name") or ""))
+    for name in attachment_names(trello, str(card["id"])):
+        addr = address_from_attachment_name(name, hint)
+        if addr:
+            return addr, f"attachment_name:{name}"
+    desc_address = address_from_apple_maps(card.get("desc") or "")
+    if desc_address:
+        return desc_address, "card_desc_apple_maps"
+    raise RuntimeError(f"No address found for card: {card.get('name')}")
+
+
+def geocode(address: str) -> dict[str, Any]:
+    url = "https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" + urllib.parse.quote(address)
+    req = urllib.request.Request(url, headers={"User-Agent": "Codex-Stephen-route-helper/1.0"})
+    data = json.load(urllib.request.urlopen(req, timeout=15))
+    if not data:
+        raise RuntimeError(f"Could not geocode: {address}")
+    item = data[0]
+    return {
+        "lat": float(item["lat"]),
+        "lon": float(item["lon"]),
+        "display_name": item.get("display_name"),
+    }
+
+
+def osrm_trip(stops: list[dict[str, Any]]) -> dict[str, Any]:
+    coords = ";".join(f"{stop['lon']},{stop['lat']}" for stop in stops)
+    url = (
+        f"https://router.project-osrm.org/trip/v1/driving/{coords}"
+        "?source=first&roundtrip=false&overview=false&steps=false"
+    )
+    data = json.load(urllib.request.urlopen(url, timeout=20))
+    if data.get("code") != "Ok":
+        raise RuntimeError(f"OSRM route failed: {data}")
+    order_indexes = sorted(range(len(data["waypoints"])), key=lambda index: data["waypoints"][index]["waypoint_index"])
+    ordered = [stops[index] for index in order_indexes]
+    trip = data["trips"][0]
+    legs = []
+    for leg, source, destination in zip(trip["legs"], ordered, ordered[1:]):
+        legs.append(
+            {
+                "from": source["name"],
+                "to": destination["name"],
+                "distance_miles": round(leg["distance"] / 1609.344, 1),
+                "duration_minutes": round(leg["duration"] / 60, 1),
+            }
+        )
+    return {
+        "ordered_stops": ordered,
+        "distance_miles": round(trip["distance"] / 1609.344, 1),
+        "duration_minutes": round(trip["duration"] / 60, 1),
+        "legs": legs,
+        "engine": "OSRM public demo server",
+    }
+
+
+def google_maps_url(ordered: list[dict[str, Any]], origin: str) -> str:
+    destination = ordered[-1]["address"]
+    waypoints = "|".join(stop["address"] for stop in ordered[:-1])
+    params = {
+        "api": "1",
+        "travelmode": "driving",
+        "origin": origin,
+        "destination": destination,
+        "waypoints": waypoints,
+    }
+    return "https://www.google.com/maps/dir/?" + urllib.parse.urlencode(params)
+
+
+def make_markdown(payload: dict[str, Any]) -> str:
+    lines = [
+        f"# Pool Route - {payload['created_at']}",
+        "",
+        f"- Total drive: {payload['distance_miles']} miles / {payload['duration_minutes']} minutes before traffic",
+        f"- Routing engine: {payload['engine']}",
+        f"- Google Maps: {payload['google_maps_url']}",
+        "",
+        "## Stop Order",
+        "",
+    ]
+    for index, stop in enumerate(payload["ordered_stops"], start=1):
+        lines.append(f"{index}. {stop['name']} - {stop['address']}")
+        if stop.get("card_url"):
+            lines.append(f"   - Trello: {stop['card_url']}")
+        if stop.get("notes"):
+            lines.append(f"   - Note: {stop['notes']}")
+    lines.extend(["", "## Legs", ""])
+    for leg in payload["legs"]:
+        lines.append(f"- {leg['from']} -> {leg['to']}: {leg['distance_miles']} mi / {leg['duration_minutes']} min")
+    return "\n".join(lines) + "\n"
+
+
+def save_outputs(payload: dict[str, Any]) -> dict[str, str]:
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    json_path = OUT_DIR / f"pool-route-{stamp}.json"
+    md_path = OUT_DIR / f"pool-route-{stamp}.md"
+    json_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    md_path.write_text(make_markdown(payload), encoding="utf-8")
+    return {"json": str(json_path), "markdown": str(md_path)}
+
+
+def build_route(args: argparse.Namespace) -> dict[str, Any]:
+    trello = load_trello_module()
+    stops: list[dict[str, Any]] = []
+    if args.warehouse_first:
+        stops.append(
+            {
+                "name": WAREHOUSE_NAME,
+                "address": WAREHOUSE_ADDRESS,
+                "lon": WAREHOUSE_COORDS[0],
+                "lat": WAREHOUSE_COORDS[1],
+                "source": "fixed_stop",
+                "notes": "Warehouse fixed stop from Stephen.",
+            }
+        )
+    for manual_stop in args.manual_stop:
+        if "=" not in manual_stop:
+            raise RuntimeError(f"Manual stop must be NAME=ADDRESS: {manual_stop}")
+        name, address = [part.strip() for part in manual_stop.split("=", 1)]
+        geo = geocode(address)
+        time.sleep(1)
+        stops.append(
+            {
+                "name": name,
+                "address": address,
+                "lon": geo["lon"],
+                "lat": geo["lat"],
+                "display_name": geo["display_name"],
+                "source": "manual_stop",
+                "notes": "Manual address override from Stephen.",
+            }
+        )
+    for query in args.stops:
+        card = resolve_card(trello, query, args.board)
+        address, source = resolve_address(trello, card)
+        geo = geocode(address)
+        time.sleep(1)
+        notes = ""
+        if "santiago" in query.lower() and "germantown" in (card.get("name") or "").lower() and "collierville" in (geo.get("display_name") or "").lower():
+            notes = "Trello card says Germantown; geocoder/work-order address resolves as Collierville/38139."
+        stops.append(
+            {
+                "name": str(card.get("name") or query),
+                "query": query,
+                "address": address,
+                "lon": geo["lon"],
+                "lat": geo["lat"],
+                "display_name": geo["display_name"],
+                "source": source,
+                "card_id": card.get("id"),
+                "card_url": card.get("shortUrl"),
+                "match_score": card.get("_route_match_score"),
+                "notes": notes,
+            }
+        )
+    trip = osrm_trip(stops)
+    payload = {
+        "ok": True,
+        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "board": args.board,
+        "input_stops": args.stops,
+        **trip,
+        "google_maps_url": google_maps_url(trip["ordered_stops"], args.origin),
+        "safety": {
+            "trello_writes": False,
+            "google_drive_writes": False,
+            "pi5_writes": False,
+            "secrets_returned": False,
+        },
+    }
+    payload["outputs"] = save_outputs(payload)
+    return payload
+
+
+def print_plain(payload: dict[str, Any]) -> None:
+    print(f"Route: {payload['distance_miles']} miles / {payload['duration_minutes']} minutes before traffic")
+    print("")
+    for index, stop in enumerate(payload["ordered_stops"], start=1):
+        print(f"{index}. {stop['name']}")
+        print(f"   {stop['address']}")
+        if stop.get("notes"):
+            print(f"   note: {stop['notes']}")
+    print("")
+    print(f"Google Maps: {payload['google_maps_url']}")
+    print(f"Route note: {payload['outputs']['markdown']}")
+
+
+def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(description="Build a pool-job route from Trello card names.")
+    parser.add_argument("stops", nargs="+", help="Customer/card queries, quoted when needed.")
+    parser.add_argument("--board", default="memphis")
+    parser.add_argument("--warehouse-first", action="store_true", help="Put 4300 Getwell Rd first.")
+    parser.add_argument("--manual-stop", action="append", default=[], help="Add NAME=ADDRESS without Trello lookup.")
+    parser.add_argument("--origin", default="Current Location")
+    parser.add_argument("--json", action="store_true")
+    args = parser.parse_args(argv)
+    try:
+        payload = build_route(args)
+    except Exception as exc:
+        payload = {
+            "ok": False,
+            "error_type": type(exc).__name__,
+            "error": str(exc)[:1200],
+            "safety": {
+                "trello_writes": False,
+                "secrets_returned": False,
+            },
+        }
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 1
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        print_plain(payload)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

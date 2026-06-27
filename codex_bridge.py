@@ -45,11 +45,11 @@ def _build_request(url: str, api_key: "str | None", message: str) -> urllib.requ
 
 def _validate_url(url: str) -> None:
     """Ensure endpoint URL is absolute and includes scheme and host."""
-parsed = urllib.parse.urlparse(url)
-if parsed.scheme not in ("http", "https") or not parsed.netloc:
-    raise SystemExit("CODEX_CLOUD_URL must be a valid absolute http(s) URL.")
-if parsed.username or parsed.password:
-    raise SystemExit("CODEX_CLOUD_URL must not include embedded credentials.")
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise SystemExit("CODEX_CLOUD_URL must be a valid absolute http(s) URL.")
+    if parsed.username or parsed.password:
+        raise SystemExit("CODEX_CLOUD_URL must not include embedded credentials.")
 
 
 def main() -> int:

@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+JOURNAL="/Users/stephengodman/CodeX/private/JOURNAL.md"
+STAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+TEXT=${*:-}
+
+if [[ -z "$TEXT" ]]; then
+  echo "usage: codex-private-journal <entry text>" >&2
+  exit 2
+fi
+
+# Redact obvious raw-secret shapes before writing. This journal is private, not a credential store.
+TEXT=$(printf '%s' "$TEXT" | perl -pe 's/VENICE_(ADMIN|API)_KEY_[A-Za-z0-9_-]+/[REDACTED_VENICE_KEY]/g; s/sk-[A-Za-z0-9_-]{20,}/[REDACTED_API_KEY]/g; s/ghp_[A-Za-z0-9_]{20,}/[REDACTED_GITHUB_TOKEN]/g; s/github_pat_[A-Za-z0-9_]{20,}/[REDACTED_GITHUB_TOKEN]/g; s/(api[_-]?key|token|secret|password)\s*[:=]\s*[^\s"'"'"']+/\1=[REDACTED_SECRET]/ig')
+
+{
+  printf '\n### %s\n\n' "$STAMP"
+  printf '%s\n' "$TEXT"
+} >> "$JOURNAL"
+
+chmod 600 "$JOURNAL"
+printf 'written: %s\n' "$JOURNAL"

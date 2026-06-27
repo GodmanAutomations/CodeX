@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="/Users/stephengodman/CodeX"
+LABEL="com.godman.codex-photo-sync-bridge"
+SOURCE_PLIST="$ROOT/launchd/${LABEL}.plist"
+TARGET_DIR="$HOME/Library/LaunchAgents"
+TARGET_PLIST="$TARGET_DIR/${LABEL}.plist"
+
+mkdir -p "$TARGET_DIR" "$ROOT/logs" "$ROOT/private/trello-photo-sync-bridge"
+"$ROOT/bin/trello-photo-sync-bridge" ensure-token --json >/dev/null
+
+if [[ ! -f "$SOURCE_PLIST" ]]; then
+  echo "missing source plist: $SOURCE_PLIST" >&2
+  exit 1
+fi
+
+cp "$SOURCE_PLIST" "$TARGET_PLIST"
+chmod 644 "$TARGET_PLIST"
+
+if launchctl print "gui/$UID/$LABEL" >/dev/null 2>&1; then
+  launchctl bootout "gui/$UID/$LABEL" >/dev/null 2>&1 || true
+fi
+
+launchctl bootstrap "gui/$UID" "$TARGET_PLIST"
+launchctl kickstart -k "gui/$UID/$LABEL"
+
+sleep 1
+launchctl print "gui/$UID/$LABEL" >/dev/null
+echo "installed $LABEL"
+

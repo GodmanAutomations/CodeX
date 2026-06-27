@@ -1,0 +1,5 @@
+{
+  "id": "dashboard",
+  "description": "CodeX dashboard builds a local status page with heartbeat and eval summaries.",
+  "target": "codex"
+}

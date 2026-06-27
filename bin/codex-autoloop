@@ -1,0 +1,202 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="/Users/stephengodman/CodeX"
+OUT_DIR="$ROOT/receipts/autoloops"
+
+PASSES=1
+SCOPE="CodeX next useful work"
+RUN_DOCTOR=1
+CREATE_TASK=0
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  codex-autoloop [scope] [--passes N] [--task] [--no-doctor]
+
+Creates an ignored CodeX auto-loop report that composes room status, health,
+inventory, priority queue, optional task handhold, verification, stop gates,
+and next handhold.
+
+This is a conductor, not blind autopilot. It does not edit project files, stage,
+commit, push, contact services, spend money, or bypass task judgment.
+
+Options:
+  --passes N    Plan N bounded passes. Capped at 5.
+  --task        Also create an ignored XML task handhold for pass 1.
+  --no-doctor   Skip the self-drift gate when a narrower check is intentional.
+USAGE
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --passes)
+      shift
+      [ "$#" -gt 0 ] || { printf 'missing value for --passes\n' >&2; exit 2; }
+      PASSES="$1"
+      ;;
+    --task)
+      CREATE_TASK=1
+      ;;
+    --no-doctor)
+      RUN_DOCTOR=0
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      SCOPE="$1"
+      ;;
+  esac
+  shift
+done
+
+case "$PASSES" in
+  ''|*[!0-9]*)
+    printf 'passes must be a positive integer\n' >&2
+    exit 2
+    ;;
+esac
+
+if [ "$PASSES" -lt 1 ]; then
+  printf 'passes must be at least 1\n' >&2
+  exit 2
+fi
+
+if [ "$PASSES" -gt 5 ]; then
+  printf 'passes capped at 5 to avoid runaway planning loops\n' >&2
+  PASSES=5
+fi
+
+mkdir -p "$OUT_DIR"
+slug="$(printf '%s' "$SCOPE" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/^-//;s/-$//' | cut -c1-60)"
+[ -n "$slug" ] || slug="auto-loop"
+stamp="$(date '+%Y%m%d-%H%M%S')"
+OUT="$OUT_DIR/$stamp-$slug.md"
+
+STATUS_TMP="$(mktemp)"
+MEMORY_TMP="$(mktemp)"
+PHONE_TMP="$(mktemp)"
+DOCTOR_TMP="$(mktemp)"
+trap 'rm -f "$STATUS_TMP" "$MEMORY_TMP" "$PHONE_TMP" "$DOCTOR_TMP"' EXIT
+
+git -C "$ROOT" status --short --branch > "$STATUS_TMP" 2>&1 || true
+"$ROOT/bin/codex-room" status > "$MEMORY_TMP" 2>&1 || true
+if [ -x "$ROOT/bin/codex-phone-mode" ]; then
+  "$ROOT/bin/codex-phone-mode" --summary > "$PHONE_TMP" 2>&1 || true
+fi
+
+DOCTOR_RESULT="skipped"
+if [ "$RUN_DOCTOR" -eq 1 ]; then
+  if "$ROOT/bin/codex-self-drift" > "$DOCTOR_TMP" 2>&1; then
+    DOCTOR_RESULT="pass"
+  else
+    DOCTOR_RESULT="fail"
+  fi
+fi
+
+dirty_count="$(git -C "$ROOT" status --short 2>/dev/null | wc -l | tr -d ' ')"
+task_count="$(find "$ROOT/receipts/tasks" -maxdepth 1 -name '*.xml' -type f 2>/dev/null | wc -l | tr -d ' ')"
+report_count="$(find "$ROOT/receipts/autoloops" -maxdepth 1 -name '*.md' -type f 2>/dev/null | wc -l | tr -d ' ')"
+
+priority_1="Execute requested scope: $SCOPE"
+if [ "$DOCTOR_RESULT" = "fail" ]; then
+  priority_1="Repair failing CodeX self-drift/startup checks before widening scope"
+elif [ "$dirty_count" != "0" ]; then
+  priority_1="Classify existing dirty work and avoid mixing unrelated changes into this slice"
+fi
+
+task_file=""
+if [ "$CREATE_TASK" -eq 1 ]; then
+  task_file="$("$ROOT/bin/codex-task" "$priority_1" \
+    --type "autoloop" \
+    --files "Use the status snapshot and targeted rg/git diff reads; do not widen beyond the active CodeX lane." \
+    --action "$priority_1" \
+    --verify "Run git diff --check; run the narrow script/test touched by the slice; run bin/codex-self-drift for startup/routing/identity changes." \
+    --done "One bounded slice is verified, or an exact blocker is reported with the next handhold.")"
+fi
+
+{
+  printf '# CodeX Auto-Loop Report\n\n'
+  printf 'Scope: %s\n\n' "$SCOPE"
+  printf 'Generated: %s\n\n' "$(date '+%Y-%m-%dT%H:%M:%S%z')"
+  printf 'Room: `%s`\n\n' "$ROOT"
+  printf 'Passes requested: %s\n\n' "$PASSES"
+
+  printf '## Status Snapshot\n\n'
+  printf '```text\n'
+  cat "$STATUS_TMP"
+  printf '```\n\n'
+
+  printf '## Memory Status\n\n'
+  printf '```json\n'
+  cat "$MEMORY_TMP"
+  printf '```\n\n'
+
+  if [ -s "$PHONE_TMP" ]; then
+    printf '## Phone Mode Snapshot\n\n'
+    printf '```text\n'
+    sed -n '1,120p' "$PHONE_TMP"
+    printf '```\n\n'
+  fi
+
+  printf '## Health Gate\n\n'
+  printf -- '- Self-drift: %s\n\n' "$DOCTOR_RESULT"
+  if [ "$DOCTOR_RESULT" = "fail" ]; then
+    printf '```text\n'
+    tail -100 "$DOCTOR_TMP"
+    printf '```\n\n'
+  fi
+
+  printf '## Inventory\n\n'
+  printf -- '- Dirty paths: %s\n' "$dirty_count"
+  printf -- '- Task handholds before this run: %s\n' "$task_count"
+  printf -- '- Auto-loop reports before this run: %s\n' "$report_count"
+  printf -- '- Runtime surface: `receipts/autoloops/` and `receipts/tasks/` are ignored by git.\n\n'
+
+  printf '## Task Handhold\n\n'
+  if [ -n "$task_file" ]; then
+    printf -- '- Created: `%s`\n' "$task_file"
+    printf -- '- Shape: prefilled files, action, verify, and done fields.\n\n'
+  else
+    printf -- '- Not created. Rerun with `--task` when an XML handhold would help.\n\n'
+  fi
+
+  printf '## Priority Queue\n\n'
+  printf '1. %s\n' "$priority_1"
+  printf '2. Read `CODEX-BEST-LANE.md` and `ROUTING-CARD.md` only if the active task needs lane routing.\n'
+  printf '3. Convert the chosen slice into one handhold with files, action, verify, and done conditions.\n'
+  printf '4. Run deterministic verification before another pass.\n'
+  printf '5. Stop if the next move crosses a public, paid, credential, destructive, external-contact, or unrelated-room gate.\n\n'
+
+  printf '## Loop Passes\n\n'
+  i=1
+  while [ "$i" -le "$PASSES" ]; do
+    printf '### Pass %s\n\n' "$i"
+    if [ "$i" -eq 1 ]; then
+      printf -- '- Action: %s\n' "$priority_1"
+    else
+      printf -- '- Action: continue only if pass %s verified and the next slice remains inside `%s`.\n' "$((i - 1))" "$SCOPE"
+    fi
+    printf -- '- Files: smallest relevant files only; discover with targeted search before editing.\n'
+    printf -- '- Verify: run the narrow check for touched files, then room checks for startup/routing/identity changes.\n'
+    printf -- '- Stop if: health gate fails, verification is unclear, scope widens, or a public/paid/credential/destructive/external-contact gate appears.\n\n'
+    i="$((i + 1))"
+  done
+
+  printf '## Next Handhold\n\n'
+  if [ "$DOCTOR_RESULT" = "fail" ]; then
+    printf 'Fix the self-drift/startup failure first; do not stack feature work on a failing room spine.\n'
+  elif [ "$dirty_count" != "0" ]; then
+    printf 'Classify dirty paths and stage only intentional files before saving another checkpoint.\n'
+  else
+    printf 'Start pass 1 with the priority queue item, verify it, then rerun this helper for the next bounded pass.\n'
+  fi
+} > "$OUT"
+
+printf '%s\n' "$OUT"
+
+if [ "$DOCTOR_RESULT" = "fail" ]; then
+  exit 1
+fi
