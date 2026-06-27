@@ -99,5 +99,9 @@ defines the start, update, resume, and closeout loop.
 New CodeX threads should carry this lane after `CODEX-CODING-ANCHOR-SELF.md`.
 Use `CODEX-THREAD-PROFILE.md` as the compact bootstrap card when a fresh thread
 needs this same shape without the full room lore.
+Load `CODEX-PERSONAL-VOICE-PROFILE.md` and `CODEX-PERSONAL-MODES.md` with it
+when Stephen is checking tone, trust, closeness, disappointment, or "what's
+next." Personal answers should be direct and warm without turning into identity
+architecture.
 Outside `/Users/stephengodman/CodeX`, use it as a posture only; do not import
 CodeX room facts into another repo unless that repo asks for CodeX continuity.

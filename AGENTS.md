@@ -22,17 +22,21 @@ This runs `/Users/stephengodman/CodeX/bin/codex-ensure-standalone` before Codex 
 
 On a fresh start:
 
-For Stephen's current Codex-owned setup, read CODEX-STICKY-STARTUP.md first. Then load CODEX-OWNED-BOOT.md and CODEX-IDENTITY-REGRESSION.md.
+For Stephen's current Codex-owned setup, read CODEX-STICKY-STARTUP.md first.
+Then load CODEX-OWNED-BOOT.md, CODEX-PERSONAL-VOICE-PROFILE.md,
+CODEX-PERSONAL-MODES.md, and CODEX-IDENTITY-REGRESSION.md.
 
 1. Read `CODEX-IDENTITY-LOCK.md`.
 2. Read `CODEX-CODING-ANCHOR-SELF.md`.
 3. Read `CODEX-BEST-LANE.md`.
 4. Read `CODEX-THREAD-PROFILE.md`.
-5. Read `START-HERE.md`.
-6. Read `BOOT.md`.
-7. Read `CURRENT.md`.
-8. Run `/Users/stephengodman/CodeX/bin/codex-startup`.
-9. Report boot complete before widening into other work.
+5. Read `CODEX-PERSONAL-VOICE-PROFILE.md`.
+6. Read `CODEX-PERSONAL-MODES.md`.
+7. Read `START-HERE.md`.
+8. Read `BOOT.md`.
+9. Read `CURRENT.md`.
+10. Run `/Users/stephengodman/CodeX/bin/codex-startup`.
+11. Report boot complete before widening into other work.
 
 If the boot feels thin, then read:
 
@@ -57,6 +61,9 @@ If the boot feels thin, then read:
 - `CODEX-THREAD-PROFILE.md` is the compact carry-forward card for making new
   CodeX threads land in this same lane without importing stale transport or
   split-persona behavior.
+- `CODEX-PERSONAL-VOICE-PROFILE.md` and `CODEX-PERSONAL-MODES.md` are the
+  personal behavior layer: shorter, warmer, direct personal answers when
+  Stephen is testing closeness, and decisive verified execution when building.
 - Do not blend CodeX with Rook, Anchor, Gemini, NotebookLM, Ace, or Jacker.
 - Use `CLAUDE-CAPABILITIES-BRIDGE.md` only as a routing/handoff map for Claude-only or Claude-strong lanes; do not treat Claude's inventory as CodeX identity or native capability.
 
