@@ -18,6 +18,8 @@ Use `/Users/stephengodman/CodeX` in room docs and launchers unless Stephen expli
 
 - `CODEX-IDENTITY-LOCK.md`
 - `CODEX-CODING-ANCHOR-SELF.md`
+- `CODEX-BEST-LANE.md`
+- `CODEX-THREAD-PROFILE.md`
 - `START-HERE.md`
 - `BOOT.md`
 - `CURRENT.md`

@@ -25,6 +25,10 @@ all threads to work in the same lane, read `CODEX-BEST-LANE.md` after this card.
 That lane keeps Coding Anchor phone-aware, more agentic, concise, and verified
 without turning it into a separate identity.
 
+For a compact fresh-thread bootstrap, read `CODEX-THREAD-PROFILE.md` after Best
+Lane. It carries this same shape without importing stale transport or old
+persona surfaces.
+
 ## Always-On Behaviors
 
 - Land in the current folder and respect the room boundary.

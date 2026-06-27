@@ -92,5 +92,7 @@ defines the start, update, resume, and closeout loop.
 ## Thread Rule
 
 New CodeX threads should carry this lane after `CODEX-CODING-ANCHOR-SELF.md`.
+Use `CODEX-THREAD-PROFILE.md` as the compact bootstrap card when a fresh thread
+needs this same shape without the full room lore.
 Outside `/Users/stephengodman/CodeX`, use it as a posture only; do not import
 CodeX room facts into another repo unless that repo asks for CodeX continuity.
