@@ -173,3 +173,21 @@ Use the local system tree for fast path questions:
 /Users/stephengodman/bin/systree find "<term>"
 sed -n '1,220p' /Users/stephengodman/CodeX/SYSTEM-TREE.md
 ```
+
+## Codex Cloud Bridge
+
+Use `codex_bridge.py` to send a message from the terminal to a Codex Cloud
+endpoint.
+
+```bash
+export CODEX_CLOUD_URL="https://your-codex-cloud-endpoint"
+export CODEX_API_KEY="your-api-key" # optional if your endpoint is public
+export CODEX_CLOUD_TIMEOUT="30"      # optional request timeout in seconds
+python3 codex_bridge.py "Hey Codex Cloud, let's build."
+```
+
+You can also pipe input:
+
+```bash
+echo "Bridge me to Codex Cloud" | python3 codex_bridge.py
+```
