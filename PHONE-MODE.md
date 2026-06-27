@@ -29,6 +29,38 @@ Status:
 /Users/stephengodman/CodeX/bin/codex-phone-mode --status
 ```
 
+Compact phone check:
+
+```bash
+/Users/stephengodman/CodeX/bin/codex-phone-mode --summary
+```
+
+Refresh the local phone credential cache while the Mac has access:
+
+```bash
+/Users/stephengodman/CodeX/bin/codex-phone-mode --refresh-cache
+```
+
+Apply and send a phone notification:
+
+```bash
+/Users/stephengodman/CodeX/bin/codex-phone-mode --apply --notify
+```
+
+Full auto watchdog:
+
+```bash
+/Users/stephengodman/CodeX/bin/codex-phone-mode-watchdog --install
+/Users/stephengodman/CodeX/bin/codex-phone-mode-watchdog --status
+```
+
+The watchdog runs every five minutes. It checks the compact phone summary,
+Codex app presence, the managed phone-mode `caffeinate` LaunchAgent,
+lid-closed sleep state, the phone credential cache, and battery state. It
+repairs safe drift with bounded `codex-phone-mode --apply --no-sleep-display`
+and sends Pushover only when state changes, repairs happen, failures happen, or
+battery protection matters.
+
 ## What Phone Mode Means
 
 CodeX should assume Stephen is not physically at the Mac.
@@ -44,6 +76,7 @@ Do not expect Stephen to:
 Do keep the Mac useful for remote operation:
 
 - keep Codex running
+- keep Coding Anchor boot/doctor/agentic-check healthy
 - keep iTerm available
 - keep Tailscale and network access up
 - keep Cloudflare tunnel and remote-control helpers up
@@ -92,6 +125,15 @@ If `disablesleep` cannot be enabled, lid-close operation remains best-effort and
 
 The GitHub pattern for lid-closed agents is consistent: `caffeinate` handles idle sleep, but lid-close survival needs `pmset disablesleep`. CodeX phone mode therefore treats `--lid-closed` as the stronger closet/portable-battery path.
 
+The watchdog protects battery automatically. If the Mac is on battery and drops
+to 30% or lower, it sends a warning. If it drops to 20% or lower, it restores
+sleep and sleeps the Mac unless the battery override file is present. Use:
+
+```bash
+/Users/stephengodman/CodeX/bin/codex-phone-mode-watchdog --battery-override-on
+/Users/stephengodman/CodeX/bin/codex-phone-mode-watchdog --battery-override-off
+```
+
 ## Credential Book Rule
 
 There is no plaintext password book in the CodeX repo.
@@ -111,10 +153,26 @@ In phone mode, CodeX should preload runtime credentials where possible:
 4. Report only variable names loaded or missing. Do not print values into chat, notes, logs, or git.
 
 The phone-mode env cache lives outside the repo at `/Users/stephengodman/.codex-phone-mode.env` and must stay `0600`.
+Use `--refresh-cache` while local credential sources are available to turn
+`op://` references into cached runtime values for phone-only work.
 
 CodeX may use these sources autonomously when the task requires credentials, but must not print, write, or commit raw secret values.
 
 If 1Password or macOS asks for physical biometric or hardware approval and automation cannot complete it, CodeX should switch paths first. Only block on Stephen after the available non-physical credential paths fail.
+
+## Coding Anchor Readiness
+
+Phone mode must keep the Coding Anchor execution packet usable without Stephen
+opening the Mac:
+
+- ensure the Codex app is running or request launch
+- run `Coding Anchor Files/codex-coding-anchor/bin/coding-anchor-agentic-check`
+- run `Coding Anchor Files/codex-coding-anchor/bin/coding-anchor-doctor`
+- report `coding-anchor-next` state so Stephen knows whether an autonomous
+  slice is ready
+
+This readiness check is part of `/Users/stephengodman/CodeX/bin/codex-phone-mode --apply`
+and `/Users/stephengodman/CodeX/bin/codex-phone-mode --status`.
 
 ## Away-Mode Decision Rules
 
@@ -126,6 +184,7 @@ When in phone mode:
 - do not start local heavyweight model stacks unless the active task requires them
 - do not rely on desktop notifications for Stephen
 - use Pushover only for time-sensitive alerts
+- use `--summary` or `--notify` when Stephen is reading from the phone
 - leave a clear report of what was stopped, what stayed up, and what remains blocked
 
 ## Safety Line

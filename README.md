@@ -56,9 +56,22 @@ Phone / away mode:
 
 ```bash
 /Users/stephengodman/CodeX/bin/codex-phone-mode --status
+/Users/stephengodman/CodeX/bin/codex-phone-mode --summary
+/Users/stephengodman/CodeX/bin/codex-phone-mode --refresh-cache
 /Users/stephengodman/CodeX/bin/codex-phone-mode --apply
+/Users/stephengodman/CodeX/bin/codex-phone-mode --apply --notify
 /Users/stephengodman/CodeX/bin/codex-phone-mode --restore-sleep
+/Users/stephengodman/CodeX/bin/codex-phone-mode-watchdog --install
+/Users/stephengodman/CodeX/bin/codex-phone-mode-watchdog --status
 ```
+
+Phone mode also verifies Coding Anchor readiness with `coding-anchor-agentic-check`,
+`coding-anchor-doctor`, and `coding-anchor-next`, so the room remains usable
+while Stephen is operating from the phone with the Mac lid closed. Use
+`--summary` for a compact phone-readable readiness check, `--refresh-cache` to
+resolve local runtime secrets into the phone cache, and `--notify` to send that
+check through Pushover. The watchdog keeps phone mode repaired every five
+minutes and protects battery automatically.
 
 MCP control panel:
 

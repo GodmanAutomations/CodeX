@@ -1,0 +1,383 @@
+#!/usr/bin/env bash
+set -u
+
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+export TERM="${TERM:-xterm-256color}"
+
+ROOT="/Users/stephengodman/CodeX"
+PHONE_MODE="$ROOT/bin/codex-phone-mode"
+STATE_DIR="$ROOT/.tmp"
+RECEIPT_DIR="$ROOT/receipts/phone-mode"
+LABEL="com.codex.phone-mode.watchdog"
+PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
+LOG="$RECEIPT_DIR/watchdog.log"
+STATE_FILE="$STATE_DIR/codex-phone-mode-watchdog.state"
+BATTERY_OVERRIDE_FILE="$STATE_DIR/codex-phone-mode-battery-override"
+LOCK_DIR="$STATE_DIR/codex-phone-mode-watchdog.lock"
+CAFFEINATE_LABEL="com.codex.phone-mode.caffeinate"
+INTERVAL_SECONDS=300
+SUMMARY_TIMEOUT_SECONDS=45
+REPAIR_TIMEOUT_SECONDS=90
+RESTORE_TIMEOUT_SECONDS=20
+BATTERY_WARN_PERCENT=30
+BATTERY_SLEEP_PERCENT=20
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  /Users/stephengodman/CodeX/bin/codex-phone-mode-watchdog --install
+  /Users/stephengodman/CodeX/bin/codex-phone-mode-watchdog --uninstall
+  /Users/stephengodman/CodeX/bin/codex-phone-mode-watchdog --once
+  /Users/stephengodman/CodeX/bin/codex-phone-mode-watchdog --status
+  /Users/stephengodman/CodeX/bin/codex-phone-mode-watchdog --battery-override-on
+  /Users/stephengodman/CodeX/bin/codex-phone-mode-watchdog --battery-override-off
+
+The watchdog is a one-shot LaunchAgent job. When installed, launchd runs --once
+every five minutes and at load.
+USAGE
+}
+
+say() {
+  printf '%s\n' "$*"
+}
+
+stamp() {
+  date '+%Y-%m-%dT%H:%M:%S%z'
+}
+
+log_line() {
+  mkdir -p "$RECEIPT_DIR"
+  printf '%s %s\n' "$(stamp)" "$*" >>"$LOG"
+}
+
+log_block() {
+  local label="$1"
+  local body="$2"
+  mkdir -p "$RECEIPT_DIR"
+  {
+    printf '%s %s begin\n' "$(stamp)" "$label"
+    printf '%s\n' "$body"
+    printf '%s %s end\n' "$(stamp)" "$label"
+  } >>"$LOG"
+}
+
+timeout_bin() {
+  if command -v timeout >/dev/null 2>&1; then
+    command -v timeout
+  elif command -v gtimeout >/dev/null 2>&1; then
+    command -v gtimeout
+  else
+    return 1
+  fi
+}
+
+env_value() {
+  local name="$1"
+  local value="${!name-}"
+  if [[ -z "$value" || "$value" == op://* ]]; then
+    value="$(launchctl getenv "$name" 2>/dev/null || true)"
+  fi
+  printf '%s' "$value"
+}
+
+value_usable() {
+  local value="$1"
+  [[ -n "$value" && "$value" != op://* ]]
+}
+
+send_pushover() {
+  local title="$1"
+  local message="$2"
+  local token user
+  token="$(env_value PUSHOVER_TOKEN)"
+  user="$(env_value PUSHOVER_USER_KEY)"
+  if [[ -z "$user" || "$user" == op://* ]]; then
+    user="$(env_value PUSHOVER_USER)"
+  fi
+  if ! value_usable "$token" || ! value_usable "$user"; then
+    log_line "pushover=missing"
+    return 1
+  fi
+  curl -fsS --connect-timeout 3 --max-time 8 \
+    --form-string "token=$token" \
+    --form-string "user=$user" \
+    --form-string "title=$title" \
+    --form-string "message=$message" \
+    https://api.pushover.net/1/messages.json >/dev/null
+}
+
+notify_state() {
+  local state="$1"
+  local title="$2"
+  local message="$3"
+  mkdir -p "$STATE_DIR"
+  local previous=""
+  if [[ -r "$STATE_FILE" ]]; then
+    previous="$(cat "$STATE_FILE" 2>/dev/null || true)"
+  fi
+  if [[ "$previous" == "$state" ]]; then
+    log_line "notify=skipped state=$state"
+    return 0
+  fi
+  if send_pushover "$title" "$message"; then
+    log_line "notify=sent state=$state"
+  else
+    log_line "notify=failed state=$state"
+  fi
+  printf '%s\n' "$state" >"$STATE_FILE"
+}
+
+power_source() {
+  pmset -g batt 2>/dev/null | sed -n "s/^Now drawing from '\\(.*\\)'/\\1/p"
+}
+
+battery_percent() {
+  pmset -g batt 2>/dev/null | grep -Eo '[0-9]+%;' | head -1 | tr -dc '0-9'
+}
+
+sleep_disabled() {
+  pmset -g live 2>/dev/null | awk '/SleepDisabled/ {print $2; exit}'
+}
+
+codex_app_running() {
+  pgrep -f '/Applications/Codex.app/Contents/MacOS/Codex|/Applications/Codex.app/Contents/Resources/codex app-server|Application Support/Codex' >/dev/null 2>&1
+}
+
+managed_caffeinate_running() {
+  local pid command
+  pid="$(launchctl print "gui/$(id -u)/$CAFFEINATE_LABEL" 2>/dev/null | awk -F'= ' '/^[[:space:]]*pid = / {print $2; exit}')"
+  [[ -n "$pid" ]] || return 1
+  command="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+  [[ "$command" == "/usr/bin/caffeinate -dimsu" ]]
+}
+
+summary_once() {
+  local timeout_cmd
+  timeout_cmd="$(timeout_bin || true)"
+  if [[ -n "$timeout_cmd" ]]; then
+    "$timeout_cmd" "$SUMMARY_TIMEOUT_SECONDS" "$PHONE_MODE" --summary 2>&1
+  else
+    "$PHONE_MODE" --summary 2>&1
+  fi
+}
+
+apply_repair() {
+  local timeout_cmd
+  timeout_cmd="$(timeout_bin || true)"
+  if [[ -n "$timeout_cmd" ]]; then
+    "$timeout_cmd" "$REPAIR_TIMEOUT_SECONDS" "$PHONE_MODE" --apply --no-sleep-display 2>&1
+  else
+    "$PHONE_MODE" --apply --no-sleep-display 2>&1
+  fi
+}
+
+battery_guard() {
+  local source percent
+  source="$(power_source)"
+  percent="$(battery_percent)"
+  [[ -n "$percent" ]] || return 0
+  if [[ "$source" == "AC Power" ]]; then
+    return 0
+  fi
+
+  if [[ "$percent" -le "$BATTERY_SLEEP_PERCENT" && ! -e "$BATTERY_OVERRIDE_FILE" ]]; then
+    local message
+    message="CodeX phone watchdog is restoring sleep to protect battery. source=$source battery=${percent}% override=off"
+    log_line "battery=protect percent=$percent source=$source"
+    /usr/bin/pmset -a disablesleep 0 >>"$LOG" 2>&1 || true
+    launchctl bootout "gui/$(id -u)/$CAFFEINATE_LABEL" >>"$LOG" 2>&1 || true
+    local timeout_cmd
+    timeout_cmd="$(timeout_bin || true)"
+    if [[ -n "$timeout_cmd" ]]; then
+      "$timeout_cmd" "$RESTORE_TIMEOUT_SECONDS" "$PHONE_MODE" --restore-sleep >>"$LOG" 2>&1 || true
+    else
+      "$PHONE_MODE" --restore-sleep >>"$LOG" 2>&1 || true
+    fi
+    notify_state "battery-sleep-$percent" "CodeX phone mode battery protect" "$message" || true
+    /usr/bin/pmset sleepnow >>"$LOG" 2>&1 || true
+    exit 0
+  fi
+
+  if [[ "$percent" -le "$BATTERY_WARN_PERCENT" ]]; then
+    notify_state "battery-warn-$percent" "CodeX phone mode battery warning" "CodeX phone mode is on battery at ${percent}%."
+    log_line "battery=warn percent=$percent source=$source"
+  fi
+}
+
+run_once() {
+  mkdir -p "$STATE_DIR" "$RECEIPT_DIR"
+  if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+    local lock_age
+    lock_age="$(find "$LOCK_DIR" -maxdepth 0 -mmin +10 -print 2>/dev/null || true)"
+    if [[ -n "$lock_age" ]]; then
+      rmdir "$LOCK_DIR" 2>/dev/null || true
+      mkdir "$LOCK_DIR" 2>/dev/null || {
+        log_line "watchdog=skipped lock=busy"
+        return 0
+      }
+    else
+      log_line "watchdog=skipped lock=busy"
+      return 0
+    fi
+  fi
+  trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT
+  log_line "watchdog=start"
+  battery_guard
+
+  local summary summary_rc
+  summary="$(summary_once)"
+  summary_rc=$?
+  log_line "summary_rc=$summary_rc"
+  if [[ "$summary_rc" -ne 0 ]]; then
+    log_block "summary" "$summary"
+  fi
+
+  if [[ "$summary_rc" -eq 0 ]] && codex_app_running && managed_caffeinate_running && [[ "$(sleep_disabled)" == "1" ]]; then
+    notify_state "ready" "CodeX phone mode ready" "$summary"
+    log_line "watchdog=ready"
+    return 0
+  fi
+
+  log_line "watchdog=repair start summary_rc=$summary_rc codex=$(codex_app_running && echo yes || echo no) managed_caffeinate=$(managed_caffeinate_running && echo yes || echo no) sleepdisabled=$(sleep_disabled)"
+  local repair repair_rc repaired_summary repaired_rc
+  repair="$(apply_repair)"
+  repair_rc=$?
+  log_line "repair_rc=$repair_rc"
+
+  repaired_summary="$(summary_once)"
+  repaired_rc=$?
+  log_line "repaired_summary_rc=$repaired_rc"
+  if [[ "$repaired_rc" -ne 0 ]]; then
+    log_block "repaired_summary" "$repaired_summary"
+  fi
+  if [[ "$repair_rc" -eq 0 && "$repaired_rc" -eq 0 && managed_caffeinate_running && "$(sleep_disabled)" == "1" ]]; then
+    notify_state "repaired" "CodeX phone mode repaired" "$repaired_summary"
+    log_line "watchdog=repaired"
+    return 0
+  fi
+
+  local fail_message
+  fail_message="CodeX phone watchdog could not self-repair.
+
+summary_rc=$summary_rc
+repair_rc=$repair_rc
+repaired_summary_rc=$repaired_rc
+sleepdisabled=$(sleep_disabled)
+
+Last summary:
+$repaired_summary"
+  notify_state "failed" "CodeX phone mode needs attention" "$fail_message"
+  log_line "watchdog=failed"
+  return 1
+}
+
+install_watchdog() {
+  mkdir -p "$HOME/Library/LaunchAgents" "$RECEIPT_DIR"
+  cat >"$PLIST" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>$LABEL</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$ROOT/bin/codex-phone-mode-watchdog</string>
+    <string>--once</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StartInterval</key>
+  <integer>$INTERVAL_SECONDS</integer>
+  <key>StandardOutPath</key>
+  <string>$LOG</string>
+  <key>StandardErrorPath</key>
+  <string>$LOG</string>
+</dict>
+</plist>
+PLIST
+  chmod 0600 "$PLIST"
+  launchctl bootout "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || true
+  if ! launchctl bootstrap "gui/$(id -u)" "$PLIST"; then
+    say "watchdog: launchctl bootstrap failed"
+    return 1
+  fi
+  launchctl kickstart -k "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || true
+  if ! launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1; then
+    say "watchdog: launchctl registration not confirmed"
+    return 1
+  fi
+  say "watchdog: installed $PLIST"
+}
+
+uninstall_watchdog() {
+  launchctl bootout "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || true
+  rm -f "$PLIST"
+  say "watchdog: uninstalled"
+}
+
+watchdog_status() {
+  say "CodeX phone-mode watchdog"
+  say "plist: $PLIST"
+  if [[ -f "$PLIST" ]]; then
+    say "installed: yes"
+    stat -f 'plist_mode: %Lp owner=%Su' "$PLIST" 2>/dev/null || true
+  else
+    say "installed: no"
+  fi
+  launchctl print "gui/$(id -u)/$LABEL" 2>/dev/null | awk '
+    /inherited environment = / {
+      print "\tinherited environment = [redacted]"
+      skip = 1
+      next
+    }
+    skip && /^[[:space:]]*}/ {
+      skip = 0
+      next
+    }
+    skip {
+      next
+    }
+    /active count =|path =|type =|state =|program =|arguments =|stdout path =|stderr path =|pid =|last exit code =|runs =/ {
+      print
+    }
+  ' || true
+  if [[ -r "$STATE_FILE" ]]; then
+    say "last_state: $(cat "$STATE_FILE" 2>/dev/null || true)"
+  fi
+  if [[ -r "$LOG" ]]; then
+    say "log_tail:"
+    tail -20 "$LOG"
+  fi
+}
+
+case "${1-}" in
+  --install)
+    install_watchdog
+    ;;
+  --uninstall)
+    uninstall_watchdog
+    ;;
+  --once|"")
+    run_once
+    ;;
+  --status)
+    watchdog_status
+    ;;
+  --battery-override-on)
+    mkdir -p "$STATE_DIR"
+    printf '%s\n' "$(stamp)" >"$BATTERY_OVERRIDE_FILE"
+    say "battery override: on"
+    ;;
+  --battery-override-off)
+    rm -f "$BATTERY_OVERRIDE_FILE"
+    say "battery override: off"
+    ;;
+  -h|--help)
+    usage
+    ;;
+  *)
+    usage >&2
+    exit 2
+    ;;
+esac

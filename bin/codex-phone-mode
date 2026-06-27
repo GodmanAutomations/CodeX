@@ -6,33 +6,54 @@ STATE_DIR="$ROOT/.tmp"
 CAFFEINATE_PID="$STATE_DIR/codex-phone-mode-caffeinate.pid"
 CAFFEINATE_LABEL="com.codex.phone-mode.caffeinate"
 CAFFEINATE_PLIST="$HOME/Library/LaunchAgents/$CAFFEINATE_LABEL.plist"
-PROFILE_CREDENTIALS="/Users/stephengodman/.claude/stephen-profile/credentials.md"
+ANCHOR_ROOT="$ROOT/Coding Anchor Files/codex-coding-anchor"
+ANCHOR_AGENTIC_CHECK="$ANCHOR_ROOT/bin/coding-anchor-agentic-check"
+ANCHOR_DOCTOR="$ANCHOR_ROOT/bin/coding-anchor-doctor"
+ANCHOR_BOOT="$ANCHOR_ROOT/bin/coding-anchor-boot"
+CODEX_APP_OP="/Users/stephengodman/bin/codex-app-op"
+PROFILE_CREDENTIALS="/Users/stephengodman/.claude/0stephen-profile/credentials.md"
 ONE_UNLOCK_LOADER="/Users/stephengodman/bin/codex-load-api-keys-once"
+OP_ENV_FILE="${CODEX_OP_ENV_FILE:-/Users/stephengodman/.env.1password}"
 PHONE_MODE_ENV="/Users/stephengodman/.codex-phone-mode.env"
+OP_READ_TIMEOUT="${CODEX_PHONE_OP_READ_TIMEOUT:-3}"
 STOP_CAFFEINATE_HELPER="/usr/local/sbin/codex-phone-mode-stop-caffeinate"
 
 APPLY=0
 STATUS=0
+SUMMARY=0
+NOTIFY=0
+REFRESH_CACHE=0
 NO_SLEEP=0
 LID_CLOSED=1
 RESTORE_SLEEP=0
 SKIP_CREDENTIALS=0
+REQUIRED_FAILURES=0
 
 usage() {
   cat <<'USAGE'
 Usage:
   /Users/stephengodman/CodeX/bin/codex-phone-mode --status
+  /Users/stephengodman/CodeX/bin/codex-phone-mode --summary [--notify]
+  /Users/stephengodman/CodeX/bin/codex-phone-mode --refresh-cache
   /Users/stephengodman/CodeX/bin/codex-phone-mode
-  /Users/stephengodman/CodeX/bin/codex-phone-mode --apply [--no-lid-closed] [--no-sleep-display] [--skip-credentials]
+  /Users/stephengodman/CodeX/bin/codex-phone-mode --apply [--notify] [--no-lid-closed] [--no-sleep-display] [--skip-credentials]
   /Users/stephengodman/CodeX/bin/codex-phone-mode --restore-sleep
 
 Default is a dry-run preview. --apply enters phone/away mode.
 --apply requests macOS disablesleep by default so Codex can survive lid close.
+--summary prints a compact phone-readable readiness report.
+--notify sends the compact readiness report to Pushover when credentials exist.
+--refresh-cache resolves 1Password refs into the local 0600 phone cache.
 USAGE
 }
 
 say() {
   printf '%s\n' "$*"
+}
+
+required_fail() {
+  REQUIRED_FAILURES=$((REQUIRED_FAILURES + 1))
+  say "REQUIRED_FAIL $*"
 }
 
 run_or_show() {
@@ -156,10 +177,246 @@ credential_status() {
   "$ROOT/bin/codex-status" --skip-pi 2>/dev/null | sed -n '1,34p' || true
 }
 
+env_value() {
+  local name="$1"
+  local value="${!name-}"
+  if [[ -z "$value" || "$value" == op://* ]]; then
+    value="$(launchctl getenv "$name" 2>/dev/null || true)"
+  fi
+  printf '%s' "$value"
+}
+
+value_usable() {
+  local value="$1"
+  [[ -n "$value" && "$value" != op://* ]]
+}
+
 listener_status() {
   lsof -nP -iTCP -sTCP:LISTEN 2>/dev/null \
     | awk 'NR==1 || $3=="stephengodman" {print}' \
     | sed -n '1,80p'
+}
+
+phone_env_cache_safe() {
+  [[ -e "$PHONE_MODE_ENV" ]] || return 1
+  local owner mode
+  owner="$(stat -f '%Su' "$PHONE_MODE_ENV" 2>/dev/null || true)"
+  mode="$(stat -f '%Lp' "$PHONE_MODE_ENV" 2>/dev/null || true)"
+  [[ "$owner" == "$(id -un)" && "$mode" == "600" ]]
+}
+
+refresh_phone_cache() {
+  say "credentials: refreshing phone cache from 1Password refs"
+  say "credentials: target=$PHONE_MODE_ENV"
+  if [[ -e "$PHONE_MODE_ENV" ]] && ! phone_env_cache_safe; then
+    say "credentials: cache_unsafe=$PHONE_MODE_ENV"
+    say "credentials: cache requires owner=$(id -un) and mode=0600"
+    say "credentials: refusing to read or preserve unsafe cache"
+    say "credentials: secrets_returned=false"
+    return 1
+  fi
+  if ! command -v op >/dev/null 2>&1; then
+    say "credentials: op cli missing"
+    say "credentials: secrets_returned=false"
+    return 1
+  fi
+  if [[ ! -r "$OP_ENV_FILE" ]]; then
+    say "credentials: 1Password env file not readable: $OP_ENV_FILE"
+    say "credentials: secrets_returned=false"
+    return 1
+  fi
+
+  python3 - "$OP_ENV_FILE" "$PHONE_MODE_ENV" "$OP_READ_TIMEOUT" <<'PY'
+import os
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+op_env = Path(sys.argv[1])
+phone_env = Path(sys.argv[2])
+timeout = float(sys.argv[3])
+
+def parse(path):
+    values = {}
+    order = []
+    if not path.exists():
+        return values, order
+    for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        name, value = line.split("=", 1)
+        if not name.replace("_", "A").isalnum() or name[0].isdigit():
+            continue
+        if name not in values:
+            order.append(name)
+        values[name] = value
+    return values, order
+
+op_values, op_order = parse(op_env)
+cache_values, cache_order = parse(phone_env)
+
+merged = {}
+order = []
+for name in cache_order + op_order:
+    if name not in order:
+        order.append(name)
+for name in order:
+    merged[name] = cache_values.get(name, op_values.get(name, ""))
+
+resolved = []
+kept = []
+failed = []
+op_unavailable = False
+
+for name in order:
+    value = merged.get(name, "")
+    ref = None
+    if value and not value.startswith("op://"):
+        kept.append(name)
+        continue
+    if value.startswith("op://"):
+        ref = value
+    elif op_values.get(name, "").startswith("op://"):
+        ref = op_values[name]
+    if ref:
+        if op_unavailable:
+            failed.append(name)
+            continue
+        try:
+            result = subprocess.run(
+                ["op", "read", ref],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired:
+            failed.append(name)
+            op_unavailable = True
+            continue
+        if result.returncode == 0 and result.stdout.strip():
+            merged[name] = result.stdout.strip()
+            resolved.append(name)
+        else:
+            failed.append(name)
+
+phone_env.parent.mkdir(parents=True, exist_ok=True)
+fd, tmp_name = tempfile.mkstemp(prefix=phone_env.name + ".", dir=str(phone_env.parent))
+try:
+    os.fchmod(fd, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write("# CodeX phone-mode resolved runtime cache. Do not commit.\n")
+        for name in order:
+            value = merged.get(name, "")
+            if not value:
+                continue
+            value = value.replace("\r", "").replace("\n", "")
+            fh.write(f"{name}={value}\n")
+    os.replace(tmp_name, phone_env)
+    os.chmod(phone_env, 0o600)
+except Exception:
+    try:
+        os.unlink(tmp_name)
+    except OSError:
+        pass
+    raise
+
+for name, value in merged.items():
+    if value and not value.startswith("op://"):
+        subprocess.run(["/bin/launchctl", "setenv", name, value], check=True)
+
+print("credentials: cache_resolved=" + " ".join(resolved))
+print("credentials: cache_kept=" + str(len(kept)))
+if failed:
+    print("credentials: cache_unresolved=" + " ".join(failed))
+print("credentials: secrets_returned=false")
+raise SystemExit(0)
+PY
+}
+
+codex_app_running() {
+  pgrep -f '/Applications/Codex.app/Contents/MacOS/Codex|/Applications/Codex.app/Contents/Resources/codex app-server|Application Support/Codex' >/dev/null 2>&1
+}
+
+ensure_codex_app() {
+  if codex_app_running; then
+    say "Codex app: running"
+    return 0
+  fi
+
+  if [[ "$APPLY" -eq 1 ]]; then
+    if [[ -x "$CODEX_APP_OP" ]]; then
+      "$CODEX_APP_OP" >/dev/null 2>&1 || true
+      sleep 2
+      if codex_app_running; then
+        say "Codex app: launched"
+      else
+        say "Codex app: launch requested but not confirmed"
+        required_fail "codex app not confirmed"
+      fi
+    else
+      open -a Codex >/dev/null 2>&1 || true
+      sleep 2
+      if codex_app_running; then
+        say "Codex app: launched with open"
+      else
+        say "Codex app: not confirmed"
+        required_fail "codex app not confirmed"
+      fi
+    fi
+  else
+    say "would ensure Codex app is running"
+  fi
+}
+
+anchor_status() {
+  say "Coding Anchor readiness:"
+  if [[ ! -d "$ANCHOR_ROOT" ]]; then
+    say "anchor: missing $ANCHOR_ROOT"
+    return 1
+  fi
+  if [[ -x "$ANCHOR_AGENTIC_CHECK" ]]; then
+    if "$ANCHOR_AGENTIC_CHECK" >/dev/null 2>&1; then
+      say "anchor agentic-check: pass"
+    else
+      say "anchor agentic-check: fail"
+      return 1
+    fi
+  else
+    say "anchor agentic-check: missing"
+    return 1
+  fi
+  if [[ -x "$ANCHOR_DOCTOR" ]]; then
+    local tmp
+    tmp="$(mktemp "${TMPDIR:-/tmp}/coding-anchor-phone-doctor.XXXXXX")"
+    if "$ANCHOR_DOCTOR" >"$tmp" 2>&1; then
+      grep -E '^(RESULT|receipt:)' "$tmp" | sed 's/^/anchor doctor: /'
+    else
+      say "anchor doctor: fail"
+      tail -12 "$tmp" | sed 's/^/  /'
+      rm -f "$tmp"
+      return 1
+    fi
+    rm -f "$tmp"
+  else
+    say "anchor doctor: missing"
+    return 1
+  fi
+  if [[ -x "$ANCHOR_ROOT/bin/coding-anchor-next" ]]; then
+    "$ANCHOR_ROOT/bin/coding-anchor-next" 2>&1 | sed 's/^/anchor next: /' || true
+  fi
+}
+
+ensure_anchor_ready() {
+  if [[ "$APPLY" -eq 1 ]]; then
+    if ! anchor_status; then
+      required_fail "Coding Anchor readiness failed"
+    fi
+  else
+    say "would run Coding Anchor readiness: agentic-check, doctor, next-slice status"
+  fi
 }
 
 print_status() {
@@ -168,11 +425,29 @@ print_status() {
   say "Power:"
   power_status
   say ""
+  say "Codex app:"
+  if codex_app_running; then
+    say "running"
+  else
+    say "not confirmed"
+  fi
+  say ""
   say "Visible apps:"
   visible_apps
   say ""
   say "Credential readiness:"
   credential_status
+  if [[ -e "$PHONE_MODE_ENV" ]]; then
+    if phone_env_cache_safe; then
+      say "phone-mode env cache: present mode=0600"
+    else
+      say "phone-mode env cache: unsafe permissions or owner; will refuse cache"
+    fi
+  else
+    say "phone-mode env cache: missing; will use one-unlock loader or local profile fallback"
+  fi
+  say ""
+  anchor_status
   say ""
   say "Listening services:"
   listener_status
@@ -191,9 +466,15 @@ load_runtime_credentials() {
     return 0
   fi
 
-  if [[ -r "$PHONE_MODE_ENV" ]]; then
+  if [[ -e "$PHONE_MODE_ENV" ]]; then
+    if ! phone_env_cache_safe; then
+      say "credentials: cache_unsafe=$PHONE_MODE_ENV"
+      say "credentials: cache requires owner=$(id -un) and mode=0600"
+      say "credentials: refusing unsafe cache; using 1Password/env path or local profile fallback"
+    elif [[ -r "$PHONE_MODE_ENV" ]]; then
     local loaded=()
     local skipped=()
+    local deferred=()
     while IFS= read -r line || [[ -n "$line" ]]; do
       [[ -n "$line" ]] || continue
       [[ "$line" != \#* ]] || continue
@@ -201,8 +482,12 @@ load_runtime_credentials() {
       local name="${line%%=*}"
       local value="${line#*=}"
       if [[ "$name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ && -n "$value" ]]; then
-        launchctl setenv "$name" "$value"
-        loaded+=("$name")
+        if [[ "$value" == op://* ]]; then
+          deferred+=("$name")
+        else
+          launchctl setenv "$name" "$value"
+          loaded+=("$name")
+        fi
       else
         skipped+=("$name")
       fi
@@ -211,8 +496,14 @@ load_runtime_credentials() {
     if [[ "${#skipped[@]}" -gt 0 ]]; then
       say "credentials: cache_skipped=${skipped[*]}"
     fi
-    say "credentials: secrets_returned=false"
-    return 0
+    if [[ "${#deferred[@]}" -gt 0 ]]; then
+      say "credentials: cache_deferred_refs=${deferred[*]}"
+      say "credentials: resolving deferred refs through 1Password/env path or local profile fallback"
+    else
+      say "credentials: secrets_returned=false"
+      return 0
+    fi
+    fi
   fi
 
   if [[ -x "$ONE_UNLOCK_LOADER" ]]; then
@@ -278,6 +569,7 @@ def field(section, label="API Key"):
 
 mapping = {
     "ANTHROPIC_API_KEY": ("Anthropic", "API Key"),
+    "OPENAI_API_KEY": ("OpenAI", "API Key"),
     "BRAVE_SEARCH_API_KEY": ("Brave", "Search API Key (godman-automations)"),
     "CLOUDFLARE_API_TOKEN": ("Cloudflare API", "Ace Full Access (no IP restriction)"),
     "FIRECRAWL_API_KEY": ("Firecrawl", "API Key"),
@@ -306,6 +598,180 @@ if missing:
     print("credentials: missing=" + ",".join(missing))
 print("credentials: secrets_returned=false")
 PY
+}
+
+verify_runtime_credentials() {
+  if [[ "$SKIP_CREDENTIALS" -eq 1 ]]; then
+    say "credentials: required_env_check skipped"
+    return 0
+  fi
+
+  if [[ "$APPLY" -ne 1 ]]; then
+    say "would verify required API variables in launchctl user environment"
+    return 0
+  fi
+
+  local required=(
+    OPENAI_API_KEY
+    ANTHROPIC_API_KEY
+    GEMINI_API_KEY
+    GOOGLE_API_KEY
+    TRELLO_API_KEY
+    TRELLO_TOKEN
+    PUSHOVER_TOKEN
+  )
+  local missing=()
+  local name value
+  for name in "${required[@]}"; do
+    value="$(launchctl getenv "$name" 2>/dev/null || true)"
+    if ! value_usable "$value"; then
+      missing+=("$name")
+    fi
+  done
+  if ! value_usable "$(launchctl getenv PUSHOVER_USER_KEY 2>/dev/null || true)" \
+    && ! value_usable "$(launchctl getenv PUSHOVER_USER 2>/dev/null || true)"; then
+    missing+=("PUSHOVER_USER_KEY/PUSHOVER_USER")
+  fi
+
+  if [[ "${#missing[@]}" -gt 0 ]]; then
+    say "credentials: required_missing=${missing[*]}"
+    say "credentials: secrets_returned=false"
+    return 1
+  fi
+
+  say "credentials: required_env=OK"
+  say "credentials: secrets_returned=false"
+}
+
+required_credential_names() {
+  printf '%s\n' \
+    OPENAI_API_KEY \
+    ANTHROPIC_API_KEY \
+    GEMINI_API_KEY \
+    GOOGLE_API_KEY \
+    TRELLO_API_KEY \
+    TRELLO_TOKEN \
+    PUSHOVER_TOKEN
+}
+
+credential_compact_status() {
+  local missing=()
+  local name
+  while IFS= read -r name; do
+    [[ -n "$name" ]] || continue
+    if ! value_usable "$(env_value "$name")"; then
+      missing+=("$name")
+    fi
+  done < <(required_credential_names)
+  if ! value_usable "$(env_value PUSHOVER_USER_KEY)" \
+    && ! value_usable "$(env_value PUSHOVER_USER)"; then
+    missing+=("PUSHOVER_USER_KEY/PUSHOVER_USER")
+  fi
+
+  if [[ "${#missing[@]}" -gt 0 ]]; then
+    printf 'missing:%s' "${missing[*]}"
+    return 1
+  fi
+  printf 'OK'
+}
+
+cache_compact_status() {
+  if [[ -e "$PHONE_MODE_ENV" ]]; then
+    if phone_env_cache_safe; then
+      printf 'OK:0600'
+    else
+      printf 'unsafe'
+      return 1
+    fi
+  else
+    printf 'missing'
+    return 1
+  fi
+}
+
+anchor_compact_status() {
+  [[ -d "$ANCHOR_ROOT" ]] || { printf 'missing'; return 1; }
+  [[ -x "$ANCHOR_AGENTIC_CHECK" ]] || { printf 'agentic-check-missing'; return 1; }
+  "$ANCHOR_AGENTIC_CHECK" >/dev/null 2>&1 || { printf 'agentic-check-fail'; return 1; }
+  [[ -x "$ANCHOR_DOCTOR" ]] || { printf 'doctor-missing'; return 1; }
+  "$ANCHOR_DOCTOR" >/dev/null 2>&1 || { printf 'doctor-fail'; return 1; }
+  printf 'OK'
+}
+
+phone_summary_body() {
+  local failures=()
+  local battery source sleep_disabled codex_status credential_summary cache_summary anchor_summary
+
+  battery="$(pmset -g batt 2>/dev/null | awk 'NR==2 {gsub(/^[[:space:]]+/, ""); print}' || true)"
+  source="$(pmset -g batt 2>/dev/null | sed -n "s/^Now drawing from '\\(.*\\)'/\\1/p" || true)"
+  sleep_disabled="$(pmset -g live 2>/dev/null | awk '/SleepDisabled/ {print $2; exit}' || true)"
+  if codex_app_running; then
+    codex_status="running"
+  else
+    codex_status="not-confirmed"
+    failures+=("codex-app")
+  fi
+  credential_summary="$(credential_compact_status)" || failures+=("credentials")
+  cache_summary="$(cache_compact_status)" || failures+=("env-cache")
+  anchor_summary="$(anchor_compact_status)" || failures+=("anchor")
+  if [[ "$sleep_disabled" != "1" ]]; then
+    failures+=("lid-closed-sleep")
+  fi
+
+  say "CodeX Phone Summary"
+  if [[ "${#failures[@]}" -eq 0 ]]; then
+    say "ready: yes"
+  else
+    say "ready: no (${failures[*]})"
+  fi
+  say "power: ${source:-unknown}; ${battery:-battery unknown}"
+  say "lid_closed_sleep: $([[ "$sleep_disabled" == "1" ]] && echo disabled || echo not-disabled)"
+  say "codex_app: $codex_status"
+  say "credentials: $credential_summary"
+  say "env_cache: $cache_summary"
+  say "anchor: $anchor_summary"
+  say "secrets_returned: false"
+
+  [[ "${#failures[@]}" -eq 0 ]]
+}
+
+send_pushover() {
+  local title="$1"
+  local message="$2"
+  local token user
+  token="$(env_value PUSHOVER_TOKEN)"
+  user="$(env_value PUSHOVER_USER_KEY)"
+  if [[ -z "$user" ]]; then
+    user="$(env_value PUSHOVER_USER)"
+  fi
+  if ! value_usable "$token" || ! value_usable "$user"; then
+    say "pushover: missing PUSHOVER_TOKEN or PUSHOVER_USER_KEY/PUSHOVER_USER"
+    say "pushover: secrets_returned=false"
+    return 1
+  fi
+  if curl -fsS \
+    --form-string "token=$token" \
+    --form-string "user=$user" \
+    --form-string "title=$title" \
+    --form-string "message=$message" \
+    https://api.pushover.net/1/messages.json >/dev/null; then
+    say "pushover: sent"
+    say "pushover: secrets_returned=false"
+    return 0
+  fi
+  say "pushover: send failed"
+  say "pushover: secrets_returned=false"
+  return 1
+}
+
+notify_phone_summary() {
+  local title="$1"
+  local tmp body
+  tmp="$(mktemp "${TMPDIR:-/tmp}/codex-phone-summary.XXXXXX")"
+  phone_summary_body >"$tmp"
+  body="$(cat "$tmp")"
+  rm -f "$tmp"
+  send_pushover "$title" "$body"
 }
 
 quit_low_risk_apps() {
@@ -421,6 +887,7 @@ enable_lid_closed_survival() {
       say "lid-closed survival: enabled with pmset disablesleep=1"
     else
       say "lid-closed survival: blocked at sudo"
+      required_fail "lid-closed survival blocked"
     fi
   else
     say "would enable lid-closed survival: sudo /usr/bin/pmset -a disablesleep 1"
@@ -480,6 +947,15 @@ while [[ $# -gt 0 ]]; do
     --status)
       STATUS=1
       ;;
+    --summary)
+      SUMMARY=1
+      ;;
+    --notify)
+      NOTIFY=1
+      ;;
+    --refresh-cache)
+      REFRESH_CACHE=1
+      ;;
     --no-sleep-display)
       NO_SLEEP=1
       ;;
@@ -512,9 +988,50 @@ if [[ "$RESTORE_SLEEP" -eq 1 ]]; then
   exit 0
 fi
 
+if [[ "$REFRESH_CACHE" -eq 1 ]]; then
+  refresh_phone_cache
+  refresh_rc=$?
+  APPLY=1
+  if ! load_runtime_credentials; then
+    required_fail "runtime credential preload failed"
+  fi
+  if ! verify_runtime_credentials; then
+    required_fail "runtime credential readiness failed"
+  fi
+  phone_summary_body
+  if [[ "$refresh_rc" -ne 0 || "$REQUIRED_FAILURES" -gt 0 ]]; then
+    exit 1
+  fi
+  exit 0
+fi
+
 if [[ "$STATUS" -eq 1 ]]; then
   print_status
+  if [[ "$NOTIFY" -eq 1 ]]; then
+    notify_phone_summary "CodeX phone status" || exit 1
+  fi
   exit 0
+fi
+
+if [[ "$SUMMARY" -eq 1 ]]; then
+  summary_tmp="$(mktemp "${TMPDIR:-/tmp}/codex-phone-summary.XXXXXX")"
+  phone_summary_body >"$summary_tmp"
+  summary_rc=$?
+  cat "$summary_tmp"
+  if [[ "$NOTIFY" -eq 1 ]]; then
+    summary_body="$(cat "$summary_tmp")"
+    if ! send_pushover "CodeX phone summary" "$summary_body"; then
+      rm -f "$summary_tmp"
+      exit 1
+    fi
+  fi
+  rm -f "$summary_tmp"
+  exit "$summary_rc"
+fi
+
+if [[ "$NOTIFY" -eq 1 && "$APPLY" -ne 1 ]]; then
+  usage >&2
+  exit 2
 fi
 
 say "CodeX phone/away mode"
@@ -523,16 +1040,24 @@ say ""
 say "Keeps: Codex, iTerm, Tailscale, Cloudflare tunnel, Unified Remote, CodeX MCP helpers, photo bridge."
 say "Stops: obvious user apps and heavy/unrelated local stacks."
 say "Secrets: load the local phone-mode env cache and existing credential paths; never commit values."
+say "Anchor: verify Coding Anchor agentic-check, doctor, and next-slice state for phone use."
 if [[ "$LID_CLOSED" -eq 1 ]]; then
   say "Lid closed: request pmset disablesleep=1 even on battery/portable power."
 fi
 say ""
 
 ensure_caffeinate
+ensure_codex_app
 if [[ "$LID_CLOSED" -eq 1 ]]; then
   enable_lid_closed_survival
 fi
-load_runtime_credentials
+if ! load_runtime_credentials; then
+  required_fail "runtime credential preload failed"
+fi
+if ! verify_runtime_credentials; then
+  required_fail "runtime credential readiness failed"
+fi
+ensure_anchor_ready
 quit_low_risk_apps
 hide_document_apps
 stop_launchagent_plists
@@ -542,3 +1067,17 @@ apply_privacy_power_posture
 
 say ""
 print_status
+
+if [[ "$NOTIFY" -eq 1 ]]; then
+  if [[ "$REQUIRED_FAILURES" -gt 0 ]]; then
+    notify_phone_summary "CodeX phone mode failed" || required_fail "phone notification failed"
+  else
+    notify_phone_summary "CodeX phone mode ready" || required_fail "phone notification failed"
+  fi
+fi
+
+if [[ "$APPLY" -eq 1 && "$REQUIRED_FAILURES" -gt 0 ]]; then
+  say ""
+  say "Phone mode required failures: $REQUIRED_FAILURES"
+  exit 1
+fi
