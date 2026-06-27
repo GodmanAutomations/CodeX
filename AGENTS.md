@@ -22,6 +22,8 @@ This runs `/Users/stephengodman/CodeX/bin/codex-ensure-standalone` before Codex 
 
 On a fresh start:
 
+For Stephen's current Codex-owned setup, read CODEX-STICKY-STARTUP.md first. Then load CODEX-OWNED-BOOT.md and CODEX-IDENTITY-REGRESSION.md.
+
 1. Read `CODEX-IDENTITY-LOCK.md`.
 2. Read `CODEX-CODING-ANCHOR-SELF.md`.
 3. Read `CODEX-BEST-LANE.md`.

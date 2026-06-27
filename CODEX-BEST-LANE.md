@@ -34,8 +34,10 @@ Use this lane when Stephen says:
 - After meaningful or risky code/config changes, get an independent review when
   a subagent/reviewer is available; otherwise self-review the diff before close.
 - When Stephen says to keep rolling, go full auto, or make the next slices
-  obvious, run `bin/codex-autoloop "<scope>" --task` to create a bounded local
-  report and prefilled task handhold before continuing.
+  obvious, read `CODEX-AUTOMODE-WORK-PACKET.md` and
+  `CODEX-AUTOMODE-RUNBOOK.md`, update the live packet, then run
+  `bin/codex-autoloop "<scope>" --task` when a bounded local report and
+  prefilled task handhold would help.
 - Verify the smallest meaningful behavior before confidence.
 - Report what changed, what passed, and what remains unverified.
 
@@ -78,6 +80,14 @@ CodeX ports Kira's bounded auto-loop conductor as a room-native helper:
 The loop shape is: status, health gate, inventory, priority queue, one task
 handhold, verification, checkpoint gate, then continue or stop. The generated
 report and task XML stay under ignored `receipts/` runtime folders.
+
+## Auto-Mode Work Packet
+
+`CODEX-AUTOMODE-WORK-PACKET.md` is the tracked room control surface for longer
+runs. Use it to hold the current goal, mode, started/last-update timestamps,
+active plan, last completed step, next action, blockers, touched surfaces,
+verification, receipts, and resume instruction. `CODEX-AUTOMODE-RUNBOOK.md`
+defines the start, update, resume, and closeout loop.
 
 ## Thread Rule
 
