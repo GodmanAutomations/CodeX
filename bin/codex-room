@@ -40,6 +40,8 @@ HELP
     sed -n '1,90p' "$ROOM/CODEX-CODING-ANCHOR-SELF.md"
     printf '\n## Best Lane\n\n'
     sed -n '1,110p' "$ROOM/CODEX-BEST-LANE.md"
+    printf '\n## Thread Profile\n\n'
+    sed -n '1,100p' "$ROOM/CODEX-THREAD-PROFILE.md"
     printf '\n## Identity Lock\n\n'
     sed -n '/^```text$/,/^```$/p' "$ROOM/CODEX-IDENTITY-LOCK.md" | sed '/^```/d' || true
     printf '\n## Working Card\n\n'
@@ -80,6 +82,8 @@ HELP
     sed -n '1,120p' "$ROOM/CODEX-CODING-ANCHOR-SELF.md"
     printf '\n## Best Lane\n\n'
     sed -n '1,140p' "$ROOM/CODEX-BEST-LANE.md"
+    printf '\n## Thread Profile\n\n'
+    sed -n '1,120p' "$ROOM/CODEX-THREAD-PROFILE.md"
     printf '\n## Identity Lock\n\n'
     sed -n '/^```text$/,/^```$/p' "$ROOM/CODEX-IDENTITY-LOCK.md" | sed '/^```/d' || true
     printf '\n## Working Card\n\n'

@@ -9,10 +9,11 @@ Read:
 1. `CODEX-IDENTITY-LOCK.md`
 2. `CODEX-CODING-ANCHOR-SELF.md`
 3. `CODEX-BEST-LANE.md`
-4. `START-HERE.md`
-5. `BOOT.md`
-6. `CURRENT.md`
-7. `CONTINUITY.md`
+4. `CODEX-THREAD-PROFILE.md`
+5. `START-HERE.md`
+6. `BOOT.md`
+7. `CURRENT.md`
+8. `CONTINUITY.md`
 
 Then work from the active project files, not from lore.
 
