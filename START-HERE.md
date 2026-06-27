@@ -32,6 +32,7 @@ This is the front door for the CodeX room.
 - `CODEX-IDENTITY-REGRESSION.md` - expected identity and personal prompt cases.
 - `CODEX-REGRESSION-HARNESS.md` - executable identity and personal-voice
   regression checks.
+- `CODEX-CLAUDE-REVIEWER.md` - Claude Code outside-reviewer contract.
 - `CODEX-TOOL-ROUTING.md` - truth-source routing for choosing tools quickly.
 - `QUICKSTART.md` - clipboard startup prompt and common commands.
 - `CONTINUITY.md` - continuity lane map.

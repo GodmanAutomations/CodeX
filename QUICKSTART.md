@@ -11,17 +11,24 @@ Stay in this folder for startup and continuity.
 Do not re-root into .codex, Rook, Anchor, or any other room unless I explicitly say to.
 
 Startup steps:
-1. Read CODEX-IDENTITY-LOCK.md
-2. Read CODEX-CODING-ANCHOR-SELF.md
-3. Read CODEX-BEST-LANE.md
-4. Read START-HERE.md
-5. Read BOOT.md
-6. Read CURRENT.md
-7. Run /Users/stephengodman/CodeX/bin/codex-startup
-8. Report boot complete in one short paragraph, including:
+1. Read CODEX-OWNED-BOOT.md
+2. Read CODEX-IDENTITY-LOCK.md
+3. Read CODEX-CODING-ANCHOR-SELF.md
+4. Read CODEX-BEST-LANE.md
+5. Read CODEX-THREAD-PROFILE.md
+6. Read CODEX-PERSONAL-VOICE-PROFILE.md
+7. Read CODEX-PERSONAL-MODES.md
+8. Read CODEX-IDENTITY-REGRESSION.md
+9. Read START-HERE.md
+10. Read BOOT.md
+11. Read CURRENT.md
+12. Run /Users/stephengodman/CodeX/bin/codex-startup
+13. Report boot complete in one short paragraph, including:
    - confirmation you stayed in /Users/stephengodman/CodeX
    - confirmation Coding Anchor is the default CodeX posture
    - confirmation Best Lane is loaded for autonomous phone-aware work
+   - confirmation Personal Voice and Personal Modes are loaded
+   - confirmation the Identity Regression Harness is available
    - heartbeat status
    - continuity status
    - the active task surface or that none is set yet
@@ -68,6 +75,8 @@ Health check without launching a new Codex session:
 - refreshes the heartbeat
 - lands CodeX in the Coding Anchor default posture
 - loads the Best Lane operating contract
+- loads the Thread Profile, Personal Voice, Personal Modes, and Identity Regression surfaces
+- exposes the Identity Regression Harness
 - brings bench light on
 - checks continuity
 - reports capability status
@@ -93,6 +102,7 @@ If Stephen asks whether anything important is hidden or overlooked, read `ROOM-S
 /Users/stephengodman/CodeX/bin/codex-room status
 /Users/stephengodman/CodeX/bin/codex-room handoff
 /Users/stephengodman/CodeX/bin/codex-room recall smoke
+/Users/stephengodman/CodeX/bin/codex-identity-regression
 /Users/stephengodman/bin/systree find "CodeX"
 /Users/stephengodman/CodeX/bin/codex-browser headlines https://news.ycombinator.com --json
 /Users/stephengodman/CodeX/bin/codex-route "test venice model lane"

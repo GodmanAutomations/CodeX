@@ -28,6 +28,11 @@ Use this card to route ordinary prompts into the right CodeX lane.
   run `/Users/stephengodman/CodeX/bin/codex-identity-regression`, then fix any
   failed startup, personal voice, or identity-regression check before closing.
 
+- "have Claude review", "Claude Code reviewer", "use Claude as reviewer", "main reviewer":
+  run `/Users/stephengodman/CodeX/bin/codex-claude-review`; fix concrete
+  findings before committing. If Claude Code is unavailable, use the Codex
+  reviewer subagent fallback and say that explicitly.
+
 - "what route", "which tool", "how should you check", "look into this":
   read `/Users/stephengodman/CodeX/CODEX-TOOL-ROUTING.md` or run
   `/Users/stephengodman/CodeX/bin/codex-tool-route "<prompt>"`, then use the

@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="/Users/stephengodman/CodeX"
+CLAUDE_BIN="${CLAUDE_BIN:-/Users/stephengodman/bin/claude}"
+BASE_REF="${1:-HEAD}"
+USE_API_AUTH="${CODEX_CLAUDE_REVIEW_USE_API_AUTH:-0}"
+MAX_UNTRACKED_BYTES="${CODEX_CLAUDE_REVIEW_MAX_UNTRACKED_BYTES:-50000}"
+MAX_UNTRACKED_LINES="${CODEX_CLAUDE_REVIEW_MAX_UNTRACKED_LINES:-240}"
+CLAUDE_MODEL="${CODEX_CLAUDE_REVIEW_MODEL:-sonnet}"
+CLAUDE_EFFORT="${CODEX_CLAUDE_REVIEW_EFFORT:-low}"
+CLAUDE_MAX_BUDGET_USD="${CODEX_CLAUDE_REVIEW_MAX_BUDGET_USD:-2}"
+
+cd "$ROOT"
+
+if [ ! -x "$CLAUDE_BIN" ]; then
+  echo "error: Claude Code CLI not executable at $CLAUDE_BIN" >&2
+  exit 127
+fi
+
+if ! git rev-parse --verify "$BASE_REF" >/dev/null 2>&1; then
+  echo "error: bad git ref for review: $BASE_REF" >&2
+  exit 2
+fi
+
+tmp_prompt="$(mktemp "${TMPDIR:-/tmp}/codex-claude-review.XXXXXX")"
+trap 'rm -f "$tmp_prompt"' EXIT
+
+safe_untracked_file() {
+  local file="$1"
+  local lower
+  lower="$(printf '%s' "$file" | tr '[:upper:]' '[:lower:]')"
+  case "$lower" in
+    *.env|*.env.*|*/.env|*/.env.*|*credential*|*secret*|*token*|*password*|*apikey*|*api-key*|*private*key*|*id_rsa*|*id_dsa*|*id_ecdsa*|*id_ed25519*|*.pem|*.p8|*.p12|*.pfx|*.pkcs12|*.key|*.keystore|*.crt|*.cer|*.der|*.gpg|*.pgp|*.asc|*.netrc|*.htpasswd|*.kdbx|*.json|*.yaml|*.yml)
+      return 1
+      ;;
+  esac
+  [ -f "$file" ] || return 1
+  [ "$(wc -c <"$file" | tr -d ' ')" -le "$MAX_UNTRACKED_BYTES" ] || return 1
+  return 0
+}
+
+{
+  cat <<'PROMPT'
+You are Claude Code acting as CodeX's outside reviewer.
+
+Review the provided CodeX diff. Do not suggest broad rewrites. Do not ask for
+more context unless the diff cannot be reviewed without it.
+
+Return:
+
+Findings first, severity ordered.
+Use file/line references where possible.
+Focus on concrete bugs, brittle checks, stale startup wiring, shell quoting,
+side effects, receipt integrity, verification gaps, and secret leakage risk.
+If no issues, say "No issues found" and list residual risks/test gaps.
+
+PROMPT
+  printf 'Repository: %s\n' "$ROOT"
+  printf 'Base ref: %s\n\n' "$BASE_REF"
+  printf 'Git status:\n'
+  git status --short --branch
+  printf '\nChanged files:\n'
+  { git diff --name-only "$BASE_REF" --; git diff --name-only --cached; git ls-files --others --exclude-standard; } | sort -u
+  if [ "$BASE_REF" != "HEAD" ]; then
+    printf '\nCommitted diff from base to HEAD:\n'
+    git diff --find-renames "$BASE_REF" HEAD --
+  else
+    printf '\nCommitted diff from base to HEAD: none for default HEAD review.\n'
+  fi
+  if ! git diff --cached --quiet; then
+    printf '\nStaged diff:\n'
+    git diff --cached --find-renames --
+  fi
+  if ! git diff --quiet; then
+    printf '\nUnstaged diff:\n'
+    git diff --find-renames --
+  fi
+  untracked_files="$(git ls-files --others --exclude-standard)"
+  if [ -n "$untracked_files" ]; then
+    printf '\nUntracked file contents:\n'
+    printf '%s\n' "$untracked_files" | while IFS= read -r file; do
+      [ -n "$file" ] || continue
+      if safe_untracked_file "$file"; then
+        printf '\n--- %s ---\n' "$file"
+        sed -n "1,${MAX_UNTRACKED_LINES}p" "$file"
+      else
+        printf '\n--- %s ---\n' "$file"
+        printf '[skipped: untracked file blocked by safety filter or size cap]\n'
+      fi
+    done
+  fi
+} >"$tmp_prompt"
+
+claude_cmd=("$CLAUDE_BIN" \
+  "--print" \
+  "--no-session-persistence" \
+  "--tools" "" \
+  "--model" "$CLAUDE_MODEL" \
+  "--effort" "$CLAUDE_EFFORT" \
+  "--max-budget-usd" "$CLAUDE_MAX_BUDGET_USD")
+
+if [ "$USE_API_AUTH" = "1" ]; then
+  cat "$tmp_prompt" | "${claude_cmd[@]}"
+else
+  cat "$tmp_prompt" | env \
+    -u ANTHROPIC_API_KEY \
+    -u CLAUDE_API_KEY \
+    -u ANTHROPIC_AUTH_TOKEN \
+    -u ANTHROPIC_BETA_API_KEY \
+    -u ANTHROPIC_API_AUTH_TOKEN \
+    -u ANTHROPIC_BASE_URL \
+    -u ANTHROPIC_PROXY_URL \
+    -u CLAUDE_CODE_USE_BEDROCK \
+    -u CLAUDE_CODE_USE_VERTEX \
+    -u AWS_BEARER_TOKEN_BEDROCK \
+    -u AWS_ACCESS_KEY_ID \
+    -u AWS_SECRET_ACCESS_KEY \
+    -u AWS_SESSION_TOKEN \
+    -u ANTHROPIC_VERTEX_PROJECT_ID \
+    -u CLOUD_ML_REGION \
+    -u VERTEXAI_LOCATION \
+    -u GCLOUD_PROJECT \
+    -u GOOGLE_CLOUD_PROJECT \
+    -u GCP_PROJECT \
+    -u GOOGLE_APPLICATION_CREDENTIALS \
+    "${claude_cmd[@]}"
+fi

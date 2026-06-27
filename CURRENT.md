@@ -24,6 +24,9 @@ Updated: 2026-06-27
 - Regression Harness v1: `bin/codex-identity-regression` checks startup,
   identity, personal voice, personal modes, routing, and prompt-case wiring; it
   writes receipts under `receipts/regression/`.
+- Claude Reviewer: `bin/codex-claude-review` is the preferred outside reviewer
+  after meaningful CodeX changes; it feeds Claude Code the diff with edit tools
+  disabled and keeps Codex as executor.
 - Tool Routing v1: `CODEX-TOOL-ROUTING.md` and `bin/codex-tool-route` map
   prompts to the right truth source before tool use: web, files/shell, Pi,
   memory, official docs, v2 packet, private lane, media tools, or git/PR.

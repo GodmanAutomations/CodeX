@@ -3,7 +3,8 @@
 This is the executable guardrail for the Codex-owned identity, personal voice,
 startup, and routing lane.
 
-The harness is intentionally deterministic. It does not ask a model whether the
+The harness is intentionally deterministic and uses read-only startup/brief
+preview paths for runtime output checks. It does not ask a model whether the
 voice feels right. It verifies that the room still loads the right startup
 surfaces, keeps the personal regression prompts present, and exposes the repair
 path through the room entrypoints.
@@ -25,8 +26,9 @@ path through the room entrypoints.
   - `CODEX-BEST-LANE.md`
 - Startup surfaces load the owned boot, personal voice profile, personal modes,
   and identity regression files.
-- `bin/codex-startup`, `bin/codex-room brief`, and `bin/codex-room handoff`
-  run successfully and expose the harness in their actual output.
+- `bin/codex-startup --read-only`, `CODEX_ROOM_READONLY=1 bin/codex-room brief`,
+  and `CODEX_ROOM_READONLY=1 bin/codex-room handoff` run successfully and
+  expose the harness in their actual output.
 - The personal voice profile keeps the core rule: do not explain architecture
   unless Stephen asks about architecture.
 - The personal modes include builder, frustration, personal, auto, review,
@@ -41,6 +43,11 @@ path through the room entrypoints.
 - Old startup pointers that skip the personal layer stay removed.
 - Guardrail files used for negative checks still exist, so missing files do not
   produce false passes.
+- Receipt filenames are generated with `mktemp` and keep a `.txt` suffix so
+  repeated or overlapping runs do not interleave evidence and remain easy to
+  discover.
+- Claude reviewer prompts skip untracked files that look like secrets or exceed
+  the size cap.
 
 ## Receipts
 

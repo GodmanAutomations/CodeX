@@ -103,6 +103,15 @@ loads `CODEX-PERSONAL-VOICE-PROFILE.md`, `CODEX-PERSONAL-MODES.md`, and
 `CODEX-IDENTITY-REGRESSION.md`, and that the personal regression prompts remain
 present.
 
+## Claude Reviewer
+
+Claude Code is the preferred outside reviewer after meaningful CodeX changes.
+Run `/Users/stephengodman/CodeX/bin/codex-claude-review` before committing
+startup, identity, personal voice, routing, harness, or automation work. Codex
+keeps execution ownership; Claude reviews the prepared diff with edit tools
+disabled. If Claude Code is unavailable, fall back to the current Codex reviewer
+subagent path and record that fallback.
+
 ## Thread Rule
 
 New CodeX threads should carry this lane after `CODEX-CODING-ANCHOR-SELF.md`.

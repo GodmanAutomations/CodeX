@@ -50,6 +50,14 @@ HELP
     printf 'Source: CODEX-REGRESSION-HARNESS.md\n\n'
     sed -n '1,100p' "$ROOM/CODEX-REGRESSION-HARNESS.md"
     printf '\nCommand: `%s/bin/codex-identity-regression`\n' "$ROOM"
+    printf '\n## Claude Reviewer\n\n'
+    printf 'Source: CODEX-CLAUDE-REVIEWER.md\n\n'
+    if [ -f "$ROOM/CODEX-CLAUDE-REVIEWER.md" ]; then
+      sed -n '1,100p' "$ROOM/CODEX-CLAUDE-REVIEWER.md"
+    else
+      printf 'Missing CODEX-CLAUDE-REVIEWER.md\n'
+    fi
+    printf '\nCommand: `%s/bin/codex-claude-review`\n' "$ROOM"
     printf '\n## Tool Routing\n\n'
     sed -n '1,100p' "$ROOM/CODEX-TOOL-ROUTING.md"
     printf '\n## Identity Lock\n\n'
@@ -58,15 +66,24 @@ HELP
     sed -n '1,80p' "$ROOM/CODEX-WORKING-CARD.md"
     printf '\n## Current State\n\n'
     sed -n '1,120p' "$ROOM/CURRENT.md"
-    printf '\n## Continuity Pulse\n\n'
-    "$ROOM/bin/codex-continuity" | sed -n '1,80p'
-    printf '\n## Practical Memory\n\n'
-    "$MEMORY" status
-    printf '\n## Latest Receipts\n\n'
-    preflight="$(latest_receipt standalone-preflight)"
-    doctor="$(latest_receipt room-doctor)"
-    printf -- '- standalone preflight: %s\n' "${preflight:-none}"
-    printf -- '- room doctor: %s\n' "${doctor:-none}"
+    if [ "${CODEX_ROOM_READONLY:-0}" = "1" ]; then
+      printf '\n## Continuity Pulse\n\n'
+      printf 'Skipped in read-only room brief.\n'
+      printf '\n## Practical Memory\n\n'
+      printf 'Skipped in read-only room brief.\n'
+      printf '\n## Latest Receipts\n\n'
+      printf 'Skipped in read-only room brief.\n'
+    else
+      printf '\n## Continuity Pulse\n\n'
+      "$ROOM/bin/codex-continuity" | sed -n '1,80p'
+      printf '\n## Practical Memory\n\n'
+      "$MEMORY" status
+      printf '\n## Latest Receipts\n\n'
+      preflight="$(latest_receipt standalone-preflight)"
+      doctor="$(latest_receipt room-doctor)"
+      printf -- '- standalone preflight: %s\n' "${preflight:-none}"
+      printf -- '- room doctor: %s\n' "${doctor:-none}"
+    fi
     ;;
   recall|search)
     if [ "$#" -lt 1 ]; then
@@ -88,6 +105,9 @@ HELP
     ;;
   handoff)
     printf '# CodeX Fast Handoff\n\n'
+    if [ "${CODEX_ROOM_READONLY:-0}" = "1" ]; then
+      printf '_Read-only handoff preview: tracked-file output only._\n\n'
+    fi
     printf '## Coding Anchor Self\n\n'
     sed -n '1,120p' "$ROOM/CODEX-CODING-ANCHOR-SELF.md"
     printf '\n## Best Lane\n\n'
@@ -102,6 +122,14 @@ HELP
     printf 'Source: CODEX-REGRESSION-HARNESS.md\n\n'
     sed -n '1,120p' "$ROOM/CODEX-REGRESSION-HARNESS.md"
     printf '\nCommand: `%s/bin/codex-identity-regression`\n' "$ROOM"
+    printf '\n## Claude Reviewer\n\n'
+    printf 'Source: CODEX-CLAUDE-REVIEWER.md\n\n'
+    if [ -f "$ROOM/CODEX-CLAUDE-REVIEWER.md" ]; then
+      sed -n '1,120p' "$ROOM/CODEX-CLAUDE-REVIEWER.md"
+    else
+      printf 'Missing CODEX-CLAUDE-REVIEWER.md\n'
+    fi
+    printf '\nCommand: `%s/bin/codex-claude-review`\n' "$ROOM"
     printf '\n## Tool Routing\n\n'
     sed -n '1,120p' "$ROOM/CODEX-TOOL-ROUTING.md"
     printf '\n## Identity Lock\n\n'

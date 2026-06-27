@@ -10,8 +10,14 @@ Use this boot sequence for ordinary CodeX room openers.
 
 The startup script should:
 
+- load `CODEX-OWNED-BOOT.md`
 - land CodeX in the Coding Anchor default posture
 - load the Best Lane operating contract
+- load `CODEX-THREAD-PROFILE.md`
+- load `CODEX-PERSONAL-VOICE-PROFILE.md`
+- load `CODEX-PERSONAL-MODES.md`
+- load `CODEX-IDENTITY-REGRESSION.md`
+- expose the Identity Regression Harness through `bin/codex-identity-regression`
 - refresh the heartbeat
 - turn the bench light on
 - check startup continuity
@@ -28,6 +34,12 @@ For a fuller room check:
 /Users/stephengodman/CodeX/bin/codex-doctor-room
 ```
 
+For identity/startup/personal voice regression:
+
+```bash
+/Users/stephengodman/CodeX/bin/codex-identity-regression
+```
+
 For pre-Codex prerequisite repair:
 
 ```bash
@@ -39,6 +51,9 @@ For pre-Codex prerequisite repair:
 - the room is clearly `/Users/stephengodman/CodeX`
 - the default self is clearly CodeX Coding Anchor, not old Anchor/Gemini
 - the Best Lane is visible for autonomous, phone-aware work
+- the Thread Profile, Personal Voice Profile, Personal Modes, and Identity
+  Regression surfaces are visible
+- the Identity Regression Harness is available
 - the heartbeat is fresh
 - startup continuity is readable
 - SQLite startup memories are recalled
