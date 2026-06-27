@@ -18,6 +18,7 @@ TRELLO_LAUNCHER = ROOT / "mcp_servers" / "trello_mcp_launcher.sh"
 TRELLO_SERVER = ROOT / "mcp_servers" / "trello_mcp_server.py"
 TREE_STEWARD = ROOT / "bin" / "codex-tree-steward"
 WORK_NOTES = ROOT / "work-notes"
+TREE_RECEIPTS = ROOT / "receipts" / "tree-steward"
 HANDOFF = Path("/Users/stephengodman/_handoff/codex")
 PI_HOST = "pi@100.100.32.58"
 
@@ -88,6 +89,7 @@ def tree_health() -> dict[str, Any]:
         "strict_blockers": payload.get("strict_blockers"),
         "summary": payload.get("summary") or {},
         "findings_count": len(payload.get("findings") or []),
+        "ignored_advisories_count": len(payload.get("ignored_advisories") or []),
         "policy_path": payload.get("policy_path"),
         "error": payload.get("error"),
     }
@@ -159,7 +161,8 @@ def build_status(include_pi: bool = True) -> dict[str, Any]:
         },
         "tree": tree,
         "pi": pi_status() if include_pi else {"ok": None, "status": "skipped"},
-        "latest_receipts": latest_files(WORK_NOTES, 5),
+        "latest_work_notes": latest_files(WORK_NOTES, 5),
+        "latest_tree_receipts": latest_files(TREE_RECEIPTS, 5),
         "latest_handoffs": latest_files(HANDOFF, 5),
         "safety": {
             "secrets_returned": False,
@@ -202,6 +205,7 @@ def format_status(status: dict[str, Any]) -> str:
             f"- dirty count: {tree.get('dirty_count')}",
             f"- blockers: {tree.get('strict_blockers')}",
             f"- policy findings: {tree.get('findings_count')}",
+            f"- ignored advisories: {tree.get('ignored_advisories_count')}",
             "",
             "Trello MCP:",
             f"- status: {yn(trello.get('ok'))}",
@@ -212,10 +216,14 @@ def format_status(status: dict[str, Any]) -> str:
             "Pi / Candice:",
             f"- {status.get('pi', {}).get('status')}",
             "",
-            "Latest receipts:",
+            "Latest work notes:",
         ]
     )
-    for item in status.get("latest_receipts", []):
+    for item in status.get("latest_work_notes", []):
+        lines.append(f"- {item['name']}")
+    lines.append("")
+    lines.append("Latest tree receipts:")
+    for item in status.get("latest_tree_receipts", []):
         lines.append(f"- {item['name']}")
     lines.append("")
     lines.append("Latest handoffs:")

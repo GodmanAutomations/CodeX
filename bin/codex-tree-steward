@@ -16,16 +16,19 @@ import sys
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 
 ROOT = Path("/Users/stephengodman/CodeX")
 RECEIPT_ROOT = ROOT / "receipts" / "tree-steward"
 POLICY_PATH = ROOT / "config" / "tree-steward-policy.json"
+RECEIPT_SCHEMA_PATH = ROOT / "config" / "tree-steward-receipt.schema.json"
 DEFAULT_BLOCK_CATEGORIES = {
     "needs_human_review",
     "risky_or_revert_sensitive",
     "ignored_or_archive_candidate",
 }
+DEFAULT_CONTENT_SCAN_MAX_BYTES = 1_000_000
 
 
 @dataclass
@@ -46,6 +49,15 @@ class Finding:
     line: int | None = None
 
 
+@dataclass
+class IgnoredAdvisory:
+    status: str
+    path: str
+    category: str
+    reason: str
+    recommendation: str
+
+
 def run_git(args: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["git", "-C", str(ROOT), *args],
@@ -56,8 +68,11 @@ def run_git(args: list[str]) -> subprocess.CompletedProcess[str]:
     )
 
 
-def parse_status() -> list[tuple[str, str]]:
-    result = run_git(["status", "--short"])
+def parse_status(include_ignored: bool = False) -> list[tuple[str, str]]:
+    args = ["status", "--short", "--untracked-files=all"]
+    if include_ignored:
+        args.append("--ignored=matching")
+    result = run_git(args)
     if result.returncode != 0:
         raise RuntimeError((result.stderr or result.stdout).strip())
     rows: list[tuple[str, str]] = []
@@ -83,6 +98,10 @@ def tracked_files() -> list[str]:
     if result.returncode != 0:
         return []
     return [line for line in result.stdout.splitlines() if line]
+
+
+def ignored_status_rows() -> list[tuple[str, str]]:
+    return [(status, path) for status, path in parse_status(include_ignored=True) if status == "!!"]
 
 
 def match_pattern(path: str, pattern: str) -> bool:
@@ -169,6 +188,24 @@ def classify(status: str, path: str, policy: dict[str, object]) -> Entry:
     )
 
 
+def classify_ignored(status: str, path: str, policy: dict[str, object]) -> IgnoredAdvisory:
+    rule = policy_rule(policy, path)
+    category = rule["category"] if rule else "ignored_or_archive_candidate"
+    reason = rule["reason"] if rule else "ignored path visible to git status"
+    recommendation = (
+        rule["recommendation"]
+        if rule
+        else "keep ignored unless this path is intentionally adopted into the control repo"
+    )
+    return IgnoredAdvisory(
+        status=status,
+        path=path,
+        category=category,
+        reason=reason,
+        recommendation=recommendation,
+    )
+
+
 def summarize(entries: list[Entry]) -> dict[str, int]:
     counts: dict[str, int] = {}
     for entry in entries:
@@ -176,7 +213,32 @@ def summarize(entries: list[Entry]) -> dict[str, int]:
     return dict(sorted(counts.items()))
 
 
-def scan_content(policy: dict[str, object]) -> list[Finding]:
+def content_scan_candidates(policy: dict[str, object], rows: list[tuple[str, str]]) -> list[str]:
+    candidates = set(tracked_files())
+    for _, relative in rows:
+        if not relative or relative.endswith("/"):
+            continue
+        candidates.add(relative)
+    excludes = [str(item) for item in policy.get("content_scan_excludes", [])]
+    return sorted(relative for relative in candidates if not excluded(relative, excludes))
+
+
+def read_text_for_scan(path: Path, max_bytes: int) -> str | None:
+    try:
+        if path.stat().st_size > max_bytes:
+            return None
+        raw = path.read_bytes()
+    except OSError:
+        return None
+    if b"\0" in raw:
+        return None
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
+def scan_content(policy: dict[str, object], rows: list[tuple[str, str]]) -> list[Finding]:
     patterns = []
     for item in policy.get("content_checks", []):
         if not isinstance(item, dict):
@@ -189,32 +251,25 @@ def scan_content(policy: dict[str, object]) -> list[Finding]:
     if not patterns:
         return []
 
-    excludes = [str(item) for item in policy.get("content_scan_excludes", [])]
     findings: list[Finding] = []
-    for relative in tracked_files():
-        if excluded(relative, excludes):
-            continue
+    max_bytes = int(policy.get("content_scan_max_bytes") or DEFAULT_CONTENT_SCAN_MAX_BYTES)
+    allowed_secret_values = {
+        str(item)
+        for item in policy.get("raw_secret_assignment_allow_values", [])
+        if str(item).strip()
+    }
+    for relative in content_scan_candidates(policy, rows):
         path = ROOT / relative
         if not path.is_file():
             continue
-        try:
-            text = path.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            continue
-        except OSError:
+        text = read_text_for_scan(path, max_bytes)
+        if text is None:
             continue
         for line_number, line in enumerate(text.splitlines(), start=1):
             for item, compiled in patterns:
                 if compiled.search(line):
                     name = str(item.get("name") or "content_check")
-                    if name == "raw_secret_assignment" and any(
-                        sentinel in line
-                        for sentinel in [
-                            "APPLY_PHOTO_CARD_MATCH_PLAN",
-                            "APPLY_RECORD_MATCH_ACTION_PLAN",
-                            "EXPORT_PHOTOS_FROM_ICLOUD",
-                        ]
-                    ):
+                    if name == "raw_secret_assignment" and any(value in line for value in allowed_secret_values):
                         continue
                     findings.append(
                         Finding(
@@ -258,6 +313,70 @@ def strict_pass(
     return blockers == 0, blockers
 
 
+def validate_receipt_payload(payload: dict[str, Any]) -> list[str]:
+    required = {
+        "ok": bool,
+        "root": str,
+        "generated_at": str,
+        "dirty_count": int,
+        "strict_pass": bool,
+        "strict_blockers": int,
+        "summary": dict,
+        "entries": list,
+        "findings": list,
+        "ignored_advisories": list,
+        "safety": dict,
+    }
+    errors = []
+    for key, expected_type in required.items():
+        if key not in payload:
+            errors.append(f"missing {key}")
+        elif not isinstance(payload[key], expected_type):
+            errors.append(f"{key} should be {expected_type.__name__}")
+    safety = payload.get("safety") if isinstance(payload.get("safety"), dict) else {}
+    for key in ["git_writes", "file_deletes", "secrets_printed", "trello_writes"]:
+        if not isinstance(safety.get(key), bool):
+            errors.append(f"safety.{key} should be bool")
+    return errors
+
+
+def build_payload(policy: dict[str, object], preflight: str | None) -> dict[str, Any]:
+    rows = parse_status()
+    entries = [classify(status, path, policy) for status, path in rows]
+    ignored_advisories = [
+        classify_ignored(status, path, policy) for status, path in ignored_status_rows()
+    ]
+    findings = scan_content(policy, rows)
+    summary = summarize(entries)
+    strict_ok, strict_blockers = strict_pass(entries, findings, policy, preflight)
+    payload: dict[str, Any] = {
+        "ok": True,
+        "root": str(ROOT),
+        "policy_path": str(POLICY_PATH) if POLICY_PATH.exists() else None,
+        "policy_version": policy.get("version"),
+        "receipt_schema_path": str(RECEIPT_SCHEMA_PATH) if RECEIPT_SCHEMA_PATH.exists() else None,
+        "preflight": preflight,
+        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "dirty_count": len(entries),
+        "strict_pass": strict_ok,
+        "strict_blockers": strict_blockers,
+        "summary": summary,
+        "entries": [asdict(entry) for entry in entries],
+        "findings": [asdict(finding) for finding in findings],
+        "ignored_advisories": [asdict(advisory) for advisory in ignored_advisories],
+        "safety": {
+            "git_writes": False,
+            "file_deletes": False,
+            "secrets_printed": False,
+            "trello_writes": False,
+        },
+    }
+    schema_errors = validate_receipt_payload(payload)
+    payload["schema_valid"] = not schema_errors
+    payload["schema_errors"] = schema_errors
+    return payload
+
+
 def markdown(payload: dict[str, object]) -> str:
     entries = [Entry(**item) for item in payload["entries"]]  # type: ignore[arg-type]
     lines = [
@@ -288,6 +407,25 @@ def markdown(payload: dict[str, object]) -> str:
         )
     if not entries:
         lines.append("Tree is clean.")
+    advisories = [
+        IgnoredAdvisory(**item) for item in payload.get("ignored_advisories", [])  # type: ignore[arg-type]
+    ]
+    lines.extend(["", "## Ignored Advisories", ""])
+    if advisories:
+        for advisory in advisories[:25]:
+            lines.extend(
+                [
+                    f"### `{advisory.path}`",
+                    "",
+                    f"- Status: `{advisory.status.strip() or advisory.status}`",
+                    f"- Category: `{advisory.category}`",
+                    f"- Reason: {advisory.reason}",
+                    f"- Recommendation: {advisory.recommendation}",
+                    "",
+                ]
+            )
+    else:
+        lines.append("No ignored advisory paths visible.")
     findings = [Finding(**item) for item in payload.get("findings", [])]  # type: ignore[arg-type]
     lines.extend(["", "## Policy Findings", ""])
     if findings:
@@ -319,6 +457,99 @@ def markdown(payload: dict[str, object]) -> str:
     return "\n".join(lines)
 
 
+def write_receipts(payload: dict[str, Any]) -> None:
+    RECEIPT_ROOT.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    json_path = RECEIPT_ROOT / f"{stamp}-tree-steward.json"
+    md_path = RECEIPT_ROOT / f"{stamp}-tree-steward.md"
+    payload["receipt_json"] = str(json_path)
+    payload["receipt_markdown"] = str(md_path)
+    json_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    md_path.write_text(markdown(payload), encoding="utf-8")
+
+
+def run_doctor(json_mode: bool) -> int:
+    policy = load_policy()
+    probes = [
+        ROOT / "TREE_STEWARD_DOCTOR_SECRET.md",
+        ROOT / "mcp_servers" / "tree_steward_doctor_probe.py",
+    ]
+    checks: list[dict[str, Any]] = []
+    try:
+        stale_path_probe = "REDACTED" + "-Code"
+        secret_assignment_probe = (
+            "api" + "_key = 'notarealsecretvalueusedforpolicydoctor000000'"
+        )
+        probes[0].write_text(
+            "doctor probe\n"
+            f"legacy_path = '{stale_path_probe}'\n"
+            f"{secret_assignment_probe}\n",
+            encoding="utf-8",
+        )
+        probes[1].write_text("# doctor probe\nprint('tree steward doctor')\n", encoding="utf-8")
+        payload = build_payload(policy, "trello-mcp")
+        checks.append(
+            {
+                "name": "receipt_payload_schema",
+                "ok": bool(payload.get("schema_valid")),
+                "detail": payload.get("schema_errors") or [],
+            }
+        )
+        secret_findings = [
+            item for item in payload["findings"] if item["path"] == "TREE_STEWARD_DOCTOR_SECRET.md"
+        ]
+        checks.append(
+            {
+                "name": "untracked_content_scan",
+                "ok": len(secret_findings) >= 2,
+                "detail": [item["name"] for item in secret_findings],
+            }
+        )
+        mcp_entries = [
+            item
+            for item in payload["entries"]
+            if item["path"] == "mcp_servers/tree_steward_doctor_probe.py"
+        ]
+        checks.append(
+            {
+                "name": "untracked_mcp_classification",
+                "ok": bool(mcp_entries)
+                and mcp_entries[0]["category"] in {"needs_human_review", "risky_or_revert_sensitive"},
+                "detail": mcp_entries[0]["category"] if mcp_entries else "missing",
+            }
+        )
+        checks.append(
+            {
+                "name": "trello_preflight_blocks_warn_findings",
+                "ok": not payload["strict_pass"] and payload["strict_blockers"] >= len(secret_findings),
+                "detail": {"strict_blockers": payload["strict_blockers"]},
+            }
+        )
+        output = {
+            "ok": all(item["ok"] for item in checks),
+            "checks": checks,
+            "safety": {
+                "git_writes": False,
+                "file_deletes": False,
+                "secrets_printed": False,
+                "trello_writes": False,
+            },
+        }
+    finally:
+        for probe in probes:
+            try:
+                probe.unlink()
+            except FileNotFoundError:
+                pass
+    if json_mode:
+        print(json.dumps(output, indent=2, sort_keys=True))
+    else:
+        print("CodeX Tree Steward Doctor")
+        for check in output["checks"]:
+            print(f"- {check['name']}: {'OK' if check['ok'] else 'NO'}")
+    return 0 if output["ok"] else 1
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Classify dirty CodeX tree state")
     parser.add_argument("--json", action="store_true", help="Print JSON instead of a plain summary.")
@@ -329,44 +560,17 @@ def main() -> int:
         choices=["trello-mcp"],
         help="Apply a named preflight policy while classifying the tree.",
     )
+    parser.add_argument("--doctor", action="store_true", help="Run behavioral self-checks.")
     args = parser.parse_args()
 
+    if args.doctor:
+        return run_doctor(args.json)
+
     policy = load_policy()
-    rows = parse_status()
-    entries = [classify(status, path, policy) for status, path in rows]
-    findings = scan_content(policy)
-    summary = summarize(entries)
-    strict_ok, strict_blockers = strict_pass(entries, findings, policy, args.preflight)
-    payload = {
-        "ok": True,
-        "root": str(ROOT),
-        "policy_path": str(POLICY_PATH) if POLICY_PATH.exists() else None,
-        "policy_version": policy.get("version"),
-        "preflight": args.preflight,
-        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "dirty_count": len(entries),
-        "strict_pass": strict_ok,
-        "strict_blockers": strict_blockers,
-        "summary": summary,
-        "entries": [asdict(entry) for entry in entries],
-        "findings": [asdict(finding) for finding in findings],
-        "safety": {
-            "git_writes": False,
-            "file_deletes": False,
-            "secrets_printed": False,
-            "trello_writes": False,
-        },
-    }
+    payload = build_payload(policy, args.preflight)
 
     if not args.no_receipt:
-        RECEIPT_ROOT.mkdir(parents=True, exist_ok=True)
-        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-        json_path = RECEIPT_ROOT / f"{stamp}-tree-steward.json"
-        md_path = RECEIPT_ROOT / f"{stamp}-tree-steward.md"
-        json_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        md_path.write_text(markdown(payload), encoding="utf-8")
-        payload["receipt_json"] = str(json_path)
-        payload["receipt_markdown"] = str(md_path)
+        write_receipts(payload)
 
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
@@ -378,8 +582,14 @@ def main() -> int:
         print(f"strict_blockers={payload['strict_blockers']}")
         if args.preflight:
             print(f"preflight={args.preflight}")
-        for category, count in summary.items():
+        for category, count in payload["summary"].items():
             print(f"{category}={count}")
+        ignored_count = len(payload.get("ignored_advisories", []))
+        if ignored_count:
+            print(f"ignored_advisories={ignored_count}")
+            for advisory in payload["ignored_advisories"][:8]:
+                print(f"- ignored: {advisory['path']} ({advisory['category']})")
+        findings = [Finding(**item) for item in payload.get("findings", [])]
         if findings:
             print(f"policy_findings={len(findings)}")
             for finding in findings[:8]:

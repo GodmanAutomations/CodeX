@@ -33,12 +33,22 @@ WRITE_PREFIXES = (
     "apply_",
     "publish_",
     "copy_",
+    "draft_",
+    "prepare_",
     "download_",
+    "export_",
 )
 
 WRITE_TOOL_NAMES = {
     "sync_pool_photos_to_board",
 }
+
+LOCAL_FILE_WRITE_PREFIXES = (
+    "download_",
+    "draft_",
+    "prepare_",
+    "export_",
+)
 
 
 def run(cmd: list[str], timeout: int = 30) -> subprocess.CompletedProcess[str]:
@@ -67,7 +77,7 @@ def mcp_tools(server_path: Path, server_name: str) -> list[dict[str, str]]:
     tools = []
     for name in names:
         risk = "writes" if name.startswith(WRITE_PREFIXES) or name in WRITE_TOOL_NAMES else "read-only"
-        if name.startswith("download_"):
+        if name.startswith(LOCAL_FILE_WRITE_PREFIXES):
             risk = "local-file-write"
         tools.append({"server": server_name, "name": name, "risk": risk})
     return tools
@@ -161,7 +171,10 @@ def compact_recon_status(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def preflight(json_mode: bool) -> int:
-    tree = json_command([str(TREE_STEWARD), "--json", "--preflight", "trello-mcp"], timeout=20)
+    tree = json_command(
+        [str(TREE_STEWARD), "--json", "--preflight", "trello-mcp", "--no-receipt"],
+        timeout=20,
+    )
     trello = json_command([str(TRELLO_LAUNCHER), "--status"], timeout=20)
     recon = json_command([str(RECON_LAUNCHER), "--status"], timeout=20)
     payload = {
@@ -173,6 +186,7 @@ def preflight(json_mode: bool) -> int:
             "strict_blockers": tree.get("strict_blockers"),
             "summary": tree.get("summary") or {},
             "findings_count": len(tree.get("findings") or []),
+            "ignored_advisories_count": len(tree.get("ignored_advisories") or []),
             "block_findings": [
                 item for item in (tree.get("findings") or []) if item.get("severity") == "block"
             ],
@@ -197,6 +211,7 @@ def preflight(json_mode: bool) -> int:
         print(f"Dirty count: {payload['tree'].get('dirty_count')}")
         print(f"Tree blockers: {payload['tree'].get('strict_blockers')}")
         print(f"Policy findings: {payload['tree'].get('findings_count')}")
+        print(f"Ignored advisories: {payload['tree'].get('ignored_advisories_count')}")
         print(f"Trello: {'OK' if trello.get('ok') else 'NO'}")
         print(f"Trello credential source: {trello.get('credential_source') or 'unknown'}")
         print(f"Recon: {'OK' if recon.get('ok') else 'NO'}")

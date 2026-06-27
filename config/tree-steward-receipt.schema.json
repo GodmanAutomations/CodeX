@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://godmanautomations.local/codex/tree-steward-receipt.schema.json",
+  "title": "CodeX Tree Steward Receipt",
+  "type": "object",
+  "required": [
+    "ok",
+    "root",
+    "generated_at",
+    "dirty_count",
+    "strict_pass",
+    "strict_blockers",
+    "summary",
+    "entries",
+    "findings",
+    "ignored_advisories",
+    "safety"
+  ],
+  "properties": {
+    "ok": {
+      "type": "boolean"
+    },
+    "root": {
+      "type": "string"
+    },
+    "policy_path": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "policy_version": {
+      "type": [
+        "integer",
+        "string",
+        "null"
+      ]
+    },
+    "receipt_schema_path": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "preflight": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "generated_at": {
+      "type": "string"
+    },
+    "dirty_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "strict_pass": {
+      "type": "boolean"
+    },
+    "strict_blockers": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/classifiedPath"
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
+    "ignored_advisories": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/classifiedPath"
+      }
+    },
+    "schema_valid": {
+      "type": "boolean"
+    },
+    "schema_errors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "receipt_json": {
+      "type": "string"
+    },
+    "receipt_markdown": {
+      "type": "string"
+    },
+    "safety": {
+      "type": "object",
+      "required": [
+        "git_writes",
+        "file_deletes",
+        "secrets_printed",
+        "trello_writes"
+      ],
+      "properties": {
+        "git_writes": {
+          "type": "boolean"
+        },
+        "file_deletes": {
+          "type": "boolean"
+        },
+        "secrets_printed": {
+          "type": "boolean"
+        },
+        "trello_writes": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "classifiedPath": {
+      "type": "object",
+      "required": [
+        "status",
+        "path",
+        "category",
+        "reason",
+        "recommendation"
+      ],
+      "properties": {
+        "status": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "recommendation": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "finding": {
+      "type": "object",
+      "required": [
+        "name",
+        "path",
+        "severity",
+        "message",
+        "line"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "severity": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "line": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": true
+}

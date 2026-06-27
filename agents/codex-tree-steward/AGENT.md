@@ -14,6 +14,12 @@ This agent does not own Trello behavior. It owns worktree clarity.
 
 Use `--json` when another tool or agent needs machine-readable output.
 
+Behavioral self-check:
+
+```bash
+/Users/stephengodman/CodeX/bin/codex-tree-steward --doctor
+```
+
 Policy:
 
 ```bash
@@ -52,11 +58,15 @@ Before a Trello MCP build slice, run:
 
 If preflight exits non-zero, read the tree-steward output before editing. Continue only when the dirty state is understood and your intended files do not overlap unknown work.
 
+For Trello writes, photo attach/apply work, billing publish work, or any apply-like MCP action, a blocked preflight is a hard stop. Continue only after a clean rerun or an explicit Stephen/parent-agent override that names the blocker being accepted.
+
 Direct steward form:
 
 ```bash
-/Users/stephengodman/CodeX/bin/codex-tree-steward --strict --preflight trello-mcp
+/Users/stephengodman/CodeX/bin/codex-tree-steward --strict --preflight trello-mcp --no-receipt
 ```
+
+`codex-mcp preflight` is read-only and does not write steward receipts. Use the direct steward command without `--no-receipt` only when you intentionally want a receipt.
 
 ## Status Integration
 

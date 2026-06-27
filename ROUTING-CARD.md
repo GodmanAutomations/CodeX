@@ -22,7 +22,7 @@ Use this card to route ordinary prompts into the right CodeX lane.
   run `/Users/stephengodman/CodeX/bin/codex-mcp status` first.
 
 - Before Trello MCP edits, apply-like work, or "clean up the tree":
-  run `/Users/stephengodman/CodeX/bin/codex-mcp preflight`; if blocked, run `/Users/stephengodman/CodeX/bin/codex-tree-steward --json --no-receipt`.
+  run `/Users/stephengodman/CodeX/bin/codex-mcp preflight`; if blocked, run `/Users/stephengodman/CodeX/bin/codex-tree-steward --json --preflight trello-mcp --no-receipt`.
 
 - Receipts, work notes, "what file means what":
   run `/Users/stephengodman/CodeX/bin/codex-receipts-index`, then read `/Users/stephengodman/CodeX/work-notes/INDEX.md`.
