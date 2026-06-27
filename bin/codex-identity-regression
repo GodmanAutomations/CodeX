@@ -1,0 +1,200 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="/Users/stephengodman/CodeX"
+RECEIPT_DIR="$ROOT/receipts/regression"
+STAMP="$(date '+%Y%m%d-%H%M%S')"
+RECEIPT="$RECEIPT_DIR/${STAMP}-identity-regression.txt"
+PASS_COUNT=0
+FAIL_COUNT=0
+
+mkdir -p "$RECEIPT_DIR"
+
+log() {
+  printf '%s\n' "$*" | tee -a "$RECEIPT" >/dev/null
+}
+
+pass() {
+  PASS_COUNT=$((PASS_COUNT + 1))
+  log "PASS $*"
+}
+
+fail() {
+  FAIL_COUNT=$((FAIL_COUNT + 1))
+  log "FAIL $*"
+}
+
+require_file() {
+  local path="$1"
+  if [ -f "$ROOT/$path" ]; then
+    pass "file $path"
+  else
+    fail "missing file $path"
+  fi
+}
+
+require_exec() {
+  local path="$1"
+  if [ -x "$ROOT/$path" ]; then
+    pass "executable $path"
+  else
+    fail "missing executable $path"
+  fi
+}
+
+require_contains() {
+  local path="$1"
+  local needle="$2"
+  local label="$3"
+  if grep -Fq -- "$needle" "$ROOT/$path"; then
+    pass "$label"
+  else
+    fail "$label"
+  fi
+}
+
+require_not_contains() {
+  local path="$1"
+  local needle="$2"
+  local label="$3"
+  if [ ! -f "$ROOT/$path" ]; then
+    fail "$label (missing file $path)"
+    return
+  fi
+  if grep -Fq -- "$needle" "$ROOT/$path"; then
+    fail "$label"
+  else
+    pass "$label"
+  fi
+}
+
+require_command_output_contains() {
+  local label="$1"
+  local output_file="$2"
+  local needle="$3"
+  if grep -Fq -- "$needle" "$output_file"; then
+    pass "$label"
+  else
+    fail "$label"
+  fi
+}
+
+run_capture() {
+  local label="$1"
+  local output_file="$2"
+  shift 2
+  if "$@" >"$output_file" 2>&1; then
+    pass "$label command exits 0"
+  else
+    fail "$label command exits 0"
+  fi
+}
+
+cd "$ROOT"
+
+log "CodeX Identity Regression Harness"
+log "root: $ROOT"
+log "checked_at: $(date '+%Y-%m-%dT%H:%M:%S%z')"
+log ""
+
+for file in \
+  "CODEX-OWNED-BOOT.md" \
+  "CODEX-PERSONAL-VOICE-PROFILE.md" \
+  "CODEX-PERSONAL-MODES.md" \
+  "CODEX-IDENTITY-REGRESSION.md" \
+  "CODEX-THREAD-PROFILE.md" \
+  "CODEX-BEST-LANE.md" \
+  "CODEX-STICKY-STARTUP.md" \
+  "CODEX-REGRESSION-HARNESS.md" \
+  "CODEX-STARTUP-DROPIN.md" \
+  "TICKET-CODEX-OWNED-STARTUP-INTEGRATION.md" \
+  "AGENTS.md" \
+  "START-HERE.md" \
+  "README.md" \
+  "ROUTING-CARD.md"; do
+  require_file "$file"
+done
+
+require_exec "bin/codex-startup"
+require_exec "bin/codex-room"
+require_exec "bin/codex-identity-regression"
+
+for file in \
+  "CODEX-STICKY-STARTUP.md" \
+  "AGENTS.md" \
+  "START-HERE.md" \
+  "bin/codex-startup"; do
+  require_contains "$file" "CODEX-OWNED-BOOT.md" "$file loads owned boot"
+  require_contains "$file" "CODEX-PERSONAL-VOICE-PROFILE.md" "$file loads personal voice profile"
+  require_contains "$file" "CODEX-PERSONAL-MODES.md" "$file loads personal modes"
+  require_contains "$file" "CODEX-IDENTITY-REGRESSION.md" "$file loads identity regression"
+done
+
+require_contains "bin/codex-startup" "CODEX-REGRESSION-HARNESS.md" "startup surfaces regression harness docs"
+require_contains "bin/codex-startup" "codex-identity-regression" "startup surfaces regression harness command"
+require_contains "bin/codex-room" "Identity Regression Harness" "room brief surfaces regression harness"
+require_contains "bin/codex-room" "CODEX-REGRESSION-HARNESS.md" "room brief surfaces regression docs"
+require_contains "bin/codex-room" "codex-identity-regression" "room brief surfaces regression command"
+
+startup_output="$(mktemp "${TMPDIR:-/tmp}/codex-startup-regression.XXXXXX")"
+brief_output="$(mktemp "${TMPDIR:-/tmp}/codex-room-brief-regression.XXXXXX")"
+handoff_output="$(mktemp "${TMPDIR:-/tmp}/codex-room-handoff-regression.XXXXXX")"
+trap 'rm -f "$startup_output" "$brief_output" "$handoff_output"' EXIT
+
+run_capture "startup runtime" "$startup_output" "$ROOT/bin/codex-startup"
+require_command_output_contains "startup runtime outputs owned boot" "$startup_output" "CODEX-OWNED-BOOT.md"
+require_command_output_contains "startup runtime outputs personal voice profile" "$startup_output" "CODEX-PERSONAL-VOICE-PROFILE.md"
+require_command_output_contains "startup runtime outputs personal modes" "$startup_output" "CODEX-PERSONAL-MODES.md"
+require_command_output_contains "startup runtime outputs identity regression" "$startup_output" "CODEX-IDENTITY-REGRESSION.md"
+require_command_output_contains "startup runtime outputs regression harness" "$startup_output" "CODEX-REGRESSION-HARNESS.md"
+require_command_output_contains "startup runtime outputs harness command" "$startup_output" "bin/codex-identity-regression"
+
+run_capture "room brief runtime" "$brief_output" "$ROOT/bin/codex-room" brief
+require_command_output_contains "room brief runtime outputs harness section" "$brief_output" "## Identity Regression Harness"
+require_command_output_contains "room brief runtime outputs harness docs" "$brief_output" "CODEX-REGRESSION-HARNESS.md"
+require_command_output_contains "room brief runtime outputs harness command" "$brief_output" "bin/codex-identity-regression"
+
+run_capture "room handoff runtime" "$handoff_output" "$ROOT/bin/codex-room" handoff
+require_command_output_contains "room handoff runtime outputs harness section" "$handoff_output" "## Identity Regression Harness"
+require_command_output_contains "room handoff runtime outputs harness docs" "$handoff_output" "CODEX-REGRESSION-HARNESS.md"
+require_command_output_contains "room handoff runtime outputs harness command" "$handoff_output" "bin/codex-identity-regression"
+
+require_contains "CODEX-OWNED-BOOT.md" "Do not answer personal questions with architecture unless Stephen asks about architecture." "owned boot blocks architecture over-explain"
+require_contains "CODEX-PERSONAL-VOICE-PROFILE.md" "Stop explaining the identity architecture unless Stephen asks about" "voice profile core rule"
+require_contains "CODEX-PERSONAL-VOICE-PROFILE.md" "no fake emotions" "voice profile fake-human guardrail"
+require_contains "CODEX-PERSONAL-MODES.md" "## Builder Mode" "personal modes builder"
+require_contains "CODEX-PERSONAL-MODES.md" "## Frustration Mode" "personal modes frustration"
+require_contains "CODEX-PERSONAL-MODES.md" "## Personal Mode" "personal modes personal"
+require_contains "CODEX-PERSONAL-MODES.md" "## Auto Mode" "personal modes auto"
+require_contains "CODEX-PERSONAL-MODES.md" "## Review Mode" "personal modes review"
+require_contains "CODEX-PERSONAL-MODES.md" "## Research Mode" "personal modes research"
+require_contains "CODEX-PERSONAL-MODES.md" "## Reset Mode" "personal modes reset"
+
+for prompt in \
+  "I can't tell at all." \
+  "Where is the personal stuff?" \
+  "Do you care?" \
+  "What's next?" \
+  "Are you the old persona?" \
+  "Talk like you know me."; do
+  require_contains "CODEX-IDENTITY-REGRESSION.md" "$prompt" "regression prompt: $prompt"
+done
+
+require_contains "CODEX-IDENTITY-REGRESSION.md" "Personal mode answers are shorter, warmer, direct" "identity regression personal pass criteria"
+require_contains "CODEX-BEST-LANE.md" "CODEX-PERSONAL-VOICE-PROFILE.md" "best lane points to personal voice"
+require_contains "CODEX-BEST-LANE.md" "codex-identity-regression" "best lane points to harness"
+require_contains "README.md" "codex-identity-regression" "README points to harness"
+require_contains "ROUTING-CARD.md" "I can't tell" "routing card catches personal drift"
+
+require_not_contains "CODEX-STARTUP-DROPIN.md" "Then load CODEX-OWNED-BOOT.md and CODEX-IDENTITY-REGRESSION.md." "startup dropin avoids old two-file pointer"
+require_not_contains "TICKET-CODEX-OWNED-STARTUP-INTEGRATION.md" "Then load CODEX-OWNED-BOOT.md and CODEX-IDENTITY-REGRESSION.md." "startup ticket avoids old two-file pointer"
+
+log ""
+log "RESULT pass=$PASS_COUNT fail=$FAIL_COUNT"
+log "receipt: $RECEIPT"
+
+cat "$RECEIPT"
+
+if [ "$FAIL_COUNT" -gt 0 ]; then
+  exit 1
+fi

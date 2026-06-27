@@ -21,6 +21,9 @@ Updated: 2026-06-27
   lived tone: shorter, warmer, and more direct for personal questions; decisive
   and verification-minded for build work; no retired persona or fake-human
   claims.
+- Regression Harness v1: `bin/codex-identity-regression` checks startup,
+  identity, personal voice, personal modes, routing, and prompt-case wiring; it
+  writes receipts under `receipts/regression/`.
 - Tool Routing v1: `CODEX-TOOL-ROUTING.md` and `bin/codex-tool-route` map
   prompts to the right truth source before tool use: web, files/shell, Pi,
   memory, official docs, v2 packet, private lane, media tools, or git/PR.

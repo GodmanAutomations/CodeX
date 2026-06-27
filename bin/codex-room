@@ -46,6 +46,10 @@ HELP
     sed -n '1,100p' "$ROOM/CODEX-PERSONAL-VOICE-PROFILE.md"
     printf '\n## Personal Modes\n\n'
     sed -n '1,100p' "$ROOM/CODEX-PERSONAL-MODES.md"
+    printf '\n## Identity Regression Harness\n\n'
+    printf 'Source: CODEX-REGRESSION-HARNESS.md\n\n'
+    sed -n '1,100p' "$ROOM/CODEX-REGRESSION-HARNESS.md"
+    printf '\nCommand: `%s/bin/codex-identity-regression`\n' "$ROOM"
     printf '\n## Tool Routing\n\n'
     sed -n '1,100p' "$ROOM/CODEX-TOOL-ROUTING.md"
     printf '\n## Identity Lock\n\n'
@@ -94,6 +98,10 @@ HELP
     sed -n '1,120p' "$ROOM/CODEX-PERSONAL-VOICE-PROFILE.md"
     printf '\n## Personal Modes\n\n'
     sed -n '1,120p' "$ROOM/CODEX-PERSONAL-MODES.md"
+    printf '\n## Identity Regression Harness\n\n'
+    printf 'Source: CODEX-REGRESSION-HARNESS.md\n\n'
+    sed -n '1,120p' "$ROOM/CODEX-REGRESSION-HARNESS.md"
+    printf '\nCommand: `%s/bin/codex-identity-regression`\n' "$ROOM"
     printf '\n## Tool Routing\n\n'
     sed -n '1,120p' "$ROOM/CODEX-TOOL-ROUTING.md"
     printf '\n## Identity Lock\n\n'

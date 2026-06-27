@@ -54,6 +54,7 @@ Room health check:
 ```bash
 /Users/stephengodman/CodeX/bin/codex-status
 /Users/stephengodman/CodeX/bin/codex-doctor-room
+/Users/stephengodman/CodeX/bin/codex-identity-regression
 ```
 
 Tree / Trello MCP preflight:

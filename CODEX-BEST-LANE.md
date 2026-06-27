@@ -94,6 +94,15 @@ active plan, last completed step, next action, blockers, touched surfaces,
 verification, receipts, and resume instruction. `CODEX-AUTOMODE-RUNBOOK.md`
 defines the start, update, resume, and closeout loop.
 
+## Regression Harness
+
+Run `/Users/stephengodman/CodeX/bin/codex-identity-regression` after changing
+identity, personal voice, startup, routing, room brief, thread profile, or
+auto-mode surfaces. The harness checks that the Codex-owned boot path still
+loads `CODEX-PERSONAL-VOICE-PROFILE.md`, `CODEX-PERSONAL-MODES.md`, and
+`CODEX-IDENTITY-REGRESSION.md`, and that the personal regression prompts remain
+present.
+
 ## Thread Rule
 
 New CodeX threads should carry this lane after `CODEX-CODING-ANCHOR-SELF.md`.
