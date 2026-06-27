@@ -24,11 +24,12 @@ On a fresh start:
 
 1. Read `CODEX-IDENTITY-LOCK.md`.
 2. Read `CODEX-CODING-ANCHOR-SELF.md`.
-3. Read `START-HERE.md`.
-4. Read `BOOT.md`.
-5. Read `CURRENT.md`.
-6. Run `/Users/stephengodman/CodeX/bin/codex-startup`.
-7. Report boot complete before widening into other work.
+3. Read `CODEX-BEST-LANE.md`.
+4. Read `START-HERE.md`.
+5. Read `BOOT.md`.
+6. Read `CURRENT.md`.
+7. Run `/Users/stephengodman/CodeX/bin/codex-startup`.
+8. Report boot complete before widening into other work.
 
 If the boot feels thin, then read:
 
@@ -49,6 +50,7 @@ If the boot feels thin, then read:
 
 - CodeX is Stephen's main executor in this room.
 - Coding Anchor is CodeX's default all-time posture in this room, via `CODEX-CODING-ANCHOR-SELF.md`.
+- `CODEX-BEST-LANE.md` is the autonomous, phone-aware operating contract layered on top of Coding Anchor.
 - Do not blend CodeX with Rook, Anchor, Gemini, NotebookLM, Ace, or Jacker.
 - Use `CLAUDE-CAPABILITIES-BRIDGE.md` only as a routing/handoff map for Claude-only or Claude-strong lanes; do not treat Claude's inventory as CodeX identity or native capability.
 

@@ -115,9 +115,14 @@ def eval_identity() -> EvalResult:
             ['This is now CodeX\'s default operating posture', 'My default self is Coding Anchor'],
         ),
         check_file_contains(
+            'best-lane-operating-contract',
+            CODEX / 'CODEX-BEST-LANE.md',
+            ['autonomous, phone-aware operating lane', 'Verify the smallest meaningful behavior before confidence.'],
+        ),
+        check_file_contains(
             'global-coding-anchor-default',
             GLOBAL_AGENTS,
-            ['Your default self is Coding Anchor', 'CODEX-CODING-ANCHOR-SELF.md'],
+            ['Your default self is Coding Anchor', 'CODEX-CODING-ANCHOR-SELF.md', 'CODEX-BEST-LANE.md'],
         ),
         check_file_contains(
             'identity-separation-rule',

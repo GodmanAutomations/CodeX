@@ -177,6 +177,7 @@ check_room_files() {
   local files=(
     "$ROOT/CODEX-IDENTITY-LOCK.md"
     "$ROOT/CODEX-CODING-ANCHOR-SELF.md"
+    "$ROOT/CODEX-BEST-LANE.md"
     "$ROOT/START-HERE.md"
     "$ROOT/BOOT.md"
     "$ROOT/CURRENT.md"

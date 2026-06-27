@@ -11,6 +11,7 @@ Use this boot sequence for ordinary CodeX room openers.
 The startup script should:
 
 - land CodeX in the Coding Anchor default posture
+- load the Best Lane operating contract
 - refresh the heartbeat
 - turn the bench light on
 - check startup continuity
@@ -37,6 +38,7 @@ For pre-Codex prerequisite repair:
 
 - the room is clearly `/Users/stephengodman/CodeX`
 - the default self is clearly CodeX Coding Anchor, not old Anchor/Gemini
+- the Best Lane is visible for autonomous, phone-aware work
 - the heartbeat is fresh
 - startup continuity is readable
 - SQLite startup memories are recalled

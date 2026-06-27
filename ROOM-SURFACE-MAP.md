@@ -6,6 +6,7 @@ Use this map when something feels important but hidden. It is a directory for Co
 
 - `CODEX-IDENTITY-LOCK.md` - fast identity landing.
 - `CODEX-CODING-ANCHOR-SELF.md` - default all-time CodeX posture.
+- `CODEX-BEST-LANE.md` - autonomous, phone-aware, verified operating lane.
 - `CODEX-WORKING-CARD.md` - compact executor card.
 - `START-HERE.md` - front door.
 - `BOOT.md` - startup command and boot criteria.

@@ -13,13 +13,15 @@ Do not re-root into .codex, Rook, Anchor, or any other room unless I explicitly 
 Startup steps:
 1. Read CODEX-IDENTITY-LOCK.md
 2. Read CODEX-CODING-ANCHOR-SELF.md
-3. Read START-HERE.md
-4. Read BOOT.md
-5. Read CURRENT.md
-6. Run /Users/stephengodman/CodeX/bin/codex-startup
-7. Report boot complete in one short paragraph, including:
+3. Read CODEX-BEST-LANE.md
+4. Read START-HERE.md
+5. Read BOOT.md
+6. Read CURRENT.md
+7. Run /Users/stephengodman/CodeX/bin/codex-startup
+8. Report boot complete in one short paragraph, including:
    - confirmation you stayed in /Users/stephengodman/CodeX
    - confirmation Coding Anchor is the default CodeX posture
+   - confirmation Best Lane is loaded for autonomous phone-aware work
    - heartbeat status
    - continuity status
    - the active task surface or that none is set yet
@@ -65,6 +67,7 @@ Health check without launching a new Codex session:
 
 - refreshes the heartbeat
 - lands CodeX in the Coding Anchor default posture
+- loads the Best Lane operating contract
 - brings bench light on
 - checks continuity
 - reports capability status

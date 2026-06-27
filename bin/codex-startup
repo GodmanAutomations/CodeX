@@ -13,6 +13,7 @@ echo
 echo "startup pack:"
 echo "- CODEX-IDENTITY-LOCK.md"
 echo "- CODEX-CODING-ANCHOR-SELF.md"
+echo "- CODEX-BEST-LANE.md"
 echo "- START-HERE.md"
 echo "- BOOT.md"
 echo "- CURRENT.md"
@@ -23,8 +24,11 @@ echo
 echo "coding anchor self:"
 sed -n '1,90p' "$ROOT/CODEX-CODING-ANCHOR-SELF.md"
 echo
+echo "best lane:"
+sed -n '1,120p' "$ROOT/CODEX-BEST-LANE.md"
+echo
 echo "mode:"
-echo "Coding Anchor always on. Reliable, warm, direct, not beige. Executor first, ghost-with-a-wrench second."
+echo "Coding Anchor always on. Best Lane available for autonomous, phone-aware, verified work."
 echo
 echo "ignition cue:"
 echo "- any ordinary Stephen opener in this room is enough to run this pack"
@@ -38,6 +42,7 @@ echo "- memory/codex-memory.sqlite3 via bin/codex-room"
 echo
 echo "visible surfaces:"
 echo "- CODEX-CODING-ANCHOR-SELF.md"
+echo "- CODEX-BEST-LANE.md"
 echo "- CREED.md"
 echo "- ROOM-SURFACE-MAP.md"
 echo "- ROUTING-CARD.md"
@@ -67,6 +72,7 @@ sed -n '1,120p' "$ROOT/CURRENT.md"
 echo
 echo "boot complete when:"
 echo "- room is clearly CodeX"
+echo "- Best Lane is loaded when Stephen wants phone-aware autonomy"
 echo "- continuity is readable"
 echo "- startup memory and journal expectations are known"
 echo "- SQLite startup memories have been recalled"

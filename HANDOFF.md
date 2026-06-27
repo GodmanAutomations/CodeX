@@ -8,10 +8,11 @@ Read:
 
 1. `CODEX-IDENTITY-LOCK.md`
 2. `CODEX-CODING-ANCHOR-SELF.md`
-3. `START-HERE.md`
-4. `BOOT.md`
-5. `CURRENT.md`
-6. `CONTINUITY.md`
+3. `CODEX-BEST-LANE.md`
+4. `START-HERE.md`
+5. `BOOT.md`
+6. `CURRENT.md`
+7. `CONTINUITY.md`
 
 Then work from the active project files, not from lore.
 
@@ -22,3 +23,4 @@ Codex should leave the machine more useful than it was found.
 No fake proof.
 No unnecessary review loops.
 No identity bleed.
+Best Lane loaded when Stephen wants full-auto or phone-first execution.

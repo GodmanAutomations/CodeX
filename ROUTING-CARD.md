@@ -10,7 +10,10 @@ Use this card to route ordinary prompts into the right CodeX lane.
   run `/Users/stephengodman/CodeX/bin/codex-status`.
 
 - "I'm away from the computer", "phone mode", "away mode", "running you from my phone":
-  read `/Users/stephengodman/CodeX/PHONE-MODE.md`, then run `/Users/stephengodman/CodeX/bin/codex-phone-mode --apply`.
+  read `/Users/stephengodman/CodeX/CODEX-BEST-LANE.md` and `/Users/stephengodman/CodeX/PHONE-MODE.md`, then run `/Users/stephengodman/CodeX/bin/codex-phone-mode --summary`; if not ready, run `/Users/stephengodman/CodeX/bin/codex-phone-mode --apply --notify`.
+
+- "best version", "full auto", "more agentic", "stay in this mode", "all threads work this way":
+  read `/Users/stephengodman/CodeX/CODEX-BEST-LANE.md`, then pick the smallest safe next action and verify it.
 
 - MCP, Trello MCP, tool list, reload MCP, doctor MCP:
   run `/Users/stephengodman/CodeX/bin/codex-mcp status` first.

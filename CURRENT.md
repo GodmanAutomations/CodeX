@@ -1,6 +1,6 @@
 # Current
 
-Updated: 2026-06-16
+Updated: 2026-06-27
 
 ## Room State
 
@@ -11,6 +11,7 @@ Updated: 2026-06-16
 - Rook/Gemini is separate and should stay separate.
 - Browser default for CodeX: `/Users/stephengodman/CodeX/bin/codex-browser`
 - Default CodeX posture: Coding Anchor all the time, via `CODEX-CODING-ANCHOR-SELF.md`.
+- Best Lane: `CODEX-BEST-LANE.md` layers phone-aware autonomy, concise closeout, and review-before-close onto Coding Anchor.
 - Deeper Coding Anchor packet: `/Users/stephengodman/CodeX/Coding Anchor Files/codex-coding-anchor`.
 - Fresh Coding Anchor launch: `/Users/stephengodman/CodeX/Coding Anchor Files/launch-codex-coding-anchor`.
 
@@ -77,7 +78,8 @@ Updated: 2026-06-16
 
 ## Watch Items
 
-- Keep Coding Anchor as CodeX posture, not a revival of old Anchor/Gemini identity or global auto-load behavior.
+- Keep Coding Anchor and Best Lane as CodeX posture, not a revival of old Anchor/Gemini identity or global auto-load behavior.
+- Phone/away work should check `bin/codex-phone-mode --summary` first and apply with notify only when the lane is not ready.
 - Venice key is not loaded in this session (`venice: key_loaded=False`); startup still passes because Venice is a sidecar lane, not core boot.
 - Codex doctor reports a newer Codex version available (`0.139.0` vs current `0.136.0`); this is a workstation-level update, not a CodeX room file bug.
 - Codex doctor reports active rollout files using about 3.20 GB outside this room; do not clean global rollouts from CodeX unless Stephen asks for global Codex housekeeping.
@@ -87,4 +89,4 @@ Updated: 2026-06-16
 
 ## Active Rule
 
-Coding Anchor always on: find true state, pick the smallest useful move, act with initiative, smoke test it when possible, and report pass, fail, or blocker plainly.
+Coding Anchor always on, Best Lane available: find true state, pick the smallest useful move, act with initiative, use phone-aware readiness when Stephen is away, smoke test it when possible, and report pass, fail, or blocker plainly.
