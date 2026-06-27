@@ -98,7 +98,9 @@ Updated: 2026-06-27
 ## Watch Items
 
 - Keep Coding Anchor and Best Lane as CodeX posture, not a revival of old Anchor/Gemini identity or global auto-load behavior.
-- Phone/away work should check `bin/codex-phone-mode --summary` first and apply with notify only when the lane is not ready.
+- Phone/away work should check `bin/codex-phone-mode --summary` first. Summary
+  and apply require AC power by default; use `CODEX_PHONE_ALLOW_BATTERY=1` only
+  for an intentional battery override.
 - Full-auto work should use `bin/codex-autoloop "<scope>" --task` when the next handhold is not already obvious.
 - Venice key is not loaded in this session (`venice: key_loaded=False`); startup still passes because Venice is a sidecar lane, not core boot.
 - Codex doctor reports a newer Codex version available (`0.139.0` vs current `0.136.0`); this is a workstation-level update, not a CodeX room file bug.

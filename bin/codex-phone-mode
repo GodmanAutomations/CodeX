@@ -16,6 +16,7 @@ ONE_UNLOCK_LOADER="/Users/stephengodman/bin/codex-load-api-keys-once"
 OP_ENV_FILE="${CODEX_OP_ENV_FILE:-/Users/stephengodman/.env.1password}"
 PHONE_MODE_ENV="/Users/stephengodman/.codex-phone-mode.env"
 OP_READ_TIMEOUT="${CODEX_PHONE_OP_READ_TIMEOUT:-3}"
+ALLOW_BATTERY="${CODEX_PHONE_ALLOW_BATTERY:-0}"
 STOP_CAFFEINATE_HELPER="/usr/local/sbin/codex-phone-mode-stop-caffeinate"
 
 APPLY=0
@@ -42,6 +43,7 @@ Usage:
 Default is a dry-run preview. --apply enters phone/away mode.
 --apply requests macOS disablesleep by default so Codex can survive lid close.
 --summary prints a compact phone-readable readiness report.
+--summary and --apply require AC power unless CODEX_PHONE_ALLOW_BATTERY=1 is set.
 --notify sends the compact readiness report to Pushover when credentials exist.
 --refresh-cache resolves 1Password refs into the local 0600 phone cache.
 USAGE
@@ -171,6 +173,40 @@ visible_apps() {
 power_status() {
   pmset -g batt 2>/dev/null || true
   pmset -g live 2>/dev/null | awk '/SleepDisabled|sleep |displaysleep / {print}' || true
+}
+
+current_power_source() {
+  # pmset source names are ordinary strings like "AC Power" or "Battery Power".
+  # If pmset is unavailable, callers treat the empty value as not-ac:unknown.
+  pmset -g batt 2>/dev/null | sed -n "s/^Now drawing from '\\([^']*\\)'.*/\\1/p" || true
+}
+
+power_compact_status() {
+  local source
+  source="$(current_power_source)"
+  if [[ "$ALLOW_BATTERY" == "1" ]]; then
+    # override:unknown means the caller intentionally bypassed the AC guard
+    # while pmset source detection was unavailable.
+    printf 'override:%s' "${source:-unknown}"
+    return 0
+  fi
+  if [[ "$source" == "AC Power" ]]; then
+    printf 'OK:AC'
+    return 0
+  fi
+  printf 'not-ac:%s' "${source:-unknown}"
+  return 1
+}
+
+ensure_power_ready() {
+  local summary
+  if summary="$(power_compact_status)"; then
+    say "power guard: $summary"
+    return 0
+  fi
+  say "power guard: $summary"
+  required_fail "AC power required for phone mode"
+  return 1
 }
 
 credential_status() {
@@ -700,11 +736,12 @@ anchor_compact_status() {
 
 phone_summary_body() {
   local failures=()
-  local battery source sleep_disabled codex_status credential_summary cache_summary anchor_summary
+  local battery source sleep_disabled codex_status credential_summary cache_summary anchor_summary power_summary
 
   battery="$(pmset -g batt 2>/dev/null | awk 'NR==2 {gsub(/^[[:space:]]+/, ""); print}' || true)"
-  source="$(pmset -g batt 2>/dev/null | sed -n "s/^Now drawing from '\\(.*\\)'/\\1/p" || true)"
+  source="$(current_power_source)"
   sleep_disabled="$(pmset -g live 2>/dev/null | awk '/SleepDisabled/ {print $2; exit}' || true)"
+  power_summary="$(power_compact_status)" || failures+=("power")
   if codex_app_running; then
     codex_status="running"
   else
@@ -725,6 +762,7 @@ phone_summary_body() {
     say "ready: no (${failures[*]})"
   fi
   say "power: ${source:-unknown}; ${battery:-battery unknown}"
+  say "power_guard: $power_summary"
   say "lid_closed_sleep: $([[ "$sleep_disabled" == "1" ]] && echo disabled || echo not-disabled)"
   say "codex_app: $codex_status"
   say "credentials: $credential_summary"
@@ -1015,6 +1053,8 @@ fi
 
 if [[ "$SUMMARY" -eq 1 ]]; then
   summary_tmp="$(mktemp "${TMPDIR:-/tmp}/codex-phone-summary.XXXXXX")"
+  # phone_summary_body returns non-zero when any readiness failure exists,
+  # including the default AC-power guard.
   phone_summary_body >"$summary_tmp"
   summary_rc=$?
   cat "$summary_tmp"
@@ -1046,6 +1086,13 @@ if [[ "$LID_CLOSED" -eq 1 ]]; then
 fi
 say ""
 
+if [[ "$APPLY" -eq 1 ]]; then
+  # Keep this guard before any keep-awake or pmset mutation in apply mode.
+  if ! ensure_power_ready; then
+    say "Phone mode blocked before keep-awake changes because AC power is required."
+    exit 1
+  fi
+fi
 ensure_caffeinate
 ensure_codex_app
 if [[ "$LID_CLOSED" -eq 1 ]]; then

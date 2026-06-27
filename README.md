@@ -84,8 +84,10 @@ Phone mode also verifies Coding Anchor readiness with `coding-anchor-agentic-che
 while Stephen is operating from the phone with the Mac lid closed. Use
 `--summary` for a compact phone-readable readiness check, `--refresh-cache` to
 resolve local runtime secrets into the phone cache, and `--notify` to send that
-check through Pushover. The watchdog keeps phone mode repaired every five
-minutes and protects battery automatically.
+check through Pushover. `--summary` and `--apply` require AC power by default;
+use `CODEX_PHONE_ALLOW_BATTERY=1` only for an intentional battery override. The
+watchdog keeps phone mode repaired every five minutes and protects battery
+automatically.
 
 MCP control panel:
 
