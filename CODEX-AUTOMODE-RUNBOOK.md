@@ -22,10 +22,13 @@ The work packet answers:
 2. If the packet has an active goal, decide whether the current request resumes
    it or starts a new goal.
 3. Set `Current goal` to one concrete outcome.
-4. Set `Active plan` to 3-7 short steps.
-5. Set `Next action` to the first executable step.
-6. Set `Verification needed` before editing.
-7. If the Pi thread bridge is relevant, run:
+4. Set `Mode` to the operating lane, such as `auto`, `review`, `repair`, or
+   `blocked`.
+5. Set `Started` and `Last update` with concrete timestamps.
+6. Set `Active plan` to 3-7 short steps.
+7. Set `Next action` to the first executable step.
+8. Set `Verification needed` before editing.
+9. If the Pi thread bridge is relevant, run:
 
 ```bash
 /Users/stephengodman/bin/codex-thread --work-start "goal"
@@ -68,11 +71,13 @@ Before closeout:
 
 1. Run the verification listed in `Verification needed`.
 2. Put the pass/fail result under `Receipts`.
-3. Set `Last completed step` to the final verified step.
-4. Set `Next action` to the next real handhold, or `Idle` if done.
-5. Clear `Blockers` if no blocker remains.
-6. If a commit was made, record the short commit id.
-7. If the Pi thread bridge is relevant, run:
+3. Set `Mode` to `done`, `idle`, or the next concrete operating lane.
+4. Set `Last update` to the closeout timestamp.
+5. Set `Last completed step` to the final verified step.
+6. Set `Next action` to the next real handhold, or `Idle` if done.
+7. Clear `Blockers` if no blocker remains.
+8. If a commit was made, record the short commit id.
+9. If the Pi thread bridge is relevant, run:
 
 ```bash
 /Users/stephengodman/bin/codex-thread --work-done "summary"
@@ -84,6 +89,9 @@ Copy this shape exactly:
 
 ```text
 Current goal:
+Mode:
+Started:
+Last update:
 Active plan:
 Last completed step:
 Next action:

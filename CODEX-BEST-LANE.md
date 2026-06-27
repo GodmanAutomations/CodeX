@@ -84,10 +84,10 @@ report and task XML stay under ignored `receipts/` runtime folders.
 ## Auto-Mode Work Packet
 
 `CODEX-AUTOMODE-WORK-PACKET.md` is the tracked room control surface for longer
-runs. Use it to hold the current goal, active plan, last completed step, next
-action, blockers, touched surfaces, verification, receipts, and resume
-instruction. `CODEX-AUTOMODE-RUNBOOK.md` defines the start, update, resume, and
-closeout loop.
+runs. Use it to hold the current goal, mode, started/last-update timestamps,
+active plan, last completed step, next action, blockers, touched surfaces,
+verification, receipts, and resume instruction. `CODEX-AUTOMODE-RUNBOOK.md`
+defines the start, update, resume, and closeout loop.
 
 ## Thread Rule
 

@@ -8,8 +8,9 @@ turning into vague momentum or stale memory.
 The target behavior:
 
 - "Keep rolling" resumes from a visible packet.
-- Future sessions can see the current goal, last step, next action, blockers,
-  touched surfaces, verification, receipts, and resume instruction.
+- Future sessions can see the current goal, mode, start/update timestamps, last
+  step, next action, blockers, touched surfaces, verification, receipts, and
+  resume instruction.
 - Auto mode can work longer while staying bounded and verifiable.
 - Real blockers are separated from normal stopping points.
 - Pi/backend work state can later mirror the same packet format.
@@ -34,6 +35,9 @@ this slice. Document the standard first; backend wiring can be a later ticket.
 
 ```text
 Current goal:
+Mode:
+Started:
+Last update:
 Active plan:
 Last completed step:
 Next action:
@@ -67,4 +71,4 @@ Expected:
 
 Upgrade `/Users/stephengodman/bin/codex-thread --work`, `--work-start`,
 `--work-update`, and `--work-done` so the Pi-backed active-work packet uses the
-same v2 field names.
+same v2 field names, including `Mode`, `Started`, and `Last update`.

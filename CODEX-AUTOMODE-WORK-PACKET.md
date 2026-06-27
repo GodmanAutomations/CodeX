@@ -9,23 +9,36 @@ one next action, clear blockers, and receipts that make resume possible.
 
 Current goal:
 
-- Idle. Auto-Mode Work Packets v2 is installed as the standard packet shape.
+- Mirror Auto-Mode Work Packets v2 into the `codex-thread` backend bridge.
+
+Mode:
+
+- Done.
+
+Started:
+
+- 2026-06-27 02:16 CDT
+
+Last update:
+
+- 2026-06-27 01:19 CDT
 
 Active plan:
 
-- Use this file at the start of longer work.
-- Keep the plan short enough to execute and verify.
-- Update after each meaningful completed step.
-- Close or reset the packet before declaring the run done.
+- Verify the reported Auto-Mode v2 commit and tracked docs.
+- Align the packet docs with the fuller v2 backend field shape.
+- Upgrade `/Users/stephengodman/bin/codex-thread --work*` to write the v2 shape.
+- Verify work start/update/done, preflight, startup, and git cleanliness.
+- Commit tracked CodeX changes if verification passes.
 
 Last completed step:
 
-- Auto-Mode v2 packet and runbook were added to CodeX as the durable standard.
+- Backend mirror now emits the v2 field shape and uses the live Codex backend
+  paths under `/opt/codex-thread`.
 
 Next action:
 
-- For the next longer run, read `CODEX-AUTOMODE-RUNBOOK.md`, set a concrete
-  current goal here, then execute the first useful slice.
+- Idle, or choose the next useful slice when Stephen says "keep rolling".
 
 Blockers:
 
@@ -36,20 +49,30 @@ Files/services touched:
 - `/Users/stephengodman/CodeX/CODEX-AUTOMODE-WORK-PACKET.md`
 - `/Users/stephengodman/CodeX/CODEX-AUTOMODE-RUNBOOK.md`
 - `/Users/stephengodman/CodeX/TICKET-CODEX-AUTOMODE-V2.md`
+- `/Users/stephengodman/CodeX/CODEX-BEST-LANE.md`
+- `/Users/stephengodman/bin/codex-thread`
+- Pi service: `codex-thread.service`
 
 Verification needed:
 
-- For packet-only changes, run targeted `rg`, `git diff --check`, CodeX startup,
-  and Codex thread preflight.
-- For code, service, or backend changes, add the narrow runtime check that proves
-  the changed surface works.
+- `codex-thread --work-start`, `--work`, `--work-update`, and `--work-done`
+- `/Users/stephengodman/bin/codex-thread --preflight`
+- `/Users/stephengodman/CodeX/bin/codex-startup`
+- `rg` for v2 field names
+- `git diff --check`
+- secret scan
 
 Receipts:
 
 - Commit for Auto-Mode v2.
-- `git status --short`
+- `bash -n /Users/stephengodman/bin/codex-thread`
+- `/Users/stephengodman/bin/codex-thread --work-start "Mirror Auto-Mode Work Packets v2 into codex-thread backend"`
+- `/Users/stephengodman/bin/codex-thread --work-update "Verified v2 field emission from backend work packet"`
+- `/Users/stephengodman/bin/codex-thread --work-done "Backend mirror emits v2 fields and uses live Codex backend paths"`
+- `/Users/stephengodman/bin/codex-thread --work`
 - `/Users/stephengodman/bin/codex-thread --preflight`
 - `/Users/stephengodman/CodeX/bin/codex-startup`
+- `git diff --check`
 
 Resume instruction:
 
@@ -64,6 +87,9 @@ backend:
 
 ```text
 Current goal:
+Mode:
+Started:
+Last update:
 Active plan:
 Last completed step:
 Next action:
