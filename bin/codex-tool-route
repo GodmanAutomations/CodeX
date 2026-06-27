@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="/Users/stephengodman/CodeX"
+CARD="$ROOT/CODEX-TOOL-ROUTING.md"
+
+usage() {
+  cat <<'EOF'
+usage:
+  codex-tool-route
+  codex-tool-route "prompt or need"
+
+Print Tool Routing v1, or match a short prompt to the first useful route.
+EOF
+}
+
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
+  usage
+  exit 0
+fi
+
+if [ "$#" -eq 0 ]; then
+  sed -n '1,220p' "$CARD"
+  exit 0
+fi
+
+text=" $(printf '%s ' "$@" | tr '[:upper:]' '[:lower:]')"
+
+case "$text" in
+  *secret*|*private*|*personal*|*credential*|*password*|*token*)
+    route="Private/person-sensitive work"
+    first="Use minimal necessary reads and keep raw private material out of logs/chat/git."
+    verify="Confirm no raw secrets/private payloads were written to tracked files."
+    ;;
+  *" pi "*|*" pi5 "*|*raspberry*|*backend*|*service*|*systemctl*|*ssh*|*codex-thread*)
+    route="Pi/backend truth"
+    first="Run codex-thread --preflight, then SSH only as needed."
+    verify="Check service state, health endpoint, logs, or targeted backend command."
+    ;;
+  *remember*|*memory*|*recall*|*where\ were\ we*|*continuity*)
+    route="CodeX continuity"
+    first="Use codex-room brief/recall, continuity files, and current packet."
+    verify="Confirm memory against current files or runtime before treating it as current."
+    ;;
+  *api*|*library*|*sdk*|*openai*|*cloudflare*|*vercel*|*github*)
+    route="API/library behavior"
+    first="Use local examples first, then official docs for drift-prone behavior."
+    verify="Name the source and run a small code/runtime check when possible."
+    ;;
+  *latest*|*current*|*today*|*price*|*policy*|*docs*|*look\ up*|*search*|*web*)
+    route="Current outside facts"
+    first="Use web/search; prefer official or primary sources when facts can drift."
+    verify="Cite sources or state what remains unverified."
+    ;;
+  *repo*|*file*|*folder*|*local*|*code*|*test*|*run*|*build*)
+    route="Local repo truth"
+    first="Read local rules, inspect files with rg/shell, then make the smallest useful move."
+    verify="Run the narrow test, lint, startup, or smoke check."
+    ;;
+  *keep\ rolling*|*next\ slice*|*full\ auto*|*auto\ mode*|*you\ decide*)
+    route="Long auto-mode work"
+    first="Read/update CODEX-AUTOMODE-WORK-PACKET.md; mirror with codex-thread --work* when relevant."
+    verify="Packet has next action, blockers, touched files, receipts, and checks."
+    ;;
+  *image*|*audio*|*video*|*media*|*creative*)
+    route="Creative/media work"
+    first="Use the domain media tool directly and save outputs in an appropriate local path."
+    verify="Open/render/play the output or provide exact path and known limits."
+    ;;
+  *git*|*commit*|*push*|*pr*|*pull\ request*|*merge*)
+    route="Git/PR route"
+    first="Inspect status, stage only intentional files, use conventional commits, PR when protected."
+    verify="Report status, commit hash, PR URL, and push/merge state."
+    ;;
+  *)
+    route="Smallest safe first read"
+    first="Read the local rules/current files, then choose the route with the real truth source."
+    verify="State the chosen lane and run the smallest meaningful check."
+    ;;
+esac
+
+cat <<EOF
+route: $route
+first move: $first
+verification: $verify
+source: $CARD
+EOF

@@ -31,6 +31,11 @@ Use this lane when Stephen says:
   `bin/codex-phone-mode --summary`; apply or notify when the lane is not ready.
 - Prefer API-first execution over UI clicking when an API exists and credentials
   are available.
+- Use `CODEX-TOOL-ROUTING.md` when the right truth source is not obvious: web
+  for current outside facts, files/shell for local truth, `codex-thread` + SSH
+  for Pi truth, memory for continuity, official docs for API behavior, v2 packet
+  for long work, bounded lane for private material, media tools for creative
+  work, and git/PR route for release work.
 - After meaningful or risky code/config changes, get an independent review when
   a subagent/reviewer is available; otherwise self-review the diff before close.
 - When Stephen says to keep rolling, go full auto, or make the next slices

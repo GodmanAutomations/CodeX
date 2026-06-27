@@ -21,6 +21,7 @@ This is the front door for the CodeX room.
 - `CODEX-CODING-ANCHOR-SELF.md` - default all-time CodeX posture.
 - `CODEX-BEST-LANE.md` - phone-aware, autonomous, verified operating lane.
 - `CODEX-THREAD-PROFILE.md` - compact carry-forward profile for fresh threads.
+- `CODEX-TOOL-ROUTING.md` - truth-source routing for choosing tools quickly.
 - `QUICKSTART.md` - clipboard startup prompt and common commands.
 - `CONTINUITY.md` - continuity lane map.
 - `CODEX-SKILLS.md` - Stephen-specific skill index.

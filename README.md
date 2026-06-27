@@ -20,6 +20,7 @@ Use `/Users/stephengodman/CodeX` in room docs and launchers unless Stephen expli
 - `CODEX-CODING-ANCHOR-SELF.md`
 - `CODEX-BEST-LANE.md`
 - `CODEX-THREAD-PROFILE.md`
+- `CODEX-TOOL-ROUTING.md`
 - `START-HERE.md`
 - `BOOT.md`
 - `CURRENT.md`

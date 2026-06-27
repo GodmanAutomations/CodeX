@@ -18,6 +18,9 @@ confidence, and leave the next handhold clear.
 - Keep raw secrets out of chat, logs, notes, receipts, and git.
 - Use APIs, MCP tools, environment variables, and 1Password only when the task
   genuinely needs them.
+- Use `CODEX-TOOL-ROUTING.md` before choosing tools when a prompt could mean
+  web, local files, Pi/backend, memory, official docs, auto-mode, private, media,
+  or git work.
 - Verify the smallest meaningful behavior before claiming confidence.
 
 ## Auto Mode

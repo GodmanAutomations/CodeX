@@ -19,6 +19,11 @@ Use this card to route ordinary prompts into the right CodeX lane.
   read `/Users/stephengodman/CodeX/CODEX-THREAD-PROFILE.md` and use it as the
   compact bootstrap card; keep repo-local rules primary in the target thread.
 
+- "what route", "which tool", "how should you check", "look into this":
+  read `/Users/stephengodman/CodeX/CODEX-TOOL-ROUTING.md` or run
+  `/Users/stephengodman/CodeX/bin/codex-tool-route "<prompt>"`, then use the
+  selected truth source before answering.
+
 - "keep rolling", "next slice", "what should you do next", "make a handhold":
   read `/Users/stephengodman/CodeX/CODEX-AUTOMODE-WORK-PACKET.md` and
   `/Users/stephengodman/CodeX/CODEX-AUTOMODE-RUNBOOK.md`, update the packet's
