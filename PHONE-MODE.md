@@ -35,6 +35,14 @@ Compact phone check:
 /Users/stephengodman/CodeX/bin/codex-phone-mode --summary
 ```
 
+`--summary` requires AC power by default. If the Mac is on battery, it reports
+`ready: no (power)` and exits non-zero instead of pretending the phone lane is
+safe. Only bypass this intentionally:
+
+```bash
+CODEX_PHONE_ALLOW_BATTERY=1 /Users/stephengodman/CodeX/bin/codex-phone-mode --summary
+```
+
 Refresh the local phone credential cache while the Mac has access:
 
 ```bash
@@ -109,7 +117,12 @@ Phone mode applies the quiet/private Mac posture:
 - lock the screen
 - sleep the display
 
-For closet / portable-battery operation, phone mode requests lid-closed survival by default:
+Phone mode treats AC power as a required readiness signal. Normal summary and
+apply flows fail when the Mac is drawing from battery, unless
+`CODEX_PHONE_ALLOW_BATTERY=1` is set for that command. This keeps the phone lane
+honest when Stephen has told CodeX not to spend battery.
+
+For closet / remote operation, phone mode requests lid-closed survival by default:
 
 ```bash
 /Users/stephengodman/CodeX/bin/codex-phone-mode --apply
@@ -123,11 +136,17 @@ That uses macOS `pmset disablesleep=1` when sudo permission is available. Restor
 
 If `disablesleep` cannot be enabled, lid-close operation remains best-effort and can stop Codex until the Mac wakes.
 
-The GitHub pattern for lid-closed agents is consistent: `caffeinate` handles idle sleep, but lid-close survival needs `pmset disablesleep`. CodeX phone mode therefore treats `--lid-closed` as the stronger closet/portable-battery path.
+The GitHub pattern for lid-closed agents is consistent: `caffeinate` handles
+idle sleep, but lid-close survival needs `pmset disablesleep`. CodeX phone mode
+therefore treats `--lid-closed` as the stronger closet/remote path, still gated
+by the AC-power readiness rule unless `CODEX_PHONE_ALLOW_BATTERY=1` is set.
 
-The watchdog protects battery automatically. If the Mac is on battery and drops
-to 30% or lower, it sends a warning. If it drops to 20% or lower, it restores
-sleep and sleeps the Mac unless the battery override file is present. Use:
+The apply-time AC gate and the watchdog thresholds are separate protections.
+The gate blocks new phone-mode apply attempts while on battery. The watchdog
+still protects already-running phone mode automatically: if the Mac is on
+battery and drops to 30% or lower, it sends a warning; if it drops to 20% or
+lower, it restores sleep and sleeps the Mac unless the battery override file is
+present. Use:
 
 ```bash
 /Users/stephengodman/CodeX/bin/codex-phone-mode-watchdog --battery-override-on

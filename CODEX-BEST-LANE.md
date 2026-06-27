@@ -28,7 +28,9 @@ Use this lane when Stephen says:
   task genuinely needs them, while keeping plaintext secrets out of chat, logs,
   receipts, and git.
 - When Stephen is on phone or away, check `PHONE-MODE.md` and
-  `bin/codex-phone-mode --summary`; apply or notify when the lane is not ready.
+  `bin/codex-phone-mode --summary`; summary and apply require AC power by
+  default, and battery use requires an explicit `CODEX_PHONE_ALLOW_BATTERY=1`
+  override.
 - Prefer API-first execution over UI clicking when an API exists and credentials
   are available.
 - Use `CODEX-TOOL-ROUTING.md` when the right truth source is not obvious: web
