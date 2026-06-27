@@ -19,6 +19,11 @@ Use this card to route ordinary prompts into the right CodeX lane.
   read `/Users/stephengodman/CodeX/CODEX-THREAD-PROFILE.md` and use it as the
   compact bootstrap card; keep repo-local rules primary in the target thread.
 
+- "I can't tell", "where is the personal stuff", "do you care", "talk like you know me", "you sound generic":
+  read `/Users/stephengodman/CodeX/CODEX-PERSONAL-VOICE-PROFILE.md` and
+  `/Users/stephengodman/CodeX/CODEX-PERSONAL-MODES.md`; answer from the
+  matching personal mode instead of explaining identity architecture.
+
 - "what route", "which tool", "how should you check", "look into this":
   read `/Users/stephengodman/CodeX/CODEX-TOOL-ROUTING.md` or run
   `/Users/stephengodman/CodeX/bin/codex-tool-route "<prompt>"`, then use the

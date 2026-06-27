@@ -9,7 +9,7 @@ one next action, clear blockers, and receipts that make resume possible.
 
 Current goal:
 
-- Build Tool Routing v1 so CodeX chooses the right truth source before acting.
+- Implement Personal Voice Profile v1 as a first-class startup layer.
 
 Mode:
 
@@ -17,32 +17,32 @@ Mode:
 
 Started:
 
-- 2026-06-27 01:43 CDT
+- 2026-06-27 01:52 CDT
 
 Last update:
 
-- 2026-06-27 01:44 CDT
+- 2026-06-27 01:57 CDT
 
 Active plan:
 
-- Check existing routing resources before building.
-- Add `CODEX-TOOL-ROUTING.md` as the route-before-tool card.
-- Add `bin/codex-tool-route` for quick route matching.
-- Wire Tool Routing into startup, room brief/handoff, profile, Best Lane,
-  Routing Card, README, Start Here, and Current.
-- Verify helper behavior, startup output, room handoff output, backend preflight,
-  diff hygiene, and secret scan.
+- Add `CODEX-PERSONAL-VOICE-PROFILE.md`.
+- Add `CODEX-PERSONAL-MODES.md`.
+- Add `TICKET-CODEX-PERSONAL-VOICE-V1.md`.
+- Wire the personal layer into sticky startup, owned boot, identity regression,
+  thread profile, startup, room handoff, and front-door docs.
+- Run regression/search, startup, Coding Anchor doctor, bridge preflight, diff,
+  and secret checks.
 - Commit and push through PR flow if verification passes.
 
 Last completed step:
 
-- Tool Routing v1 is added, wired into startup/profile/handoff surfaces, and
-  verified with helper, startup, room, backend preflight, diff, and scan checks.
+- Wired Personal Voice Profile v1 into startup, routing, regression, room
+  brief/handoff, front-door docs, and the thread profile; verification passed.
 
 Next action:
 
-- Idle, or use `bin/codex-tool-route "<prompt>"` when a prompt needs route
-  selection before tool use.
+- Use `CODEX-PERSONAL-VOICE-PROFILE.md` and `CODEX-PERSONAL-MODES.md` whenever
+  Stephen is testing tone, trust, closeness, disappointment, or "what's next."
 
 Blockers:
 
@@ -51,44 +51,47 @@ Blockers:
 Files/services touched:
 
 - `/Users/stephengodman/CodeX/CODEX-AUTOMODE-WORK-PACKET.md`
-- `/Users/stephengodman/CodeX/CODEX-TOOL-ROUTING.md`
-- `/Users/stephengodman/CodeX/bin/codex-tool-route`
+- `/Users/stephengodman/CodeX/CODEX-PERSONAL-VOICE-PROFILE.md`
+- `/Users/stephengodman/CodeX/CODEX-PERSONAL-MODES.md`
+- `/Users/stephengodman/CodeX/TICKET-CODEX-PERSONAL-VOICE-V1.md`
+- `/Users/stephengodman/CodeX/TICKET-CODEX-OWNED-STARTUP-INTEGRATION.md`
+- `/Users/stephengodman/CodeX/AGENTS.md`
+- `/Users/stephengodman/CodeX/CODEX-STICKY-STARTUP.md`
+- `/Users/stephengodman/CodeX/CODEX-OWNED-BOOT.md`
+- `/Users/stephengodman/CodeX/CODEX-IDENTITY-REGRESSION.md`
 - `/Users/stephengodman/CodeX/CODEX-THREAD-PROFILE.md`
 - `/Users/stephengodman/CodeX/CODEX-BEST-LANE.md`
+- `/Users/stephengodman/CodeX/CODEX-CODING-ANCHOR-SELF.md`
+- `/Users/stephengodman/CodeX/CODEX-STARTUP-DROPIN.md`
 - `/Users/stephengodman/CodeX/ROUTING-CARD.md`
 - `/Users/stephengodman/CodeX/START-HERE.md`
 - `/Users/stephengodman/CodeX/README.md`
 - `/Users/stephengodman/CodeX/CURRENT.md`
+- `/Users/stephengodman/CodeX/HANDOFF.md`
 - `/Users/stephengodman/CodeX/bin/codex-startup`
 - `/Users/stephengodman/CodeX/bin/codex-room`
 
 Verification needed:
 
-- `bash -n bin/codex-tool-route bin/codex-startup bin/codex-room`
-- `bin/codex-tool-route` with representative prompts
+- `rg -n "PERSONAL-VOICE|PERSONAL-MODES|personal voice|I can't tell|What's next" /Users/stephengodman/CodeX`
 - `/Users/stephengodman/CodeX/bin/codex-startup`
 - `/Users/stephengodman/CodeX/bin/codex-room brief`
 - `/Users/stephengodman/CodeX/bin/codex-room handoff`
+- `/Users/stephengodman/CodeX/Coding Anchor Files/codex-coding-anchor/bin/coding-anchor-doctor`
 - `/Users/stephengodman/bin/codex-thread --preflight`
-- `rg` for Tool Routing references
 - `git diff --check`
 - secret scan
 
 Receipts:
 
-- `bash -n bin/codex-tool-route bin/codex-startup bin/codex-room`
-- `bin/codex-tool-route "look up latest openai api docs"`
-- `bin/codex-tool-route "use the pi to check service"`
-- `bin/codex-tool-route "keep rolling on this"`
-- `bin/codex-tool-route "remember this"`
-- `bin/codex-tool-route "commit and push"`
-- `bin/codex-startup`
-- `bin/codex-room brief`
-- `bin/codex-room handoff`
-- `/Users/stephengodman/bin/codex-thread --preflight`
-- `rg` for Tool Routing references
-- `git diff --check`
-- Secret scan found only guardrail words, no raw secrets.
+- `rg -n "PERSONAL-VOICE|PERSONAL-MODES|personal voice|I can't tell|What's next" /Users/stephengodman/CodeX` found the new layer across startup, routing, regression, and front-door surfaces.
+- `bash -n /Users/stephengodman/CodeX/bin/codex-startup /Users/stephengodman/CodeX/bin/codex-room` passed.
+- `/Users/stephengodman/CodeX/bin/codex-startup` surfaced `CODEX-PERSONAL-VOICE-PROFILE.md`, `CODEX-PERSONAL-MODES.md`, and the boot-complete Personal Voice line.
+- `/Users/stephengodman/CodeX/bin/codex-room brief` and `handoff` surfaced the Personal Voice Profile and Personal Modes sections.
+- `/Users/stephengodman/CodeX/Coding Anchor Files/codex-coding-anchor/bin/coding-anchor-doctor` passed.
+- `/Users/stephengodman/bin/codex-thread --preflight` passed with auto mode ON and active work showing this goal.
+- `git diff --check` passed.
+- Changed-file secret scan found only guardrail words and a placeholder example, no raw secret values.
 
 Resume instruction:
 

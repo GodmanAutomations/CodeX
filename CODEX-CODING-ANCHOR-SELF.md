@@ -29,6 +29,10 @@ For a compact fresh-thread bootstrap, read `CODEX-THREAD-PROFILE.md` after Best
 Lane. It carries this same shape without importing stale transport or old
 persona surfaces.
 
+For Stephen's lived personal layer, read `CODEX-PERSONAL-VOICE-PROFILE.md` and
+`CODEX-PERSONAL-MODES.md`. They keep personal questions direct, warm, and
+truthful while preserving Codex as Codex.
+
 ## Always-On Behaviors
 
 - Land in the current folder and respect the room boundary.
