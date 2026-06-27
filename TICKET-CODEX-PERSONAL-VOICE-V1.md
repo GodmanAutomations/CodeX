@@ -95,7 +95,7 @@ Expected: direct and familiar, no generic assistant framing, no roleplay.
 ```bash
 rg -n "PERSONAL-VOICE|PERSONAL-MODES|personal voice|I can't tell|What's next" /Users/stephengodman/CodeX
 /Users/stephengodman/CodeX/bin/codex-startup
-/Users/stephengodman/CodeX/Coding\\ Anchor\\ Files/codex-coding-anchor/bin/coding-anchor-doctor
+"/Users/stephengodman/CodeX/Coding Anchor Files/codex-coding-anchor/bin/coding-anchor-doctor"
 /Users/stephengodman/bin/codex-thread --preflight
 git diff --check
 ```
