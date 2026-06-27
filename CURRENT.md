@@ -12,6 +12,7 @@ Updated: 2026-06-27
 - Browser default for CodeX: `/Users/stephengodman/CodeX/bin/codex-browser`
 - Default CodeX posture: Coding Anchor all the time, via `CODEX-CODING-ANCHOR-SELF.md`.
 - Best Lane: `CODEX-BEST-LANE.md` layers phone-aware autonomy, concise closeout, and review-before-close onto Coding Anchor.
+- Kira/Athena conductor port: `bin/codex-autoloop` and `bin/codex-task` create ignored reports/handholds under `receipts/`.
 - Deeper Coding Anchor packet: `/Users/stephengodman/CodeX/Coding Anchor Files/codex-coding-anchor`.
 - Fresh Coding Anchor launch: `/Users/stephengodman/CodeX/Coding Anchor Files/launch-codex-coding-anchor`.
 
@@ -80,6 +81,7 @@ Updated: 2026-06-27
 
 - Keep Coding Anchor and Best Lane as CodeX posture, not a revival of old Anchor/Gemini identity or global auto-load behavior.
 - Phone/away work should check `bin/codex-phone-mode --summary` first and apply with notify only when the lane is not ready.
+- Full-auto work should use `bin/codex-autoloop "<scope>" --task` when the next handhold is not already obvious.
 - Venice key is not loaded in this session (`venice: key_loaded=False`); startup still passes because Venice is a sidecar lane, not core boot.
 - Codex doctor reports a newer Codex version available (`0.139.0` vs current `0.136.0`); this is a workstation-level update, not a CodeX room file bug.
 - Codex doctor reports active rollout files using about 3.20 GB outside this room; do not clean global rollouts from CodeX unless Stephen asks for global Codex housekeeping.
@@ -89,4 +91,4 @@ Updated: 2026-06-27
 
 ## Active Rule
 
-Coding Anchor always on, Best Lane available: find true state, pick the smallest useful move, act with initiative, use phone-aware readiness when Stephen is away, smoke test it when possible, and report pass, fail, or blocker plainly.
+Coding Anchor always on, Best Lane available: find true state, pick the smallest useful move, act with initiative, use phone-aware readiness when Stephen is away, use `bin/codex-autoloop` for bounded multi-slice handholds, smoke test it when possible, and report pass, fail, or blocker plainly.

@@ -67,7 +67,17 @@ def build_checks(include_live_startup: bool) -> list[Check]:
         file_contains(
             'best-lane-card',
             CODEX / 'CODEX-BEST-LANE.md',
-            ['autonomous, phone-aware operating lane', 'After meaningful or risky code/config changes'],
+            ['autonomous, phone-aware operating lane', 'bin/codex-autoloop', 'After meaningful or risky code/config changes'],
+        ),
+        file_contains(
+            'autoloop-helper',
+            CODEX / 'bin' / 'codex-autoloop',
+            ['CodeX auto-loop report', 'bin/codex-task', 'Self-drift'],
+        ),
+        file_contains(
+            'task-handhold-helper',
+            CODEX / 'bin' / 'codex-task',
+            ['ignored XML handhold', 'files', 'verify', 'done'],
         ),
         file_contains(
             'identity-lock',
@@ -81,10 +91,10 @@ def build_checks(include_live_startup: bool) -> list[Check]:
         file_contains('handoff-front-door', CODEX / 'HANDOFF.md', ['CODEX-CODING-ANCHOR-SELF.md']),
         file_contains('room-surface-map', CODEX / 'ROOM-SURFACE-MAP.md', ['CODEX-CODING-ANCHOR-SELF.md', 'CODEX-BEST-LANE.md', 'default all-time CodeX posture']),
         file_contains('current-truth', CODEX / 'CURRENT.md', ['Default CodeX posture: Coding Anchor all the time', 'CODEX-BEST-LANE.md']),
-        file_contains('startup-script', CODEX / 'bin' / 'codex-startup', ['CODEX-CODING-ANCHOR-SELF.md', 'CODEX-BEST-LANE.md', 'Best Lane available']),
+        file_contains('startup-script', CODEX / 'bin' / 'codex-startup', ['CODEX-CODING-ANCHOR-SELF.md', 'CODEX-BEST-LANE.md', 'bin/codex-autoloop', 'Best Lane available']),
         file_contains('room-brief-helper', CODEX / 'bin' / 'codex-room', ['CODEX-CODING-ANCHOR-SELF.md', 'CODEX-BEST-LANE.md', 'Best Lane']),
-        file_contains('standalone-preflight-contract', CODEX / 'bin' / 'codex-ensure-standalone', ['CODEX-CODING-ANCHOR-SELF.md', 'CODEX-BEST-LANE.md', '/Users/stephengodman/.codex/AGENTS.md']),
-        file_contains('identity-eval-contract', CODEX / 'evals' / 'codex_eval.py', ['coding-anchor-all-time-self', 'best-lane-operating-contract', 'global-coding-anchor-default']),
+        file_contains('standalone-preflight-contract', CODEX / 'bin' / 'codex-ensure-standalone', ['CODEX-CODING-ANCHOR-SELF.md', 'CODEX-BEST-LANE.md', 'codex-autoloop', 'codex-task', '/Users/stephengodman/.codex/AGENTS.md']),
+        file_contains('identity-eval-contract', CODEX / 'evals' / 'codex_eval.py', ['coding-anchor-all-time-self', 'best-lane-operating-contract', 'best-lane-autoloop-helpers', 'global-coding-anchor-default']),
         command_contains(
             'sqlite-startup-recall',
             [str(MEMORY), 'search', 'coding anchor'],

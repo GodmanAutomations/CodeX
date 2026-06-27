@@ -13,7 +13,10 @@ Use this card to route ordinary prompts into the right CodeX lane.
   read `/Users/stephengodman/CodeX/CODEX-BEST-LANE.md` and `/Users/stephengodman/CodeX/PHONE-MODE.md`, then run `/Users/stephengodman/CodeX/bin/codex-phone-mode --summary`; if not ready, run `/Users/stephengodman/CodeX/bin/codex-phone-mode --apply --notify`.
 
 - "best version", "full auto", "more agentic", "stay in this mode", "all threads work this way":
-  read `/Users/stephengodman/CodeX/CODEX-BEST-LANE.md`, then pick the smallest safe next action and verify it.
+  read `/Users/stephengodman/CodeX/CODEX-BEST-LANE.md`, then run `/Users/stephengodman/CodeX/bin/codex-autoloop "best lane" --task` when a concrete next handhold would help; pick the smallest safe next action and verify it.
+
+- "keep rolling", "next slice", "what should you do next", "make a handhold":
+  run `/Users/stephengodman/CodeX/bin/codex-autoloop "<scope>" --task`, open the reported file, execute pass 1 only, and stop at any public/paid/credential/destructive/external-contact gate.
 
 - MCP, Trello MCP, tool list, reload MCP, doctor MCP:
   run `/Users/stephengodman/CodeX/bin/codex-mcp status` first.

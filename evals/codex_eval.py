@@ -117,7 +117,12 @@ def eval_identity() -> EvalResult:
         check_file_contains(
             'best-lane-operating-contract',
             CODEX / 'CODEX-BEST-LANE.md',
-            ['autonomous, phone-aware operating lane', 'Verify the smallest meaningful behavior before confidence.'],
+            ['autonomous, phone-aware operating lane', 'bin/codex-autoloop', 'Verify the smallest meaningful behavior before confidence.'],
+        ),
+        check_file_contains(
+            'best-lane-autoloop-helpers',
+            CODEX / 'bin' / 'codex-autoloop',
+            ['CodeX auto-loop report', 'bin/codex-task', 'Self-drift'],
         ),
         check_file_contains(
             'global-coding-anchor-default',

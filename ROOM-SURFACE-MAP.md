@@ -17,10 +17,13 @@ Use this map when something feels important but hidden. It is a directory for Co
 
 - `bin/codex-startup` - room startup.
 - `bin/codex-self-drift` - Coding Anchor identity/startup drift audit.
+- `bin/codex-autoloop` - bounded Kira/Athena-style conductor report.
+- `bin/codex-task` - ignored XML handhold for one verified slice.
 - `bin/codex-room brief` - compact read-only re-entry snapshot.
 - `bin/codex-ensure-standalone` - prerequisite check and safe repair.
 - `bin/codex-doctor-room` - deeper room health check.
 - `receipts/startup/` - preflight and doctor receipts.
+- `receipts/autoloops/` and `receipts/tasks/` - ignored runtime handholds.
 
 ## Continuity Lanes
 
