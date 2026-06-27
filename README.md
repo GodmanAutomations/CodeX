@@ -48,8 +48,9 @@ Room health check:
 Tree / Trello MCP preflight:
 
 ```bash
-/Users/stephengodman/CodeX/bin/codex-tree-steward --strict
 /Users/stephengodman/CodeX/bin/codex-mcp preflight
+/Users/stephengodman/CodeX/bin/codex-tree-steward --strict --preflight trello-mcp --no-receipt
+/Users/stephengodman/CodeX/bin/codex-tree-steward --doctor
 ```
 
 Phone / away mode:

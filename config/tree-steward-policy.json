@@ -1,12 +1,19 @@
 {
   "version": 1,
   "description": "CodeX worktree hygiene policy for autonomous Trello MCP and room-control work.",
+  "content_scan_max_bytes": 1000000,
   "strict_block_categories": [
     "needs_human_review",
     "risky_or_revert_sensitive",
     "ignored_or_archive_candidate"
   ],
   "path_rules": [
+    {
+      "pattern": "config/tree-steward-*.json",
+      "category": "needs_human_review",
+      "reason": "tree steward policy/schema controls autonomous preflight behavior",
+      "recommendation": "run tree steward doctor and focused preflight checks before commit"
+    },
     {
       "pattern": ".gitignore",
       "category": "safe_to_review",
@@ -119,19 +126,21 @@
     "measurement-pipeline-v2/**",
     "__pycache__/**"
   ],
+  "raw_secret_assignment_allow_values": [
+    "APPLY_PHOTO_CARD_MATCH_PLAN",
+    "APPLY_RECORD_MATCH_ACTION_PLAN",
+    "EXPORT_PHOTOS_FROM_ICLOUD"
+  ],
   "trello_mcp_preflight": {
     "description": "Required before Trello MCP build or apply-like slices.",
-    "commands": [
-      "/Users/stephengodman/CodeX/bin/codex-tree-steward --strict",
-      "/Users/stephengodman/CodeX/bin/codex-mcp status"
-    ],
     "blocked_categories": [
       "needs_human_review",
       "risky_or_revert_sensitive",
       "ignored_or_archive_candidate"
     ],
     "blocked_content_severities": [
-      "block"
+      "block",
+      "warn"
     ],
     "candice_rewire_requires_explicit_instruction": true
   }

@@ -20,6 +20,12 @@ For Trello MCP readiness:
 /Users/stephengodman/CodeX/bin/codex-mcp preflight --json
 ```
 
+For steward behavior itself:
+
+```bash
+/Users/stephengodman/CodeX/bin/codex-tree-steward --doctor
+```
+
 ## Classification Rules
 
 - `safe_to_review`: normal docs/notes or policy-approved room metadata.
@@ -35,6 +41,7 @@ For Trello MCP readiness:
 - Do not commit generated receipts, private files, caches, or raw `.env` material.
 - Do not modify Trello, Google Drive, Photos, Messages, bills, or live services during tree stewardship.
 - Do not use `git reset --hard`, `git checkout --`, recursive deletes, or wildcard deletes.
+- If Trello MCP preflight is blocked, do not perform Trello writes, photo attach/apply work, billing publish work, or apply-like MCP work until there is a clean rerun or an explicit Stephen/parent-agent override naming the accepted blocker.
 
 ## Expected Output
 
