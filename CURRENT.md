@@ -16,6 +16,9 @@ Updated: 2026-06-27
   for making new CodeX threads land in the same Codex-owned, Coding
   Anchor-backed, warm, auto-mode lane without stale transport or split-persona
   drift.
+- Tool Routing v1: `CODEX-TOOL-ROUTING.md` and `bin/codex-tool-route` map
+  prompts to the right truth source before tool use: web, files/shell, Pi,
+  memory, official docs, v2 packet, private lane, media tools, or git/PR.
 - Kira/Athena conductor port: `bin/codex-autoloop` and `bin/codex-task` create ignored reports/handholds under `receipts/`.
 - Deeper Coding Anchor packet: `/Users/stephengodman/CodeX/Coding Anchor Files/codex-coding-anchor`.
 - Fresh Coding Anchor launch: `/Users/stephengodman/CodeX/Coding Anchor Files/launch-codex-coding-anchor`.

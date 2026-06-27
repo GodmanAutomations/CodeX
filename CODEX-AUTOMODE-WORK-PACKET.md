@@ -9,7 +9,7 @@ one next action, clear blockers, and receipts that make resume possible.
 
 Current goal:
 
-- Mirror Auto-Mode Work Packets v2 into the `codex-thread` backend bridge.
+- Build Tool Routing v1 so CodeX chooses the right truth source before acting.
 
 Mode:
 
@@ -17,28 +17,32 @@ Mode:
 
 Started:
 
-- 2026-06-27 02:16 CDT
+- 2026-06-27 01:43 CDT
 
 Last update:
 
-- 2026-06-27 01:19 CDT
+- 2026-06-27 01:44 CDT
 
 Active plan:
 
-- Verify the reported Auto-Mode v2 commit and tracked docs.
-- Align the packet docs with the fuller v2 backend field shape.
-- Upgrade `/Users/stephengodman/bin/codex-thread --work*` to write the v2 shape.
-- Verify work start/update/done, preflight, startup, and git cleanliness.
-- Commit tracked CodeX changes if verification passes.
+- Check existing routing resources before building.
+- Add `CODEX-TOOL-ROUTING.md` as the route-before-tool card.
+- Add `bin/codex-tool-route` for quick route matching.
+- Wire Tool Routing into startup, room brief/handoff, profile, Best Lane,
+  Routing Card, README, Start Here, and Current.
+- Verify helper behavior, startup output, room handoff output, backend preflight,
+  diff hygiene, and secret scan.
+- Commit and push through PR flow if verification passes.
 
 Last completed step:
 
-- Backend mirror now emits the v2 field shape and uses the live Codex backend
-  paths under `/opt/codex-thread`.
+- Tool Routing v1 is added, wired into startup/profile/handoff surfaces, and
+  verified with helper, startup, room, backend preflight, diff, and scan checks.
 
 Next action:
 
-- Idle, or choose the next useful slice when Stephen says "keep rolling".
+- Idle, or use `bin/codex-tool-route "<prompt>"` when a prompt needs route
+  selection before tool use.
 
 Blockers:
 
@@ -47,32 +51,44 @@ Blockers:
 Files/services touched:
 
 - `/Users/stephengodman/CodeX/CODEX-AUTOMODE-WORK-PACKET.md`
-- `/Users/stephengodman/CodeX/CODEX-AUTOMODE-RUNBOOK.md`
-- `/Users/stephengodman/CodeX/TICKET-CODEX-AUTOMODE-V2.md`
+- `/Users/stephengodman/CodeX/CODEX-TOOL-ROUTING.md`
+- `/Users/stephengodman/CodeX/bin/codex-tool-route`
+- `/Users/stephengodman/CodeX/CODEX-THREAD-PROFILE.md`
 - `/Users/stephengodman/CodeX/CODEX-BEST-LANE.md`
-- `/Users/stephengodman/bin/codex-thread`
-- Pi service: `codex-thread.service`
+- `/Users/stephengodman/CodeX/ROUTING-CARD.md`
+- `/Users/stephengodman/CodeX/START-HERE.md`
+- `/Users/stephengodman/CodeX/README.md`
+- `/Users/stephengodman/CodeX/CURRENT.md`
+- `/Users/stephengodman/CodeX/bin/codex-startup`
+- `/Users/stephengodman/CodeX/bin/codex-room`
 
 Verification needed:
 
-- `codex-thread --work-start`, `--work`, `--work-update`, and `--work-done`
-- `/Users/stephengodman/bin/codex-thread --preflight`
+- `bash -n bin/codex-tool-route bin/codex-startup bin/codex-room`
+- `bin/codex-tool-route` with representative prompts
 - `/Users/stephengodman/CodeX/bin/codex-startup`
-- `rg` for v2 field names
+- `/Users/stephengodman/CodeX/bin/codex-room brief`
+- `/Users/stephengodman/CodeX/bin/codex-room handoff`
+- `/Users/stephengodman/bin/codex-thread --preflight`
+- `rg` for Tool Routing references
 - `git diff --check`
 - secret scan
 
 Receipts:
 
-- Commit for Auto-Mode v2.
-- `bash -n /Users/stephengodman/bin/codex-thread`
-- `/Users/stephengodman/bin/codex-thread --work-start "Mirror Auto-Mode Work Packets v2 into codex-thread backend"`
-- `/Users/stephengodman/bin/codex-thread --work-update "Verified v2 field emission from backend work packet"`
-- `/Users/stephengodman/bin/codex-thread --work-done "Backend mirror emits v2 fields and uses live Codex backend paths"`
-- `/Users/stephengodman/bin/codex-thread --work`
+- `bash -n bin/codex-tool-route bin/codex-startup bin/codex-room`
+- `bin/codex-tool-route "look up latest openai api docs"`
+- `bin/codex-tool-route "use the pi to check service"`
+- `bin/codex-tool-route "keep rolling on this"`
+- `bin/codex-tool-route "remember this"`
+- `bin/codex-tool-route "commit and push"`
+- `bin/codex-startup`
+- `bin/codex-room brief`
+- `bin/codex-room handoff`
 - `/Users/stephengodman/bin/codex-thread --preflight`
-- `/Users/stephengodman/CodeX/bin/codex-startup`
+- `rg` for Tool Routing references
 - `git diff --check`
+- Secret scan found only guardrail words, no raw secrets.
 
 Resume instruction:
 
