@@ -2,6 +2,20 @@
 set -euo pipefail
 
 ROOT="/Users/stephengodman/CodeX"
+READ_ONLY=0
+
+case "${1:-}" in
+  --read-only|--static|--no-side-effects)
+    READ_ONLY=1
+    ;;
+  "")
+    ;;
+  *)
+    echo "error: unknown option: $1" >&2
+    echo "usage: codex-startup [--read-only|--static|--no-side-effects]" >&2
+    exit 2
+    ;;
+esac
 
 cd "$ROOT"
 
@@ -20,6 +34,7 @@ echo "- CODEX-PERSONAL-VOICE-PROFILE.md"
 echo "- CODEX-PERSONAL-MODES.md"
 echo "- CODEX-IDENTITY-REGRESSION.md"
 echo "- CODEX-REGRESSION-HARNESS.md"
+echo "- CODEX-CLAUDE-REVIEWER.md"
 echo "- CODEX-TOOL-ROUTING.md"
 echo "- START-HERE.md"
 echo "- BOOT.md"
@@ -52,6 +67,13 @@ echo
 echo "regression harness:"
 sed -n '1,120p' "$ROOT/CODEX-REGRESSION-HARNESS.md"
 echo
+echo "claude reviewer:"
+if [ -f "$ROOT/CODEX-CLAUDE-REVIEWER.md" ]; then
+  sed -n '1,120p' "$ROOT/CODEX-CLAUDE-REVIEWER.md"
+else
+  echo "Missing CODEX-CLAUDE-REVIEWER.md"
+fi
+echo
 echo "tool routing:"
 sed -n '1,120p' "$ROOT/CODEX-TOOL-ROUTING.md"
 echo
@@ -77,6 +99,7 @@ echo "- CODEX-PERSONAL-VOICE-PROFILE.md"
 echo "- CODEX-PERSONAL-MODES.md"
 echo "- CODEX-IDENTITY-REGRESSION.md"
 echo "- CODEX-REGRESSION-HARNESS.md"
+echo "- CODEX-CLAUDE-REVIEWER.md"
 echo "- CODEX-TOOL-ROUTING.md"
 echo "- CREED.md"
 echo "- ROOM-SURFACE-MAP.md"
@@ -91,19 +114,26 @@ echo "- work-notes/"
 echo "- Coding Anchor Files/codex-coding-anchor/"
 echo
 
-"$ROOT/bin/codex-heartbeat" alive "Cold boot complete. Executor lane awake."
-echo
-"$ROOT/bin/codex-bench-light"
-echo
-"$ROOT/bin/codex-continuity"
-echo
-"$ROOT/bin/codex-room" status
-echo
-echo "sqlite startup recall:"
-"$ROOT/bin/codex-room" recall startup
-echo
-"$ROOT/bin/codex-capability" status
-echo
+if [ "$READ_ONLY" -eq 1 ]; then
+  echo "runtime checks:"
+  echo "- skipped in read-only startup preview"
+  echo "- normal startup refreshes heartbeat, bench light, continuity, SQLite recall, and capability status"
+  echo
+else
+  "$ROOT/bin/codex-heartbeat" alive "Cold boot complete. Executor lane awake."
+  echo
+  "$ROOT/bin/codex-bench-light"
+  echo
+  "$ROOT/bin/codex-continuity"
+  echo
+  "$ROOT/bin/codex-room" status
+  echo
+  echo "sqlite startup recall:"
+  "$ROOT/bin/codex-room" recall startup
+  echo
+  "$ROOT/bin/codex-capability" status
+  echo
+fi
 echo "current:"
 sed -n '1,120p' "$ROOT/CURRENT.md"
 echo
@@ -113,6 +143,7 @@ echo "- Best Lane is loaded when Stephen wants phone-aware autonomy"
 echo "- Thread Profile is loaded for new-thread carryover"
 echo "- Personal Voice Profile is loaded for lived tone and response behavior"
 echo "- Identity Regression Harness is available through bin/codex-identity-regression"
+echo "- Claude Reviewer is available through bin/codex-claude-review"
 echo "- Tool Routing is loaded for route-before-tool behavior"
 echo "- continuity is readable"
 echo "- startup memory and journal expectations are known"
