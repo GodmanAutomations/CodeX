@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+QUEUE="${CODING_ANCHOR_QUEUE:-$ROOT/state/work-queue.json}"
+PYTHON_BIN="${CODING_ANCHOR_PYTHON:-python3}"
+if [ -x "$ROOT/.venv/bin/python" ]; then
+  PYTHON_BIN="$ROOT/.venv/bin/python"
+fi
+TASK_ID=""
+DRY_RUN=0
+
+usage() {
+  cat <<'EOF'
+usage: coding-anchor-start [--dry-run] <task-id>
+
+Mark a safe, unblocked pending queue task in_progress.
+EOF
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --dry-run)
+      DRY_RUN=1
+      shift
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    -*)
+      printf 'unknown argument: %s\n' "$1" >&2
+      usage >&2
+      exit 2
+      ;;
+    *)
+      if [ -n "$TASK_ID" ]; then
+        printf 'unexpected extra argument: %s\n' "$1" >&2
+        usage >&2
+        exit 2
+      fi
+      TASK_ID="$1"
+      shift
+      ;;
+  esac
+done
+
+if [ -z "$TASK_ID" ]; then
+  usage >&2
+  exit 2
+fi
+
+"$PYTHON_BIN" - "$QUEUE" "$TASK_ID" "$DRY_RUN" <<'PY'
+import datetime
+import json
+import sys
+
+queue_path, task_id, dry_run_arg = sys.argv[1:4]
+dry_run = dry_run_arg == "1"
+now = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
+
+with open(queue_path, "r", encoding="utf-8") as handle:
+    queue = json.load(handle)
+
+tasks = queue.get("tasks", [])
+done = {task["id"] for task in tasks if task.get("status") == "done"}
+
+if any(task.get("status") == "in_progress" for task in tasks):
+    raise SystemExit("another task is already in_progress")
+
+def blocked_reasons(task):
+    reasons = []
+    missing = [dep for dep in task.get("dependencies", []) if dep not in done]
+    if missing:
+        reasons.append("waiting on dependencies: " + ", ".join(missing))
+    if not task.get("safe_to_auto", False):
+        reasons.append("safe_to_auto is false")
+    if task.get("stop_gates"):
+        reasons.append("stop gates: " + ", ".join(task["stop_gates"]))
+    return reasons
+
+for task in tasks:
+    if task["id"] == task_id:
+        if task.get("status") != "pending":
+            raise SystemExit(f"task must be pending before start: {task_id}")
+        reasons = blocked_reasons(task)
+        if reasons:
+            raise SystemExit(f"task is not eligible to start: {'; '.join(reasons)}")
+        if dry_run:
+            print(f"would_start: {task_id}")
+            print(f"current_status: {task['status']}")
+            print(f"updated_at_preview: {now}")
+            break
+        else:
+            task["status"] = "in_progress"
+            task["started_at"] = now
+            queue["updated_at"] = now
+            break
+else:
+    raise SystemExit(f"unknown task id: {task_id}")
+
+if dry_run:
+    raise SystemExit(0)
+
+with open(queue_path, "w", encoding="utf-8") as handle:
+    json.dump(queue, handle, indent=2)
+    handle.write("\n")
+
+print(f"started: {task_id}")
+print(f"updated_at: {now}")
+PY

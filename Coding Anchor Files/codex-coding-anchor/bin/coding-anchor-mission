@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+MISSION_DIR="$ROOT/missions"
+mkdir -p "$MISSION_DIR"
+
+TITLE="${1:-untitled-mission}"
+SLUG="$(printf '%s' "$TITLE" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/^-//; s/-$//')"
+if [ -z "$SLUG" ]; then
+  SLUG="untitled-mission"
+fi
+
+PATH_OUT="$MISSION_DIR/$(date '+%Y%m%d-%H%M%S')-$SLUG.md"
+
+cat > "$PATH_OUT" <<EOF
+# Mission - $TITLE
+
+Created: $(date '+%Y-%m-%d %H:%M:%S %Z')
+
+## Intent
+
+TBD
+
+## Scope
+
+TBD
+
+## Verification
+
+TBD
+
+## Result
+
+TBD
+EOF
+
+printf '%s\n' "$PATH_OUT"

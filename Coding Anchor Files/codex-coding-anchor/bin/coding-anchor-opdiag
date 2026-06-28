@@ -1,0 +1,373 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PYTHON_BIN="${CODING_ANCHOR_PYTHON:-python3}"
+if [ -x "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/.venv/bin/python" ]; then
+  PYTHON_BIN="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/.venv/bin/python"
+fi
+
+exec "$PYTHON_BIN" - "$@" <<'PY'
+import argparse
+import datetime as dt
+import ipaddress
+import json
+import re
+import shutil
+import subprocess
+import sys
+from urllib.parse import urlparse
+
+
+SCOPE = "single-target, read-only, no sudo, no port sweep"
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="coding-anchor-opdiag",
+        description="Run a compact read-only operator diagnostic for one URL or host.",
+    )
+    parser.add_argument("target", nargs="?", help="URL or host to inspect")
+    parser.add_argument("--json", action="store_true", help="emit JSON")
+    parser.add_argument(
+        "--self-test",
+        action="store_true",
+        help="validate parser/output shape without network access",
+    )
+    return parser.parse_args()
+
+
+def command_path(name: str) -> str | None:
+    return shutil.which(name)
+
+
+def now_iso() -> str:
+    return dt.datetime.now(dt.timezone.utc).astimezone().isoformat(timespec="seconds")
+
+
+def check_row(name: str, status: str, summary: str, details: dict | None = None) -> dict:
+    return {
+        "name": name,
+        "status": status,
+        "summary": summary,
+        "details": details or {},
+    }
+
+
+def valid_host(host: str) -> bool:
+    if not host or host.startswith("-") or len(host) > 253:
+        return False
+    try:
+        ipaddress.ip_address(host.strip("[]"))
+        return True
+    except ValueError:
+        pass
+    if ":" in host:
+        return False
+    if not re.fullmatch(r"[A-Za-z0-9._-]+", host):
+        return False
+    labels = host.rstrip(".").split(".")
+    return all(label and len(label) <= 63 and not label.startswith("-") and not label.endswith("-") for label in labels)
+
+
+def parse_target(raw: str) -> dict:
+    raw = raw.strip()
+    if not raw:
+        raise ValueError("target is empty")
+
+    if "://" in raw:
+        parsed = urlparse(raw)
+        if parsed.scheme not in {"http", "https"}:
+            raise ValueError("only http:// and https:// URLs are supported")
+        if not parsed.hostname:
+            raise ValueError("URL must include a host")
+        host = parsed.hostname
+        if not valid_host(host):
+            raise ValueError(f"unsupported host shape: {host}")
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        if port < 1 or port > 65535:
+            raise ValueError("port is out of range")
+        return {
+            "raw": raw,
+            "kind": "url",
+            "scheme": parsed.scheme,
+            "host": host,
+            "port": port,
+            "url": raw,
+        }
+
+    if "/" in raw or "?" in raw or "#" in raw or "@" in raw:
+        raise ValueError("host targets must not include paths, query strings, or user info")
+    if not valid_host(raw):
+        raise ValueError(f"unsupported host shape: {raw}")
+    return {
+        "raw": raw,
+        "kind": "host",
+        "scheme": None,
+        "host": raw,
+        "port": None,
+        "url": None,
+    }
+
+
+def run_command(cmd: list[str], timeout: int, stdin: str | None = None) -> dict:
+    if not command_path(cmd[0]):
+        return {
+            "status": "unavailable",
+            "returncode": None,
+            "stdout": "",
+            "stderr": f"{cmd[0]} not found",
+            "command": cmd,
+        }
+    try:
+        completed = subprocess.run(
+            cmd,
+            input=stdin,
+            text=True,
+            capture_output=True,
+            timeout=timeout,
+            check=False,
+        )
+        return {
+            "status": "ran",
+            "returncode": completed.returncode,
+            "stdout": completed.stdout.strip(),
+            "stderr": completed.stderr.strip(),
+            "command": cmd,
+        }
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "status": "timeout",
+            "returncode": None,
+            "stdout": (exc.stdout or "").strip() if isinstance(exc.stdout, str) else "",
+            "stderr": (exc.stderr or "").strip() if isinstance(exc.stderr, str) else "",
+            "command": cmd,
+        }
+
+
+def dns_checks(host: str) -> list[dict]:
+    checks: list[dict] = []
+    for family in ("A", "AAAA"):
+        result = run_command(["dig", "+time=3", "+tries=1", "+short", host, family], timeout=5)
+        if result["status"] == "unavailable":
+            checks.append(check_row(f"dns_{family.lower()}", "skipped", result["stderr"], {"command": result["command"]}))
+            continue
+        if result["status"] == "timeout":
+            checks.append(check_row(f"dns_{family.lower()}", "fail", "dig timed out", {"command": result["command"]}))
+            continue
+        values = [line for line in result["stdout"].splitlines() if line]
+        status = "pass" if values else "warn"
+        summary = ", ".join(values[:6]) if values else f"no {family} records returned"
+        checks.append(check_row(f"dns_{family.lower()}", status, summary, {"records": values, "returncode": result["returncode"]}))
+
+    result = run_command(["host", host], timeout=5)
+    if result["status"] == "unavailable":
+        checks.append(check_row("dns_host", "skipped", result["stderr"], {"command": result["command"]}))
+    elif result["status"] == "timeout":
+        checks.append(check_row("dns_host", "fail", "host timed out", {"command": result["command"]}))
+    else:
+        output = result["stdout"] or result["stderr"]
+        status = "pass" if result["returncode"] == 0 else "warn"
+        checks.append(check_row("dns_host", status, first_line(output), {"returncode": result["returncode"]}))
+    return checks
+
+
+def first_line(text: str) -> str:
+    for line in text.splitlines():
+        if line.strip():
+            return line.strip()
+    return "no output"
+
+
+def http_check(url: str) -> dict:
+    result = run_command(
+        [
+            "curl",
+            "-L",
+            "-sS",
+            "-o",
+            "/dev/null",
+            "--max-time",
+            "12",
+            "-w",
+            "http_code=%{http_code}\ntime_total=%{time_total}\nremote_ip=%{remote_ip}\nurl_effective=%{url_effective}\n",
+            url,
+        ],
+        timeout=15,
+    )
+    if result["status"] == "unavailable":
+        return check_row("http", "skipped", result["stderr"], {"command": result["command"]})
+    if result["status"] == "timeout":
+        return check_row("http", "fail", "curl timed out", {"command": result["command"]})
+    fields = {}
+    for line in result["stdout"].splitlines():
+        if "=" in line:
+            key, value = line.split("=", 1)
+            fields[key] = value
+    code = fields.get("http_code", "000")
+    status = "pass" if result["returncode"] == 0 and code != "000" else "fail"
+    if code.startswith(("4", "5")):
+        status = "warn"
+    summary = f"http_code={code} time_total={fields.get('time_total', 'unknown')} remote_ip={fields.get('remote_ip', 'unknown')}"
+    return check_row("http", status, summary, {"fields": fields, "returncode": result["returncode"], "stderr": result["stderr"]})
+
+
+def first_pem_certificate(text: str) -> str | None:
+    match = re.search(
+        r"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----",
+        text,
+        flags=re.DOTALL,
+    )
+    return match.group(0) if match else None
+
+
+def tls_check(host: str, port: int) -> dict:
+    s_client = run_command(
+        ["openssl", "s_client", "-servername", host, "-connect", f"{host}:{port}", "-showcerts"],
+        timeout=12,
+        stdin="Q\n",
+    )
+    if s_client["status"] == "unavailable":
+        return check_row("tls_certificate", "skipped", s_client["stderr"], {"command": s_client["command"]})
+    if s_client["status"] == "timeout":
+        return check_row("tls_certificate", "fail", "openssl s_client timed out", {"command": s_client["command"]})
+    if not s_client["stdout"]:
+        return check_row("tls_certificate", "fail", "no certificate data returned", {"returncode": s_client["returncode"], "stderr": s_client["stderr"]})
+
+    leaf_certificate = first_pem_certificate(s_client["stdout"])
+    if not leaf_certificate:
+        return check_row("tls_certificate", "fail", "no PEM certificate found", {"returncode": s_client["returncode"], "stderr": s_client["stderr"]})
+
+    x509 = run_command(["openssl", "x509", "-noout", "-subject", "-issuer", "-dates"], timeout=5, stdin=leaf_certificate)
+    if x509["status"] != "ran" or x509["returncode"] != 0:
+        return check_row("tls_certificate", "fail", "could not parse certificate", {"s_client_returncode": s_client["returncode"], "x509": x509})
+    if not x509["stdout"]:
+        return check_row("tls_certificate", "fail", "certificate parse returned no output", {"s_client_returncode": s_client["returncode"], "x509": x509})
+
+    fields = {}
+    for line in x509["stdout"].splitlines():
+        if "=" in line:
+            key, value = line.split("=", 1)
+            fields[key] = value
+    summary_parts = []
+    if "notAfter" in fields:
+        summary_parts.append(f"notAfter={fields['notAfter']}")
+    if "subject" in fields:
+        summary_parts.append(f"subject={fields['subject']}")
+    return check_row("tls_certificate", "pass", "; ".join(summary_parts) or "certificate parsed", {"fields": fields, "s_client_returncode": s_client["returncode"]})
+
+
+def manual_followups() -> dict:
+    tools = {
+        "hurl": (("hurl",), "manual API assertion when a request contract exists"),
+        "httpstat": (("httpstat",), "manual timing visualization for a specific URL"),
+        "sslscan": (("sslscan",), "manual TLS cipher review for an owned endpoint"),
+        "testssl": (("testssl", "testssl.sh"), "manual deep TLS review for an owned endpoint"),
+        "mtr": (("mtr",), "manual path check; may require elevated privileges"),
+        "ssh-audit": (("ssh-audit",), "manual SSH review for an explicitly owned SSH endpoint"),
+    }
+    available = {
+        name: next((candidate for candidate in candidates if command_path(candidate)), None)
+        for name, (candidates, _guidance) in tools.items()
+    }
+    return check_row(
+        "manual_followups",
+        "skipped",
+        "deeper diagnostics are intentionally manual",
+        {"available_tools": available, "guidance": {name: guidance for name, (_candidates, guidance) in tools.items()}},
+    )
+
+
+def build_self_test_payload() -> dict:
+    target = parse_target("https://example.com")
+    return {
+        "tool": "coding-anchor-opdiag",
+        "mode": "self-test",
+        "generated_at": now_iso(),
+        "scope": SCOPE,
+        "read_only": True,
+        "target": target,
+        "checks": [
+            check_row("parser", "pass", "parsed https://example.com"),
+            check_row("json_shape", "pass", "payload emitted without network access"),
+            manual_followups(),
+        ],
+    }
+
+
+def build_payload(raw_target: str) -> dict:
+    target = parse_target(raw_target)
+    checks = dns_checks(target["host"])
+    if target["kind"] == "url":
+        checks.append(http_check(target["url"]))
+    if target["scheme"] == "https":
+        checks.append(tls_check(target["host"], target["port"]))
+    checks.append(manual_followups())
+    return {
+        "tool": "coding-anchor-opdiag",
+        "mode": "diagnostic",
+        "generated_at": now_iso(),
+        "scope": SCOPE,
+        "read_only": True,
+        "target": target,
+        "checks": checks,
+    }
+
+
+def render_text(payload: dict) -> str:
+    target = payload["target"]
+    lines = [
+        "CodeX Operator Diagnostic",
+        f"mode: {payload['mode']}",
+        f"scope: {payload['scope']}",
+        f"target: {target['raw']}",
+        f"kind: {target['kind']}",
+        f"host: {target['host']}",
+    ]
+    if target.get("scheme"):
+        lines.append(f"scheme: {target['scheme']}")
+    if target.get("port"):
+        lines.append(f"port: {target['port']}")
+    lines.append("")
+    for check in payload["checks"]:
+        lines.append(f"{check['status'].upper():7} {check['name']}: {check['summary']}")
+    return "\n".join(lines) + "\n"
+
+
+def exit_code(payload: dict) -> int:
+    return 1 if any(check["status"] == "fail" for check in payload["checks"]) else 0
+
+
+def main() -> int:
+    args = parse_args()
+    try:
+        if args.self_test:
+            payload = build_self_test_payload()
+        else:
+            if not args.target:
+                raise ValueError("target is required unless --self-test is used")
+            payload = build_payload(args.target)
+    except ValueError as exc:
+        error_payload = {
+            "tool": "coding-anchor-opdiag",
+            "mode": "error",
+            "generated_at": now_iso(),
+            "scope": SCOPE,
+            "read_only": True,
+            "error": str(exc),
+        }
+        if args.json:
+            print(json.dumps(error_payload, indent=2))
+        else:
+            print(f"coding-anchor-opdiag: {exc}", file=sys.stderr)
+        return 2
+
+    if args.json:
+        print(json.dumps(payload, indent=2))
+    else:
+        print(render_text(payload), end="")
+    return exit_code(payload)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+PY

@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+STATUS=0
+
+pass() {
+  printf 'PASS %s\n' "$*"
+}
+
+fail() {
+  STATUS=1
+  printf 'FAIL %s\n' "$*"
+}
+
+check_file() {
+  if [ -f "$ROOT/$1" ]; then
+    pass "file $1"
+  else
+    fail "missing file $1"
+  fi
+}
+
+check_exec() {
+  if [ -x "$ROOT/$1" ]; then
+    pass "executable $1"
+  else
+    fail "not executable $1"
+  fi
+}
+
+check_contains() {
+  local path="$1"
+  local needle="$2"
+  local label="$3"
+
+  if grep -F "$needle" "$path" >/dev/null 2>&1; then
+    pass "$label"
+  else
+    fail "$label"
+  fi
+}
+
+check_file "protocols/concise-agentic-output.md"
+check_file "protocols/agentic-decision-rule.md"
+check_file "protocols/autonomous-work-loop.md"
+check_file "protocols/post-work-code-review.md"
+check_file "protocols/verification-loop.md"
+check_file "AUTONOMY-CONTRACT.md"
+check_file "state/work-queue.json"
+check_exec "bin/coding-anchor-next"
+check_exec "bin/coding-anchor-start"
+check_exec "bin/coding-anchor-done"
+check_exec "bin/coding-anchor-loop"
+
+check_contains "$ROOT/protocols/concise-agentic-output.md" "Do not narrate every command." "concise output suppresses command narration"
+check_contains "$ROOT/protocols/concise-agentic-output.md" "verification that passed" "concise output keeps verification"
+check_contains "$ROOT/protocols/concise-agentic-output.md" "reviewer result when review was required" "concise output keeps reviewer result"
+check_contains "$ROOT/protocols/concise-agentic-output.md" "remaining blocker or next handhold" "concise output keeps next handhold"
+check_contains "$ROOT/protocols/agentic-decision-rule.md" "Proceed without asking" "decision rule defaults to action"
+check_contains "$ROOT/protocols/agentic-decision-rule.md" "smallest" "decision rule prefers smallest path"
+check_contains "$ROOT/protocols/agentic-decision-rule.md" "Stop when the move would:" "decision rule hard stop section"
+check_contains "$ROOT/protocols/agentic-decision-rule.md" "delete broad or unclear user work" "decision rule protects user work"
+check_contains "$ROOT/protocols/agentic-decision-rule.md" "spend money" "decision rule spending stop"
+check_contains "$ROOT/protocols/agentic-decision-rule.md" "contact another human" "decision rule human contact stop"
+check_contains "$ROOT/protocols/agentic-decision-rule.md" "change credentials or official records" "decision rule credential records stop"
+check_contains "$ROOT/protocols/agentic-decision-rule.md" "force-push or rewrite history" "decision rule git history stop"
+check_contains "$ROOT/protocols/agentic-decision-rule.md" "widen into unrelated rooms" "decision rule room widening stop"
+check_contains "$ROOT/protocols/agentic-decision-rule.md" "physical approval, biometric approval, 2FA" "decision rule physical approval stop"
+check_contains "$ROOT/AUTONOMY-CONTRACT.md" "The default is action, not permission-seeking." "autonomy contract action default"
+check_contains "$ROOT/protocols/autonomous-work-loop.md" "reviewer subagent before final closeout" "work loop reviewer gate"
+check_contains "$ROOT/protocols/verification-loop.md" "Use the smallest meaningful check available." "verification loop present"
+
+if [ "$STATUS" -eq 0 ]; then
+  printf 'RESULT pass\n'
+else
+  printf 'RESULT fail\n'
+fi
+
+exit "$STATUS"

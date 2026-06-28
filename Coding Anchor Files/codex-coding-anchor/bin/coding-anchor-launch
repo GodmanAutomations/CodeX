@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CODEX_ROOT="$(cd "$ROOT/../.." && pwd)"
+
+if [ "${CODING_ANCHOR_SKIP_DOCTOR:-0}" != "1" ]; then
+  "$ROOT/bin/coding-anchor-doctor" >/dev/null
+fi
+
+if [ "${1:-}" = "--dry-run" ]; then
+  if command -v codex >/dev/null 2>&1; then
+    CODEX_BIN="$(command -v codex)"
+  else
+    CODEX_BIN="missing"
+  fi
+  if [ -x "$CODEX_ROOT/bin/codex-ensure-standalone" ]; then
+    PREFLIGHT_STATUS="present"
+  else
+    PREFLIGHT_STATUS="missing"
+  fi
+  if [ "$CODEX_BIN" = "missing" ] || [ "$PREFLIGHT_STATUS" = "missing" ]; then
+    printf 'launch_dry_run=fail\n'
+  else
+    printf 'launch_dry_run=pass\n'
+  fi
+  printf 'target_cwd=%s\n' "$ROOT"
+  printf 'codex_bin=%s\n' "$CODEX_BIN"
+  printf 'preflight=%s/bin/codex-ensure-standalone --repair\n' "$CODEX_ROOT"
+  printf 'preflight_status=%s\n' "$PREFLIGHT_STATUS"
+  if [ "$CODEX_BIN" = "missing" ] || [ "$PREFLIGHT_STATUS" = "missing" ]; then
+    exit 1
+  fi
+  exit 0
+fi
+
+if [ ! -x "$CODEX_ROOT/bin/codex-ensure-standalone" ]; then
+  printf 'ERROR missing preflight: %s/bin/codex-ensure-standalone\n' "$CODEX_ROOT" >&2
+  exit 1
+fi
+
+"$CODEX_ROOT/bin/codex-ensure-standalone" --repair
+
+cd "$ROOT"
+exec codex "$@"

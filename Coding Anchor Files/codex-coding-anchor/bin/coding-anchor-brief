@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+printf 'CodeX Coding Anchor\n'
+printf 'Root: %s\n' "$ROOT"
+printf '\n'
+printf 'Use this packet for tighter CodeX coding work:\n'
+printf '%s\n' '- true-state inventory'
+printf '%s\n' '- smallest useful move'
+printf '%s\n' '- structured evidence when useful'
+printf '%s\n' '- verification before close'
+printf '%s\n' '- mission control and open-loop resume'
+printf '\n'
+printf 'Boot: %s/bin/coding-anchor-boot\n' "$ROOT"
+printf 'Launch: %s/bin/coding-anchor-launch\n' "$ROOT"
+printf 'Doctor: %s/bin/coding-anchor-doctor\n' "$ROOT"

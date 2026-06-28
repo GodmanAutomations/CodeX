@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+MODE="${1:---full}"
+
+usage() {
+  cat <<EOF
+Usage: $(basename "$0") [--full|--brief]
+
+  --full    Print the complete boot packet and doctor output. Default.
+  --brief   Print a compact daily boot summary while still running heartbeat and doctor.
+EOF
+}
+
+if [ "$MODE" = "-h" ] || [ "$MODE" = "--help" ]; then
+  usage
+  exit 0
+fi
+
+if [ "$MODE" != "--full" ] && [ "$MODE" != "--brief" ]; then
+  printf 'ERROR unknown boot mode: %s\n\n' "$MODE" >&2
+  usage >&2
+  exit 2
+fi
+
+trap 'printf "\nERROR boot failed at line %s\n" "$LINENO" >&2' ERR
+
+show_file() {
+  local label="$1"
+  local path="$2"
+  local lines="$3"
+
+  if [ ! -f "$path" ]; then
+    printf 'ERROR missing boot file: %s\n' "$path" >&2
+    exit 1
+  fi
+
+  printf '%s\n' "$label"
+  sed -n "1,${lines}p" "$path"
+  printf '\n'
+}
+
+run_doctor_brief() {
+  local tmp
+  tmp="$(mktemp "${TMPDIR:-/tmp}/coding-anchor-doctor.XXXXXX")"
+  if "$ROOT/bin/coding-anchor-doctor" >"$tmp"; then
+    grep -E '^(RESULT|receipt:)' "$tmp"
+  else
+    tail -40 "$tmp" >&2
+    rm -f "$tmp"
+    return 1
+  fi
+  rm -f "$tmp"
+}
+
+printf 'CodeX Coding Anchor boot\n'
+printf 'root: %s\n' "$ROOT"
+printf '\n'
+
+if [ "$MODE" = "--brief" ]; then
+  "$ROOT/bin/coding-anchor-brief"
+  printf '\n'
+  printf 'Heartbeat\n'
+  "$ROOT/bin/coding-anchor-tick"
+  printf '\n'
+  printf 'Doctor\n'
+  run_doctor_brief
+  printf '\n'
+  printf 'Boot complete. CodeX Coding Anchor is ready.\n'
+  exit 0
+fi
+
+show_file "Identity" "$ROOT/CODING-ANCHOR-IDENTITY.md" 80
+
+show_file "Start" "$ROOT/START-HERE.md" 80
+
+show_file "Autonomy" "$ROOT/AUTONOMY-CONTRACT.md" 140
+
+show_file "Mission Control" "$ROOT/MISSION-CONTROL.md" 140
+
+show_file "Open Loops" "$ROOT/OPEN-LOOPS.md" 140
+
+show_file "Current" "$ROOT/CURRENT.md" 120
+
+printf 'Heartbeat\n'
+"$ROOT/bin/coding-anchor-tick"
+printf '\n'
+
+printf 'Doctor\n'
+"$ROOT/bin/coding-anchor-doctor"
+printf '\n'
+
+printf 'Protocols loaded\n'
+printf '%s\n' "- $ROOT/protocols/before-tool-check.md"
+printf '%s\n' "- $ROOT/protocols/after-tool-check.md"
+printf '%s\n' "- $ROOT/protocols/after-response-check.md"
+printf '%s\n' "- $ROOT/protocols/agentic-decision-rule.md"
+printf '%s\n' "- $ROOT/protocols/autonomous-work-loop.md"
+printf '%s\n' "- $ROOT/protocols/concise-agentic-output.md"
+printf '%s\n' "- $ROOT/protocols/mission-routing.md"
+printf '%s\n' "- $ROOT/protocols/next-slice-loop.md"
+printf '%s\n' "- $ROOT/protocols/post-work-code-review.md"
+printf '%s\n' "- $ROOT/protocols/verification-loop.md"
+printf '\n'
+printf 'Boot complete. CodeX Coding Anchor is ready.\n'

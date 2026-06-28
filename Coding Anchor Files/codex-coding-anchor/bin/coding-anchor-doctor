@@ -1,0 +1,567 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PARENT="$(cd "$ROOT/.." && pwd)"
+PYTHON_BIN="${CODING_ANCHOR_PYTHON:-python3}"
+if [ -x "$ROOT/.venv/bin/python" ]; then
+  PYTHON_BIN="$ROOT/.venv/bin/python"
+fi
+SOURCE_GIFT_PATH="${CODING_ANCHOR_SOURCE_GIFT_PATH:-$HOME/CodeX/private/phase1_coding_genius_plan.md}"
+RECEIPT_DIR="$ROOT/receipts"
+mkdir -p "$RECEIPT_DIR"
+
+STAMP="$(date '+%Y%m%d-%H%M%S')"
+RECEIPT="$RECEIPT_DIR/$STAMP-$$-doctor.txt"
+STATUS=0
+
+: > "$RECEIPT"
+
+log() {
+  printf '%s\n' "$*" | tee -a "$RECEIPT"
+}
+
+pass() {
+  log "PASS $*"
+}
+
+fail() {
+  STATUS=1
+  log "FAIL $*"
+}
+
+warn() {
+  log "WARN $*"
+}
+
+check_file() {
+  if [ -f "$ROOT/$1" ]; then
+    pass "file $1"
+  else
+    fail "missing file $1"
+  fi
+}
+
+check_dir() {
+  if [ -d "$ROOT/$1" ]; then
+    pass "dir $1"
+  else
+    fail "missing dir $1"
+  fi
+}
+
+check_exec() {
+  if [ -x "$ROOT/$1" ]; then
+    pass "executable $1"
+  else
+    fail "not executable $1"
+  fi
+}
+
+check_parent_exec() {
+  if [ -x "$PARENT/$1" ]; then
+    pass "parent executable $1"
+  else
+    fail "parent not executable $1"
+  fi
+}
+
+check_shell_syntax() {
+  local path="$1"
+  local label="$2"
+
+  if bash -n "$path" >/dev/null 2>&1; then
+    pass "shell syntax $label"
+  else
+    fail "shell syntax $label"
+  fi
+}
+
+check_valid_json() {
+  local path="$1"
+  local label="$2"
+
+  if "$PYTHON_BIN" -m json.tool "$path" >/dev/null 2>&1; then
+    pass "valid json $label"
+  else
+    fail "invalid json $label"
+  fi
+}
+
+check_json_schema() {
+  local schema_path="$1"
+  local instance_path="$2"
+  local label="$3"
+  local output
+  local status_code
+
+  output="$("$PYTHON_BIN" - "$schema_path" "$instance_path" 2>&1 <<'PY'
+import json
+import sys
+
+try:
+    import jsonschema
+except ImportError as exc:
+    raise SystemExit(f"jsonschema unavailable: {exc}")
+
+schema_path, instance_path = sys.argv[1:3]
+with open(schema_path, "r", encoding="utf-8") as handle:
+    schema = json.load(handle)
+with open(instance_path, "r", encoding="utf-8") as handle:
+    instance = json.load(handle)
+
+jsonschema.Draft202012Validator.check_schema(schema)
+validator = jsonschema.Draft202012Validator(
+    schema,
+    format_checker=jsonschema.FormatChecker(),
+)
+errors = sorted(validator.iter_errors(instance), key=lambda error: list(error.path))
+if errors:
+    error = errors[0]
+    path = ".".join(str(part) for part in error.path) or "<root>"
+    raise SystemExit(f"{path}: {error.message}")
+PY
+)"
+  status_code=$?
+  if [ "$status_code" -eq 0 ]; then
+    pass "schema validation $label"
+  else
+    fail "schema validation $label"
+    printf '%s\n' "$output" | sed 's/^/  /' | tee -a "$RECEIPT"
+  fi
+}
+
+check_contains() {
+  local path="$1"
+  local needle="$2"
+  local label="$3"
+
+  if grep -F "$needle" "$path" >/dev/null 2>&1; then
+    pass "$label"
+  else
+    fail "$label"
+  fi
+}
+
+check_mission_state_shape() {
+  if "$PYTHON_BIN" - "$ROOT/state/current-mission.json" >/dev/null 2>&1 <<'PY'
+import datetime
+import json
+import sys
+
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as handle:
+    data = json.load(handle)
+
+required = {"status", "updated_at", "active_mission", "next_moves", "verified"}
+if set(data) != required:
+    raise SystemExit("mission state keys do not match schema")
+if data["status"] not in {"active", "paused", "blocked", "complete"}:
+    raise SystemExit("invalid status")
+datetime.datetime.fromisoformat(data["updated_at"].replace("Z", "+00:00"))
+if not isinstance(data["active_mission"], str) or not data["active_mission"]:
+    raise SystemExit("active_mission must be a non-empty string")
+for key in ("next_moves", "verified"):
+    if not isinstance(data[key], list):
+        raise SystemExit(f"{key} must be a list")
+    for value in data[key]:
+        if not isinstance(value, str) or not value:
+            raise SystemExit(f"{key} entries must be non-empty strings")
+PY
+  then
+    pass "mission state shape"
+  else
+    fail "mission state shape"
+  fi
+}
+
+check_work_queue_shape() {
+  if "$PYTHON_BIN" - "$ROOT/state/work-queue.json" >/dev/null 2>&1 <<'PY'
+import datetime
+import json
+import re
+import sys
+
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as handle:
+    data = json.load(handle)
+
+required = {"version", "updated_at", "policy", "tasks"}
+if set(data) != required:
+    raise SystemExit("work queue keys do not match schema")
+if not isinstance(data["version"], int) or data["version"] < 1:
+    raise SystemExit("version must be positive integer")
+datetime.datetime.fromisoformat(data["updated_at"].replace("Z", "+00:00"))
+policy = data["policy"]
+policy_required = {"max_auto_slices_default", "require_reviewer_after_meaningful_changes", "stop_statuses"}
+if set(policy) != policy_required:
+    raise SystemExit("policy keys do not match schema")
+if not isinstance(policy["max_auto_slices_default"], int) or policy["max_auto_slices_default"] < 1:
+    raise SystemExit("max_auto_slices_default must be positive integer")
+if not isinstance(policy["require_reviewer_after_meaningful_changes"], bool):
+    raise SystemExit("require_reviewer_after_meaningful_changes must be boolean")
+if not isinstance(policy["stop_statuses"], list):
+    raise SystemExit("stop_statuses must be list")
+
+tasks = data["tasks"]
+if not isinstance(tasks, list):
+    raise SystemExit("tasks must be list")
+ids = [task.get("id") for task in tasks]
+if len(ids) != len(set(ids)):
+    raise SystemExit("duplicate task ids")
+in_progress_ids = [task["id"] for task in tasks if task.get("status") == "in_progress"]
+if len(in_progress_ids) > 1:
+    raise SystemExit("multiple in_progress tasks: " + ", ".join(in_progress_ids))
+valid_statuses = {"pending", "in_progress", "done", "blocked", "needs_user", "deferred"}
+valid_priorities = {"high", "medium", "low"}
+for task in tasks:
+    task_required = {
+        "id",
+        "title",
+        "status",
+        "priority",
+        "dependencies",
+        "safe_to_auto",
+        "stop_gates",
+        "verification",
+        "reviewer_required",
+        "notes",
+    }
+    task_allowed = task_required | {"started_at", "completed_at", "completed_details", "completed_reviewed"}
+    if not task_required.issubset(task):
+        raise SystemExit(f"task missing required keys: {task.get('id')}")
+    if set(task) - task_allowed:
+        raise SystemExit(f"task has unexpected keys: {task.get('id')}")
+    if not re.fullmatch(r"[a-z0-9][a-z0-9._-]*", task["id"]):
+        raise SystemExit(f"invalid id pattern for {task['id']}")
+    if task["status"] not in valid_statuses:
+        raise SystemExit(f"invalid status for {task['id']}")
+    if task["priority"] not in valid_priorities:
+        raise SystemExit(f"invalid priority for {task['id']}")
+    for key in ("dependencies", "stop_gates", "verification"):
+        if not isinstance(task[key], list):
+            raise SystemExit(f"{key} must be list for {task['id']}")
+    if not isinstance(task["safe_to_auto"], bool) or not isinstance(task["reviewer_required"], bool):
+        raise SystemExit(f"boolean fields invalid for {task['id']}")
+    for dep in task["dependencies"]:
+        if dep not in ids:
+            raise SystemExit(f"unknown dependency {dep} for {task['id']}")
+    if task["status"] == "done":
+        if not task.get("completed_at"):
+            raise SystemExit(f"done task lacks completed_at: {task['id']}")
+        datetime.datetime.fromisoformat(task["completed_at"].replace("Z", "+00:00"))
+        if not task.get("completed_details") or not task["completed_details"].strip():
+            raise SystemExit(f"done task lacks completed_details: {task['id']}")
+        if task["reviewer_required"] and task.get("completed_reviewed") is not True:
+            raise SystemExit(f"reviewed done task lacks completed_reviewed: {task['id']}")
+    if "started_at" in task:
+        datetime.datetime.fromisoformat(task["started_at"].replace("Z", "+00:00"))
+    if "completed_reviewed" in task and not isinstance(task["completed_reviewed"], bool):
+        raise SystemExit(f"completed_reviewed must be boolean for {task['id']}")
+PY
+  then
+    pass "work queue shape"
+  else
+    fail "work queue shape"
+  fi
+}
+
+check_start_dry_run() {
+  local temp_queue
+  local output
+  local status_code
+
+  temp_queue="$(mktemp "${TMPDIR:-/tmp}/coding-anchor-start-dry-run.XXXXXX")"
+  if ! "$PYTHON_BIN" - "$ROOT/state/work-queue.json" "$temp_queue" >/dev/null 2>&1 <<'PY'
+import json
+import sys
+
+source, target = sys.argv[1:3]
+with open(source, "r", encoding="utf-8") as handle:
+    queue = json.load(handle)
+
+for task in queue["tasks"]:
+    task["status"] = "done"
+    task["completed_at"] = "2026-06-26T00:00:00-05:00"
+    task["completed_details"] = "temporary doctor smoke fixture"
+    if task.get("reviewer_required"):
+        task["completed_reviewed"] = True
+    task.pop("started_at", None)
+
+queue["tasks"].append(
+    {
+        "id": "ca-doctor-dry-run",
+        "title": "Doctor dry-run fixture",
+        "status": "pending",
+        "priority": "high",
+        "dependencies": [],
+        "safe_to_auto": True,
+        "stop_gates": [],
+        "verification": ["coding-anchor-start --dry-run"],
+        "reviewer_required": False,
+        "notes": "Synthetic task used only inside coding-anchor-doctor.",
+    }
+)
+
+with open(target, "w", encoding="utf-8") as handle:
+    json.dump(queue, handle)
+    handle.write("\n")
+PY
+  then
+    rm -f "$temp_queue"
+    fail "start dry-run fixture creation"
+    return
+  fi
+
+  output="$(CODING_ANCHOR_QUEUE="$temp_queue" "$ROOT/bin/coding-anchor-start" --dry-run ca-doctor-dry-run 2>&1)"
+  status_code=$?
+  rm -f "$temp_queue"
+  if [ "$status_code" -ne 0 ]; then
+    fail "start dry-run command"
+    printf '%s\n' "$output" | sed 's/^/  /' | tee -a "$RECEIPT"
+    return
+  fi
+
+  if printf '%s\n' "$output" | grep -F "would_start: ca-doctor-dry-run" >/dev/null 2>&1; then
+    pass "start dry-run behavior"
+  else
+    fail "start dry-run behavior"
+    printf '%s\n' "$output" | sed 's/^/  /' | tee -a "$RECEIPT"
+  fi
+}
+
+check_parent_front_door() {
+  if [ -f "$PARENT/CODEX-CODING-ANCHOR.md" ]; then
+    pass "parent file CODEX-CODING-ANCHOR.md"
+  else
+    fail "missing parent file CODEX-CODING-ANCHOR.md"
+    return
+  fi
+
+  if grep -F "$ROOT/bin/coding-anchor-boot" "$PARENT/CODEX-CODING-ANCHOR.md" >/dev/null 2>&1; then
+    pass "parent front door boot path"
+  else
+    fail "parent front door boot path"
+  fi
+
+  if grep -F "$PARENT/launch-codex-coding-anchor" "$PARENT/CODEX-CODING-ANCHOR.md" >/dev/null 2>&1; then
+    pass "parent front door launch path"
+  else
+    fail "parent front door launch path"
+  fi
+}
+
+check_parent_wrapper() {
+  local wrapper="$1"
+  local target="$2"
+
+  check_parent_exec "$wrapper"
+  if grep -F "$ROOT" "$PARENT/$wrapper" >/dev/null 2>&1 && grep -F "$target" "$PARENT/$wrapper" >/dev/null 2>&1; then
+    pass "parent wrapper $wrapper targets $target"
+  else
+    fail "parent wrapper $wrapper targets $target"
+  fi
+}
+
+check_launch_dry_run() {
+  local output
+  local status_code
+
+  output="$(CODING_ANCHOR_SKIP_DOCTOR=1 "$ROOT/bin/coding-anchor-launch" --dry-run 2>&1)"
+  status_code=$?
+  if [ "$status_code" -ne 0 ]; then
+    fail "launch dry-run command"
+    printf '%s\n' "$output" | sed 's/^/  /' | tee -a "$RECEIPT" >/dev/null
+    return
+  fi
+
+  if printf '%s\n' "$output" | grep -F "launch_dry_run=pass" >/dev/null 2>&1; then
+    pass "launch dry-run status"
+  else
+    fail "launch dry-run status"
+  fi
+
+  if printf '%s\n' "$output" | grep -F "target_cwd=$ROOT" >/dev/null 2>&1; then
+    pass "launch dry-run target cwd"
+  else
+    fail "launch dry-run target cwd"
+  fi
+
+  if printf '%s\n' "$output" | grep -F "codex_bin=missing" >/dev/null 2>&1; then
+    fail "launch dry-run codex binary"
+  else
+    pass "launch dry-run codex binary"
+  fi
+}
+
+log "CodeX Coding Anchor Doctor"
+log "root: $ROOT"
+log "parent: $PARENT"
+log "checked_at: $(date '+%Y-%m-%dT%H:%M:%S%z')"
+log ""
+
+check_file "AGENTS.md"
+check_file "README.md"
+check_file "CODING-ANCHOR-IDENTITY.md"
+check_file "AUTONOMY-CONTRACT.md"
+check_file "CAPABILITY-MAP.md"
+check_file "MISSION-CONTROL.md"
+check_file "OPEN-LOOPS.md"
+check_file "START-HERE.md"
+check_file "BOOT.md"
+check_file "CURRENT.md"
+check_file "dashboards/TRUTH-LOG.md"
+check_file "config/codex-runtime-notes.md"
+check_file "config/model-and-output-discipline.md"
+check_file "config/hook-discipline.md"
+check_file "protocols/before-tool-check.md"
+check_file "protocols/after-tool-check.md"
+check_file "protocols/after-response-check.md"
+check_file "protocols/agentic-decision-rule.md"
+check_file "protocols/autonomous-work-loop.md"
+check_file "protocols/concise-agentic-output.md"
+check_file "protocols/mission-routing.md"
+check_file "protocols/next-slice-loop.md"
+check_file "protocols/post-work-code-review.md"
+check_file "protocols/structured-output-rule.md"
+check_file "protocols/verification-loop.md"
+check_file "schemas/tool-intent.schema.json"
+check_file "schemas/verification-receipt.schema.json"
+check_file "schemas/mission-state.schema.json"
+check_file "schemas/work-queue.schema.json"
+check_file "state/current-mission.json"
+check_file "state/work-queue.json"
+check_file "notes/inventory-2026-06-14.md"
+check_file "notes/operator-toolkit-shortlist-2026-06-28.md"
+
+check_dir "bin"
+check_dir "config"
+check_dir "dashboards"
+check_dir "missions"
+check_dir "protocols"
+check_dir "schemas"
+check_dir "receipts"
+check_dir "notes"
+check_dir "state"
+
+check_exec "bin/coding-anchor-launch"
+check_exec "bin/coding-anchor-boot"
+check_exec "bin/coding-anchor-doctor"
+check_exec "bin/coding-anchor-brief"
+check_exec "bin/coding-anchor-agentic-check"
+check_exec "bin/coding-anchor-toolkit-check"
+check_exec "bin/coding-anchor-opdiag"
+check_exec "bin/coding-anchor-next"
+check_exec "bin/coding-anchor-start"
+check_exec "bin/coding-anchor-done"
+check_exec "bin/coding-anchor-loop"
+check_exec "bin/coding-anchor-tick"
+check_exec "bin/coding-anchor-mission"
+
+check_parent_front_door
+check_parent_wrapper "boot-codex-coding-anchor" "coding-anchor-boot"
+check_parent_wrapper "launch-codex-coding-anchor" "coding-anchor-launch"
+
+check_contains "$ROOT/protocols/post-work-code-review.md" "Spawn an independent read-only reviewer subagent after changes to:" "post-work review mandatory trigger"
+check_contains "$ROOT/protocols/post-work-code-review.md" "Attempt subagent review first" "post-work review attempt first"
+check_contains "$ROOT/protocols/post-work-code-review.md" "Unavailable subagents are not a reason to skip review discipline." "post-work review fallback discipline"
+check_contains "$ROOT/protocols/after-response-check.md" "independent reviewer subagent inspect" "after-response reviewer check"
+check_contains "$ROOT/protocols/verification-loop.md" "protocols/post-work-code-review.md" "verification routes to post-work review"
+check_contains "$ROOT/protocols/autonomous-work-loop.md" "reviewer subagent before final closeout" "autonomous loop reviewer step"
+check_contains "$ROOT/protocols/concise-agentic-output.md" "Do not narrate every command." "concise agentic output command discipline"
+check_contains "$ROOT/protocols/concise-agentic-output.md" "verification that passed" "concise agentic output verification closeout"
+check_contains "$ROOT/protocols/agentic-decision-rule.md" "Proceed without asking" "agentic decision action default"
+check_contains "$ROOT/protocols/agentic-decision-rule.md" "delete broad or unclear user work" "agentic decision user-work stop"
+check_contains "$ROOT/protocols/agentic-decision-rule.md" "physical approval, biometric approval, 2FA" "agentic decision physical approval stop"
+check_contains "$ROOT/bin/coding-anchor-boot" "protocols/agentic-decision-rule.md" "boot lists agentic decision protocol"
+check_contains "$ROOT/bin/coding-anchor-boot" "protocols/concise-agentic-output.md" "boot lists concise output protocol"
+check_contains "$ROOT/bin/coding-anchor-boot" "protocols/next-slice-loop.md" "boot lists next-slice protocol"
+check_contains "$ROOT/bin/coding-anchor-boot" "protocols/post-work-code-review.md" "boot lists post-work review protocol"
+check_contains "$ROOT/protocols/next-slice-loop.md" "bin/coding-anchor-next" "next-slice protocol next command"
+check_contains "$ROOT/protocols/next-slice-loop.md" "bin/coding-anchor-start" "next-slice protocol start command"
+check_contains "$ROOT/protocols/next-slice-loop.md" "bin/coding-anchor-loop" "next-slice protocol loop command"
+check_start_dry_run
+
+if "$ROOT/bin/coding-anchor-agentic-check" >/dev/null 2>&1; then
+  pass "agentic check behavior"
+else
+  fail "agentic check behavior"
+fi
+
+if "$ROOT/bin/coding-anchor-toolkit-check" >/dev/null 2>&1; then
+  pass "toolkit check behavior"
+else
+  fail "toolkit check behavior"
+fi
+
+if "$ROOT/bin/coding-anchor-toolkit-check" --json | "$PYTHON_BIN" -m json.tool >/dev/null 2>&1; then
+  pass "toolkit check json behavior"
+else
+  fail "toolkit check json behavior"
+fi
+
+if "$ROOT/bin/coding-anchor-opdiag" --self-test >/dev/null 2>&1; then
+  pass "opdiag self-test behavior"
+else
+  fail "opdiag self-test behavior"
+fi
+
+if "$ROOT/bin/coding-anchor-opdiag" --self-test --json | "$PYTHON_BIN" -m json.tool >/dev/null 2>&1; then
+  pass "opdiag self-test json behavior"
+else
+  fail "opdiag self-test json behavior"
+fi
+
+if [ -f "$SOURCE_GIFT_PATH" ]; then
+  pass "source gift present"
+else
+  warn "source gift missing at $SOURCE_GIFT_PATH"
+fi
+
+if command -v "$PYTHON_BIN" >/dev/null 2>&1 || [ -x "$PYTHON_BIN" ]; then
+  for schema in "$ROOT"/schemas/*.json; do
+    check_valid_json "$schema" "$(basename "$schema")"
+  done
+  check_valid_json "$ROOT/state/current-mission.json" "current-mission.json"
+  check_valid_json "$ROOT/state/work-queue.json" "work-queue.json"
+  check_json_schema "$ROOT/schemas/mission-state.schema.json" "$ROOT/state/current-mission.json" "current-mission.json"
+  check_json_schema "$ROOT/schemas/work-queue.schema.json" "$ROOT/state/work-queue.json" "work-queue.json"
+  if [ -f "$ROOT/state/last-heartbeat.json" ]; then
+    check_valid_json "$ROOT/state/last-heartbeat.json" "last-heartbeat.json"
+  else
+    pass "last-heartbeat.json not present before heartbeat"
+  fi
+  check_mission_state_shape
+  check_work_queue_shape
+else
+  fail "python3 unavailable for json validation"
+fi
+
+for script in "$ROOT"/bin/*; do
+  if [ -f "$script" ]; then
+    check_shell_syntax "$script" "bin/$(basename "$script")"
+  fi
+done
+check_shell_syntax "$PARENT/boot-codex-coding-anchor" "parent/boot-codex-coding-anchor"
+check_shell_syntax "$PARENT/launch-codex-coding-anchor" "parent/launch-codex-coding-anchor"
+check_launch_dry_run
+
+if command -v rg >/dev/null 2>&1; then
+  if rg -n "I am Anchor|You are Anchor|Gemini CLI baseline|auto-load Anchor" "$ROOT" --glob '!**/receipts/**' --glob '!**/bin/coding-anchor-doctor' >/dev/null 2>&1; then
+    fail "stale Anchor identity phrase found in packet"
+  else
+    pass "no stale Anchor identity phrases in packet"
+  fi
+else
+  pass "rg unavailable; skipped stale phrase scan"
+fi
+
+log ""
+if [ "$STATUS" -eq 0 ]; then
+  log "RESULT pass"
+else
+  log "RESULT fail"
+fi
+log "receipt: $RECEIPT"
+
+exit "$STATUS"
