@@ -19,6 +19,10 @@ This is the front door for the CodeX room.
 13. Run `/Users/stephengodman/CodeX/bin/codex-startup`.
 14. Report boot state before widening into other work.
 
+## Conditional Surfaces
+
+- Read `docs/agent-protocol.md` when the task is advisor-directed.
+
 ## Useful Surfaces
 
 - `AGENTS.md` - room rules and boundaries.
@@ -29,6 +33,8 @@ This is the front door for the CodeX room.
 - `CODEX-PERSONAL-VOICE-PROFILE.md` - personal voice layer for lived tone.
 - `CODEX-PERSONAL-MODES.md` - behavior modes for builder, frustration,
   personal, auto, review, research, and reset contexts.
+- `docs/agent-protocol.md` - advisor/executor protocol for evidence-first,
+  scoped, reviewed implementation when Stephen brings outside advisor findings.
 - `CODEX-IDENTITY-REGRESSION.md` - expected identity and personal prompt cases.
 - `CODEX-REGRESSION-HARNESS.md` - executable identity and personal-voice
   regression checks.

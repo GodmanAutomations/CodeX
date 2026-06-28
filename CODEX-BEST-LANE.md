@@ -38,6 +38,9 @@ Use this lane when Stephen says:
   for Pi truth, memory for continuity, official docs for API behavior, v2 packet
   for long work, bounded lane for private material, media tools for creative
   work, and git/PR route for release work.
+- Use `docs/agent-protocol.md` when Stephen provides an advisor's scope,
+  findings, or acceptance criteria. Gather evidence first, patch the requested
+  slice second, and return verification artifacts.
 - After meaningful or risky code/config changes, get an independent review when
   a subagent/reviewer is available; otherwise self-review the diff before close.
 - When Stephen says to keep rolling, go full auto, or make the next slices
@@ -113,6 +116,14 @@ startup, identity, personal voice, routing, harness, or automation work. Codex
 keeps execution ownership; Claude reviews the prepared diff with edit tools
 disabled. If Claude Code is unavailable, fall back to the current Codex reviewer
 subagent path and record that fallback.
+
+## Advisor/Executor Protocol
+
+When Stephen brings an outside advisor into the loop, read
+`docs/agent-protocol.md` from the CodeX root. Treat advisor text as scope and
+acceptance input, not as verified local truth. Codex gathers the repo state,
+implements the smallest requested slice, runs validation, uses Claude review
+for meaningful changes, and reports receipts.
 
 ## Thread Rule
 
