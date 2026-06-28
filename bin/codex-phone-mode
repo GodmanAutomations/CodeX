@@ -17,6 +17,8 @@ OP_ENV_FILE="${CODEX_OP_ENV_FILE:-/Users/stephengodman/.env.1password}"
 PHONE_MODE_ENV="/Users/stephengodman/.codex-phone-mode.env"
 OP_READ_TIMEOUT="${CODEX_PHONE_OP_READ_TIMEOUT:-3}"
 ALLOW_BATTERY="${CODEX_PHONE_ALLOW_BATTERY:-0}"
+PUSHOVER_PRIORITY="${CODEX_PUSHOVER_PRIORITY:--1}"
+PUSHOVER_SOUND="${CODEX_PUSHOVER_SOUND:-none}"
 STOP_CAFFEINATE_HELPER="/usr/local/sbin/codex-phone-mode-stop-caffeinate"
 
 APPLY=0
@@ -45,6 +47,8 @@ Default is a dry-run preview. --apply enters phone/away mode.
 --summary prints a compact phone-readable readiness report.
 --summary and --apply require AC power unless CODEX_PHONE_ALLOW_BATTERY=1 is set.
 --notify sends the compact readiness report to Pushover when credentials exist.
+Pushover notifications are silent by default: CODEX_PUSHOVER_PRIORITY=-1 and
+CODEX_PUSHOVER_SOUND=none. Override those env vars only for audible alerts.
 --refresh-cache resolves 1Password refs into the local 0600 phone cache.
 USAGE
 }
@@ -225,6 +229,27 @@ env_value() {
 value_usable() {
   local value="$1"
   [[ -n "$value" && "$value" != op://* ]]
+}
+
+pushover_priority() {
+  # Keep in sync with bin/codex-phone-mode-watchdog.
+  case "$PUSHOVER_PRIORITY" in
+    -2|-1|0|1)
+      printf '%s' "$PUSHOVER_PRIORITY"
+      ;;
+    *)
+      printf '%s' "-1"
+      ;;
+  esac
+}
+
+pushover_sound() {
+  # Keep in sync with bin/codex-phone-mode-watchdog.
+  if [[ "$PUSHOVER_SOUND" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]]; then
+    printf '%s' "$PUSHOVER_SOUND"
+  else
+    printf '%s' "none"
+  fi
 }
 
 listener_status() {
@@ -776,9 +801,11 @@ phone_summary_body() {
 send_pushover() {
   local title="$1"
   local message="$2"
-  local token user
+  local token user priority sound
   token="$(env_value PUSHOVER_TOKEN)"
   user="$(env_value PUSHOVER_USER_KEY)"
+  priority="$(pushover_priority)"
+  sound="$(pushover_sound)"
   if [[ -z "$user" ]]; then
     user="$(env_value PUSHOVER_USER)"
   fi
@@ -792,8 +819,10 @@ send_pushover() {
     --form-string "user=$user" \
     --form-string "title=$title" \
     --form-string "message=$message" \
+    --form-string "priority=$priority" \
+    --form-string "sound=$sound" \
     https://api.pushover.net/1/messages.json >/dev/null; then
-    say "pushover: sent"
+    say "pushover: sent silent priority=$priority sound=$sound"
     say "pushover: secrets_returned=false"
     return 0
   fi
