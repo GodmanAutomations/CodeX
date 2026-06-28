@@ -539,7 +539,7 @@ def run_doctor(json_mode: bool) -> int:
         for probe in probes:
             try:
                 probe.unlink()
-            except FileNotFoundError:
+            except OSError:
                 pass
     if json_mode:
         print(json.dumps(output, indent=2, sort_keys=True))
@@ -598,7 +598,9 @@ def main() -> int:
         if not args.no_receipt:
             print(f"receipt={payload['receipt_markdown']}")
 
-    return 1 if args.strict and strict_blockers else 0
+    if "strict_blockers" not in payload:
+        raise RuntimeError("tree steward payload missing strict_blockers")
+    return 1 if args.strict and payload["strict_blockers"] else 0
 
 
 if __name__ == "__main__":

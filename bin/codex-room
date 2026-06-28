@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOM="/Users/stephengodman/CodeX"
+ROOM="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MEMORY="$ROOM/memory/codex_memory.py"
 
 cmd="${1:-help}"
