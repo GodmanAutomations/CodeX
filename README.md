@@ -52,6 +52,9 @@ CODEX-PERSONAL-VOICE-PROFILE.md and CODEX-PERSONAL-MODES.md keep personal answer
 Room health check:
 
 ```bash
+/Users/stephengodman/CodeX/bin/codex-check
+/Users/stephengodman/CodeX/bin/codex-check --json
+/Users/stephengodman/CodeX/bin/codex-check --profile phone
 /Users/stephengodman/CodeX/bin/codex-status
 /Users/stephengodman/CodeX/bin/codex-doctor-room
 /Users/stephengodman/CodeX/bin/codex-identity-regression

@@ -1,0 +1,281 @@
+#!/usr/bin/env python3
+"""Read-only CodeX health aggregator."""
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+
+ROOT = Path(__file__).resolve().parents[1]
+BIN = ROOT / "bin"
+
+SAFETY = {
+    "git_writes": False,
+    "file_deletes": False,
+    "secrets_printed": False,
+    "trello_writes": False,
+}
+
+
+def tail(text: str, *, lines: int = 24, chars: int = 4000) -> str:
+    selected = "\n".join(text.splitlines()[-lines:])
+    return selected[-chars:]
+
+
+def timeout_text(value: str | bytes | None) -> str:
+    if isinstance(value, bytes):
+        return value.decode(errors="replace")
+    return value or ""
+
+
+def run_check(name: str, command: list[str], *, kind: str, timeout: int) -> dict[str, Any]:
+    started = time.monotonic()
+    try:
+        result = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+        duration_ms = int((time.monotonic() - started) * 1000)
+    except subprocess.TimeoutExpired as exc:
+        stdout = timeout_text(exc.stdout)
+        stderr = timeout_text(exc.stderr)
+        return {
+            "name": name,
+            "ok": False,
+            "returncode": 124,
+            "kind": kind,
+            "duration_ms": int((time.monotonic() - started) * 1000),
+            "command": command,
+            "error": f"timed out after {timeout}s",
+            "stdout_tail": tail(stdout),
+            "stderr_tail": tail(stderr),
+        }
+    except OSError as exc:
+        return {
+            "name": name,
+            "ok": False,
+            "returncode": 127,
+            "kind": kind,
+            "duration_ms": int((time.monotonic() - started) * 1000),
+            "command": command,
+            "error": str(exc),
+        }
+
+    item: dict[str, Any] = {
+        "name": name,
+        "ok": result.returncode == 0,
+        "returncode": result.returncode,
+        "kind": kind,
+        "duration_ms": duration_ms,
+        "command": command,
+    }
+
+    if kind == "json":
+        output = result.stdout.strip() or result.stderr.strip()
+        try:
+            payload = json.loads(output)
+        except json.JSONDecodeError:
+            item["ok"] = False
+            item["error"] = "command did not return valid JSON"
+            item["stdout_tail"] = tail(result.stdout)
+            item["stderr_tail"] = tail(result.stderr)
+        else:
+            item["payload"] = payload
+            if payload.get("ok") is not True:
+                item["ok"] = False
+    else:
+        item["stdout_tail"] = tail(result.stdout)
+        if result.stderr.strip():
+            item["stderr_tail"] = tail(result.stderr)
+    return item
+
+
+def check_catalog(include_pi: bool) -> dict[str, dict[str, Any]]:
+    status_cmd = [str(BIN / "codex-status"), "--json"]
+    if not include_pi:
+        status_cmd.append("--skip-pi")
+    return {
+        "status": {
+            "command": status_cmd,
+            "kind": "json",
+            "timeout": 30,
+        },
+        "tree_steward_doctor": {
+            "command": [str(BIN / "codex-tree-steward"), "--doctor", "--json"],
+            "kind": "json",
+            "timeout": 30,
+        },
+        "mcp_doctor": {
+            "command": [str(BIN / "codex-mcp"), "doctor", "--json"],
+            "kind": "json",
+            "timeout": 60,
+        },
+        "identity_regression": {
+            "command": [str(BIN / "codex-identity-regression")],
+            "kind": "exit-only",
+            "timeout": 90,
+        },
+        "ensure_standalone": {
+            "command": [str(BIN / "codex-ensure-standalone"), "--check"],
+            "kind": "exit-only",
+            "timeout": 90,
+        },
+        "phone_summary": {
+            "command": [str(BIN / "codex-phone-mode"), "--summary"],
+            "kind": "exit-only",
+            "timeout": 45,
+        },
+    }
+
+
+def profile_names(profile: str) -> list[str]:
+    if profile == "quick":
+        return ["status", "mcp_doctor", "tree_steward_doctor"]
+    if profile == "full":
+        return ["status", "mcp_doctor", "tree_steward_doctor", "ensure_standalone"]
+    if profile == "phone":
+        return ["status", "mcp_doctor", "tree_steward_doctor", "phone_summary"]
+    raise ValueError(f"unknown profile: {profile}")
+
+
+def parse_only(raw: str | None) -> tuple[list[str] | None, str | None]:
+    if raw is None:
+        return None, None
+    parsed = [item.strip() for item in raw.split(",") if item.strip()]
+    if not parsed:
+        return [], "--only did not include any check names"
+    return parsed, None
+
+
+def build_payload(
+    profile: str,
+    include_pi: bool,
+    only: list[str] | None,
+    only_error: str | None = None,
+) -> tuple[dict[str, Any], int]:
+    catalog = check_catalog(include_pi)
+    if only_error:
+        payload = {
+            "ok": False,
+            "profile": profile,
+            "only": True,
+            "selected_checks": [],
+            "root": str(ROOT),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "checks": [],
+            "summary": {"passed": 0, "failed": 0},
+            "safety": SAFETY,
+            "error": only_error,
+            "available_checks": sorted(catalog),
+        }
+        return payload, 2
+    names = only or profile_names(profile)
+    unknown = [name for name in names if name not in catalog]
+    if unknown:
+        payload = {
+            "ok": False,
+            "profile": profile,
+            "only": bool(only),
+            "selected_checks": names,
+            "root": str(ROOT),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "checks": [],
+            "summary": {"passed": 0, "failed": 0},
+            "safety": SAFETY,
+            "error": f"unknown check(s): {', '.join(unknown)}",
+            "available_checks": sorted(catalog),
+        }
+        return payload, 2
+
+    checks = [
+        run_check(
+            name,
+            catalog[name]["command"],
+            kind=catalog[name]["kind"],
+            timeout=int(catalog[name]["timeout"]),
+        )
+        for name in names
+    ]
+    passed = sum(1 for check in checks if check.get("ok"))
+    failed = len(checks) - passed
+    payload = {
+        "ok": failed == 0,
+        "profile": profile,
+        "only": bool(only),
+        "selected_checks": names,
+        "root": str(ROOT),
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "checks": checks,
+        "summary": {"passed": passed, "failed": failed},
+        "safety": SAFETY,
+    }
+    return payload, 0 if failed == 0 else 1
+
+
+def format_text(payload: dict[str, Any]) -> str:
+    lines = [
+        "CodeX Check",
+        f"profile: {payload.get('profile')}",
+        f"selected: {', '.join(payload.get('selected_checks') or [])}",
+        f"root: {payload.get('root')}",
+        f"status: {'OK' if payload.get('ok') else 'NO'}",
+        f"summary: passed={payload.get('summary', {}).get('passed')} failed={payload.get('summary', {}).get('failed')}",
+        "",
+    ]
+    if payload.get("error"):
+        lines.append(f"error: {payload['error']}")
+        lines.append("")
+    for check in payload.get("checks", []):
+        lines.append(
+            f"- {check.get('name')}: {'OK' if check.get('ok') else 'NO'} "
+            f"rc={check.get('returncode')} {check.get('duration_ms')}ms"
+        )
+        if check.get("error"):
+            lines.append(f"  error: {check['error']}")
+        check_payload = check.get("payload")
+        if not check.get("ok") and isinstance(check_payload, dict):
+            payload_bits = []
+            for key in ("ok", "status", "error", "note"):
+                if key in check_payload:
+                    payload_bits.append(f"{key}={check_payload[key]}")
+            if payload_bits:
+                lines.append(f"  payload: {', '.join(payload_bits)}")
+        elif not check.get("ok") and check.get("stdout_tail"):
+            lines.append("  stdout_tail:")
+            for line in str(check["stdout_tail"]).splitlines()[-6:]:
+                lines.append(f"    {line}")
+        if not check.get("ok") and check.get("stderr_tail"):
+            lines.append("  stderr_tail:")
+            for line in str(check["stderr_tail"]).splitlines()[-6:]:
+                lines.append(f"    {line}")
+    return "\n".join(lines)
+
+
+def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(description="Run read-only CodeX health checks")
+    parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
+    parser.add_argument("--profile", choices=["quick", "full", "phone"], default="quick")
+    parser.add_argument("--with-pi", action="store_true", help="Include Pi reachability in codex-status.")
+    parser.add_argument("--only", help="Comma-separated check names to run.")
+    args = parser.parse_args(argv)
+
+    only, only_error = parse_only(args.only)
+    payload, rc = build_payload(args.profile, args.with_pi, only, only_error)
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        print(format_text(payload))
+    return rc
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))
