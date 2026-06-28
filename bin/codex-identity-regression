@@ -122,6 +122,28 @@ run_capture() {
   fi
 }
 
+run_health_capture() {
+  local label="$1"
+  local output_file="$2"
+  local status_code
+  shift 2
+  if "$@" >"$output_file" 2>&1; then
+    status_code=0
+  else
+    status_code=$?
+  fi
+  if [ "$status_code" -le 1 ]; then
+    pass "$label exits with health status (rc=$status_code)"
+  else
+    fail "$label exits with health status (rc=$status_code)"
+    if [ -s "$output_file" ]; then
+      while IFS= read -r line; do
+        log "DETAIL $label: $line"
+      done < <(tail -12 "$output_file")
+    fi
+  fi
+}
+
 cd "$ROOT"
 
 log "CodeX Identity Regression Harness"
@@ -200,7 +222,12 @@ brief_output="$TMP_DIR/codex-room-brief-regression.txt"
 handoff_output="$TMP_DIR/codex-room-handoff-regression.txt"
 common_output="$TMP_DIR/codex-common-smoke.txt"
 codex_check_output="$TMP_DIR/codex-check-tree-doctor.json"
+codex_check_quick_output="$TMP_DIR/codex-check-quick.json"
+codex_check_full_output="$TMP_DIR/codex-check-full.json"
+codex_check_phone_output="$TMP_DIR/codex-check-phone.json"
+codex_check_ensure_output="$TMP_DIR/codex-check-ensure-standalone.json"
 codex_check_empty_only_output="$TMP_DIR/codex-check-empty-only.json"
+codex_check_bad_profile_output="$TMP_DIR/codex-check-bad-profile.json"
 ensure_standalone_json_output="$TMP_DIR/codex-ensure-standalone.json"
 ensure_standalone_text_output="$TMP_DIR/codex-ensure-standalone.txt"
 advisor_ignore_output="$TMP_DIR/advisor-receipts-ignore.txt"
@@ -250,6 +277,116 @@ run_capture "advisor receipts gitignore runtime" "$advisor_ignore_output" bash -
 require_command_output_contains "advisor receipts gitignore runtime outputs ignored path" "$advisor_ignore_output" "receipts/advisor/example.md ignored and no tracked advisor receipts"
 run_capture "codex-check tree doctor runtime" "$codex_check_output" "$ROOT/bin/codex-check" --json --only tree_steward_doctor
 require_command_output_contains "codex-check runtime returns passing JSON" "$codex_check_output" '"ok": true'
+run_health_capture "codex-check quick JSON runtime" "$codex_check_quick_output" "$ROOT/bin/codex-check" --json --profile quick
+run_health_capture "codex-check full JSON runtime" "$codex_check_full_output" "$ROOT/bin/codex-check" --json --profile full
+run_health_capture "codex-check phone JSON runtime" "$codex_check_phone_output" "$ROOT/bin/codex-check" --json --profile phone
+run_capture "codex-check ensure standalone JSON runtime" "$codex_check_ensure_output" "$ROOT/bin/codex-check" --json --only ensure_standalone
+if python3 - "$codex_check_quick_output" "$codex_check_full_output" "$codex_check_phone_output" "$codex_check_ensure_output" <<'PY'
+import json
+import sys
+
+expected = {
+    "quick": ("quick", False, {"status", "mcp_doctor", "tree_steward_doctor"}),
+    "full": ("full", False, {"status", "mcp_doctor", "tree_steward_doctor", "ensure_standalone"}),
+    "phone": ("phone", False, {"status", "mcp_doctor", "tree_steward_doctor", "phone_summary"}),
+    # --only inherits codex-check's default profile while narrowing selected_checks.
+    "ensure": ("quick", True, {"ensure_standalone"}),
+}
+
+errors = []
+required_top = {
+    "ok",
+    "profile",
+    "only",
+    "selected_checks",
+    "root",
+    "generated_at",
+    "checks",
+    "summary",
+    "safety",
+}
+required_check = {"name", "ok", "returncode", "kind", "duration_ms", "command"}
+json_kinds = {"json"}
+exit_kinds = {"exit-only"}
+
+for label, path in zip(("quick", "full", "phone", "ensure"), sys.argv[1:]):
+    try:
+        with open(path, encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except Exception as exc:
+        errors.append(f"{label}: output is not valid JSON: {exc}")
+        continue
+    expected_profile, expected_only, expected_checks = expected[label]
+    missing_top = sorted(required_top - set(payload))
+    if missing_top:
+        errors.append(f"{label}: missing top-level keys: {', '.join(missing_top)}")
+    if payload.get("profile") != expected_profile:
+        errors.append(f"{label}: profile mismatch: {payload.get('profile')!r}")
+    if payload.get("only") != expected_only:
+        errors.append(f"{label}: only mismatch: {payload.get('only')!r}")
+    if not isinstance(payload.get("ok"), bool):
+        errors.append(f"{label}: top-level ok is not boolean")
+    summary = payload.get("summary")
+    if not isinstance(summary, dict) or not isinstance(summary.get("passed"), int):
+        errors.append(f"{label}: summary.passed missing or not integer")
+    if not isinstance(summary, dict) or not isinstance(summary.get("failed"), int):
+        errors.append(f"{label}: summary.failed missing or not integer")
+    selected = payload.get("selected_checks")
+    if not isinstance(selected, list):
+        errors.append(f"{label}: selected_checks missing or not list")
+        selected_names = set()
+    else:
+        selected_names = set(selected)
+    if selected_names != expected_checks:
+        errors.append(f"{label}: selected_checks mismatch: {selected!r}")
+    checks = payload.get("checks")
+    if not isinstance(checks, list) or not checks:
+        errors.append(f"{label}: checks missing or empty")
+        continue
+    check_names = {check.get("name") for check in checks if isinstance(check, dict)}
+    if check_names != selected_names:
+        errors.append(f"{label}: check names do not match selected_checks: {sorted(check_names)!r}")
+    for index, check in enumerate(checks):
+        name = check.get("name", f"<index {index}>")
+        missing_check = sorted(required_check - set(check))
+        if missing_check:
+            errors.append(f"{label}:{name}: missing check keys: {', '.join(missing_check)}")
+        if not isinstance(check.get("name"), str) or not check.get("name"):
+            errors.append(f"{label}:{name}: name missing or not string")
+        if not isinstance(check.get("ok"), bool):
+            errors.append(f"{label}:{name}: ok is not boolean")
+        if not isinstance(check.get("returncode"), int):
+            errors.append(f"{label}:{name}: returncode is not integer")
+        if not isinstance(check.get("duration_ms"), int):
+            errors.append(f"{label}:{name}: duration_ms is not integer")
+        if not isinstance(check.get("command"), list) or not check.get("command"):
+            errors.append(f"{label}:{name}: command missing or empty")
+        kind = check.get("kind")
+        if kind in json_kinds:
+            if "payload" not in check and "error" not in check:
+                errors.append(f"{label}:{name}: json check lacks payload or error")
+            if "payload" in check and not isinstance(check["payload"], dict):
+                errors.append(f"{label}:{name}: payload is not object")
+        elif kind in exit_kinds:
+            if "stdout_tail" not in check:
+                errors.append(f"{label}:{name}: exit-only check lacks stdout_tail")
+            if "stdout_tail" in check and not isinstance(check["stdout_tail"], str):
+                errors.append(f"{label}:{name}: stdout_tail is not string")
+            if "stderr_tail" in check and not isinstance(check["stderr_tail"], str):
+                errors.append(f"{label}:{name}: stderr_tail is not string")
+        else:
+            errors.append(f"{label}:{name}: unknown kind {kind!r}")
+
+if errors:
+    for error in errors:
+        print(error, file=sys.stderr)
+    sys.exit(1)
+PY
+then
+  pass "codex-check JSON contract runtime validates profiles and ensure standalone"
+else
+  fail "codex-check JSON contract runtime validates profiles and ensure standalone"
+fi
 run_capture "ensure standalone JSON runtime" "$ensure_standalone_json_output" "$ROOT/bin/codex-ensure-standalone" --check --json
 require_command_output_contains "ensure standalone JSON runtime includes ok key" "$ensure_standalone_json_output" '"ok":'
 require_command_output_contains "ensure standalone JSON runtime includes receipt" "$ensure_standalone_json_output" '"receipt":'
@@ -304,6 +441,19 @@ else
     log "DETAIL codex-check empty --only: $line"
   done <"$codex_check_empty_only_output"
   fail "codex-check empty --only exits with usage error"
+fi
+if "$ROOT/bin/codex-check" --json --profile bogus >"$codex_check_bad_profile_output" 2>&1; then
+  codex_check_bad_profile_rc=0
+else
+  codex_check_bad_profile_rc=$?
+fi
+if [ "$codex_check_bad_profile_rc" -eq 2 ]; then
+  pass "codex-check bad profile exits with usage error"
+else
+  while IFS= read -r line; do
+    log "DETAIL codex-check bad profile: $line"
+  done <"$codex_check_bad_profile_output"
+  fail "codex-check bad profile exits with usage error"
 fi
 
 run_capture "tool route pi punctuation runtime" "$tool_route_output" "$ROOT/bin/codex-tool-route" "check pi?"
