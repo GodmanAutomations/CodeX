@@ -155,6 +155,7 @@ require_exec "bin/codex-startup"
 require_exec "bin/codex-room"
 require_exec "bin/codex-identity-regression"
 require_exec "bin/codex-check"
+require_exec "bin/codex-ensure-standalone"
 require_exec "bin/codex-claude-review"
 require_file "bin/lib/codex-common.sh"
 
@@ -197,6 +198,8 @@ handoff_output="$TMP_DIR/codex-room-handoff-regression.txt"
 common_output="$TMP_DIR/codex-common-smoke.txt"
 codex_check_output="$TMP_DIR/codex-check-tree-doctor.json"
 codex_check_empty_only_output="$TMP_DIR/codex-check-empty-only.json"
+ensure_standalone_json_output="$TMP_DIR/codex-ensure-standalone.json"
+ensure_standalone_text_output="$TMP_DIR/codex-ensure-standalone.txt"
 tool_route_output="$TMP_DIR/codex-tool-route-pi.txt"
 tool_route_pi5_output="$TMP_DIR/codex-tool-route-pi5.txt"
 tool_route_comma_output="$TMP_DIR/codex-tool-route-comma.txt"
@@ -241,6 +244,49 @@ run_capture "codex-common env scrub runtime" "$common_output" bash -c 'set -euo 
 require_command_output_contains "codex-common env scrub leaves caller env intact" "$common_output" "common smoke ok"
 run_capture "codex-check tree doctor runtime" "$codex_check_output" "$ROOT/bin/codex-check" --json --only tree_steward_doctor
 require_command_output_contains "codex-check runtime returns passing JSON" "$codex_check_output" '"ok": true'
+run_capture "ensure standalone JSON runtime" "$ensure_standalone_json_output" "$ROOT/bin/codex-ensure-standalone" --check --json
+require_command_output_contains "ensure standalone JSON runtime includes ok key" "$ensure_standalone_json_output" '"ok":'
+require_command_output_contains "ensure standalone JSON runtime includes receipt" "$ensure_standalone_json_output" '"receipt":'
+if python3 - "$ensure_standalone_json_output" <<'PY'
+import json
+import pathlib
+import sys
+
+errors = []
+with open(sys.argv[1], encoding="utf-8") as handle:
+    payload = json.load(handle)
+receipt_value = payload.get("receipt")
+receipt = pathlib.Path(receipt_value) if receipt_value else None
+if payload.get("ok") is not True:
+    errors.append("ok is not true")
+if payload.get("mode") != "check":
+    errors.append("mode is not check")
+if payload.get("summary", {}).get("fail") != 0:
+    errors.append("summary.fail is not zero")
+if not isinstance(payload.get("checks"), list) or not payload["checks"]:
+    errors.append("checks is missing or empty")
+if "generated_at" not in payload:
+    errors.append("generated_at is missing")
+if receipt is None:
+    errors.append("receipt is missing")
+elif not receipt.exists():
+    errors.append(f"receipt does not exist: {receipt}")
+elif receipt.stat().st_size == 0:
+    errors.append(f"receipt is empty: {receipt}")
+if errors:
+    for error in errors:
+        print(error, file=sys.stderr)
+    sys.exit(1)
+PY
+then
+  pass "ensure standalone JSON runtime parses top-level contract"
+else
+  fail "ensure standalone JSON runtime parses top-level contract"
+fi
+run_capture "ensure standalone text runtime" "$ensure_standalone_text_output" "$ROOT/bin/codex-ensure-standalone" --check
+require_command_output_contains "ensure standalone text runtime keeps human header" "$ensure_standalone_text_output" "CODEX STANDALONE PREFLIGHT"
+require_command_output_contains "ensure standalone text runtime keeps summary" "$ensure_standalone_text_output" "summary: pass="
+require_command_output_contains "ensure standalone text runtime keeps receipt" "$ensure_standalone_text_output" "receipt saved:"
 set +e
 "$ROOT/bin/codex-check" --json --only "" >"$codex_check_empty_only_output" 2>&1
 codex_check_empty_only_rc=$?
@@ -309,8 +355,12 @@ require_contains "bin/codex-check" "--skip-pi" "codex-check skips Pi by default"
 require_contains "bin/codex-check" "codex-tree-steward" "codex-check runs tree steward doctor"
 require_contains "bin/codex-check" "codex-mcp" "codex-check runs MCP doctor"
 require_contains "bin/codex-check" "codex-identity-regression" "codex-check exposes identity regression as an explicit check"
+require_contains "bin/codex-check" "--json" "codex-check uses JSON child contracts"
+require_contains "bin/codex-check" "ensure_standalone" "codex-check has ensure standalone check"
 require_contains "bin/codex-check" "codex-phone-mode" "codex-check phone profile runs phone mode"
 require_contains "bin/codex-check" '"git_writes": False' "codex-check declares no git writes"
+require_contains "bin/codex-ensure-standalone" "--json" "ensure standalone exposes JSON mode"
+require_contains "bin/codex-ensure-standalone" "print_json" "ensure standalone renders JSON payload"
 require_contains "bin/lib/codex-common.sh" "codex_init_paths" "codex-common has path init helper"
 require_contains "bin/lib/codex-common.sh" "codex_require_cmd" "codex-common has command helper"
 require_contains "bin/lib/codex-common.sh" "codex_cleanup_add" "codex-common has cleanup registration helper"

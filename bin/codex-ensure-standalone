@@ -7,12 +7,15 @@ CONFIG="$CODEX_HOME/config.toml"
 RECEIPT_DIR="$ROOT/receipts/startup"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 RECEIPT="$RECEIPT_DIR/${STAMP}-standalone-preflight.txt"
+JSON_OUTPUT=""
 
 MODE="repair"
+JSON_MODE=0
+JSON_FD_OPEN=0
 
 usage() {
   cat <<'HELP'
-Usage: codex-ensure-standalone [--repair|--check]
+Usage: codex-ensure-standalone [--repair|--check] [--json]
 
 Checks the CodeX room's pre-Codex boot surface and repairs safe drift.
 
@@ -21,6 +24,7 @@ Default:
 
 Options:
   --check   Report only; do not repair.
+  --json    Print machine-readable JSON to stdout.
 HELP
 }
 
@@ -31,6 +35,9 @@ while [[ $# -gt 0 ]]; do
       ;;
     --check)
       MODE="check"
+      ;;
+    --json)
+      JSON_MODE=1
       ;;
     -h|--help)
       usage
@@ -46,31 +53,128 @@ while [[ $# -gt 0 ]]; do
 done
 
 mkdir -p "$RECEIPT_DIR"
-exec > >(tee "$RECEIPT") 2>&1
+EVENTS="$(mktemp "${TMPDIR:-/tmp}/codex-ensure-standalone-events.XXXXXX")" || {
+  echo "error: failed to create standalone preflight events file" >&2
+  exit 1
+}
+cleanup() {
+  rm -f "$EVENTS"
+  rm -f "$JSON_OUTPUT"
+  if [[ "${JSON_FD_OPEN:-0}" -eq 1 ]]; then
+    exec 3>&- || true
+  fi
+}
+trap cleanup EXIT
+
+if [[ "$JSON_MODE" -eq 1 ]]; then
+  exec 3>&1 >"$RECEIPT" 2>&1
+  JSON_FD_OPEN=1
+else
+  exec > >(tee "$RECEIPT") 2>&1
+fi
 
 passes=0
 fixes=0
 warns=0
 fails=0
 
+say() {
+  printf '%s\n' "$*"
+}
+
+record_event() {
+  local status="$1"
+  local message="$2"
+  printf '%s\t%s\n' "$status" "$message" >>"$EVENTS"
+}
+
 pass() {
-  printf 'PASS %s\n' "$*"
+  say "PASS $*"
+  record_event "pass" "$*"
   passes=$((passes + 1))
 }
 
 fix() {
-  printf 'FIX  %s\n' "$*"
+  say "FIX  $*"
+  record_event "fix" "$*"
   fixes=$((fixes + 1))
 }
 
 warn() {
-  printf 'WARN %s\n' "$*"
+  say "WARN $*"
+  record_event "warn" "$*"
   warns=$((warns + 1))
 }
 
 fail() {
-  printf 'FAIL %s\n' "$*"
+  say "FAIL $*"
+  record_event "fail" "$*"
   fails=$((fails + 1))
+}
+
+print_json() {
+  JSON_OUTPUT="$(mktemp "${TMPDIR:-/tmp}/codex-ensure-standalone-json.XXXXXX")" || {
+    say "FAIL failed to create JSON temp file"
+    return 1
+  }
+  if python3 - "$ROOT" "$MODE" "$RECEIPT" "$passes" "$fixes" "$warns" "$fails" "$EVENTS" >"$JSON_OUTPUT" <<'PY'
+import json
+import sys
+from datetime import datetime, timezone
+
+root, mode, receipt, passes, fixes, warns, fails, events_path = sys.argv[1:9]
+checks = []
+valid_statuses = {"pass", "fix", "warn", "fail"}
+with open(events_path, encoding="utf-8", errors="replace") as handle:
+    for index, line in enumerate(handle, 1):
+        status, _, message = line.rstrip("\n").partition("\t")
+        if status not in valid_statuses:
+            message = f"malformed event row: {line.rstrip()}"
+            status = "fail"
+        checks.append(
+            {
+                "name": f"check_{index:03d}",
+                "status": status,
+                "ok": status in {"pass", "fix", "warn"},
+                "message": message,
+            }
+        )
+
+summary = {
+    "pass": int(passes),
+    "fix": int(fixes),
+    "warn": int(warns),
+    "fail": int(fails),
+}
+payload = {
+    "ok": summary["fail"] == 0,
+    "root": root,
+    "mode": mode,
+    "generated_at": datetime.now(timezone.utc).isoformat(),
+    "receipt": receipt,
+    "checks": checks,
+    "summary": summary,
+    "safety": {
+        "git_writes": False,
+        "file_deletes": mode == "repair",
+        "secrets_printed": False,
+        "trello_writes": False,
+    },
+}
+print(json.dumps(payload, indent=2, sort_keys=True))
+PY
+  then
+    return 0
+  fi
+  rm -f "$JSON_OUTPUT"
+  JSON_OUTPUT=""
+  return 1
+}
+
+emit_json_output() {
+  local output_path="$1"
+  exec 1>&3
+  cat "$output_path" 2>>"$RECEIPT"
 }
 
 check_executable() {
@@ -239,15 +343,15 @@ check_room_files() {
   done
 }
 
-printf 'CODEX STANDALONE PREFLIGHT\n'
-printf '==========================\n'
-printf 'room: %s\n' "$ROOT"
-printf 'mode: %s\n' "$MODE"
-printf 'receipt: %s\n' "$RECEIPT"
-printf '\n'
+say 'CODEX STANDALONE PREFLIGHT'
+say '=========================='
+say "room: $ROOT"
+say "mode: $MODE"
+say "receipt: $RECEIPT"
+say ""
 
 ensure_npx_link
-printf '\n'
+say ""
 
 if [[ "${CODEX_ALLOW_CLI_PREFLIGHT:-0}" == "1" ]]; then
   check_executable "codex CLI" "/opt/homebrew/bin/codex"
@@ -269,10 +373,10 @@ check_command "git" "git"
 check_executable "system tree query" "/Users/stephengodman/bin/systree"
 check_executable "system tree refresh" "/Users/stephengodman/bin/refresh-systree"
 check_executable "NotebookLM CLI" "/Users/stephengodman/.local/bin/notebooklm"
-printf '\n'
+say ""
 
 check_mcp_config_commands
-printf '\n'
+say ""
 
 if [[ "${CODEX_ALLOW_CLI_PREFLIGHT:-0}" == "1" ]]; then
   if codex mcp list >/dev/null 2>&1; then
@@ -289,13 +393,49 @@ if [[ "${CODEX_ALLOW_CLI_PREFLIGHT:-0}" == "1" ]]; then
 else
   pass "codex app-only mode active; CLI MCP checks skipped"
 fi
-printf '\n'
+say ""
 
 check_room_files
-printf '\n'
+say ""
 
-printf 'summary: pass=%s fix=%s warn=%s fail=%s\n' "$passes" "$fixes" "$warns" "$fails"
-printf 'receipt saved: %s\n' "$RECEIPT"
+say "summary: pass=$passes fix=$fixes warn=$warns fail=$fails"
+say "receipt saved: $RECEIPT"
+
+if [[ "$JSON_MODE" -eq 1 ]]; then
+  if ! print_json; then
+    printf 'FAIL failed to render JSON output\n'
+    JSON_OUTPUT="$(mktemp "${TMPDIR:-/tmp}/codex-ensure-standalone-json-fallback.XXXXXX")" || exit 1
+    python3 - "$RECEIPT" >"$JSON_OUTPUT" <<'PY'
+import json
+import sys
+
+print(json.dumps({"ok": False, "error": "failed to render JSON output", "receipt": sys.argv[1]}, indent=2, sort_keys=True))
+PY
+    if ! emit_json_output "$JSON_OUTPUT"; then
+      rm -f "$JSON_OUTPUT"
+      JSON_OUTPUT=""
+      exec 3>&-
+      JSON_FD_OPEN=0
+      exit 1
+    fi
+    rm -f "$JSON_OUTPUT"
+    JSON_OUTPUT=""
+    exec 3>&-
+    JSON_FD_OPEN=0
+    exit 1
+  fi
+  if ! emit_json_output "$JSON_OUTPUT"; then
+    rm -f "$JSON_OUTPUT"
+    JSON_OUTPUT=""
+    exec 3>&-
+    JSON_FD_OPEN=0
+    exit 1
+  fi
+  rm -f "$JSON_OUTPUT"
+  JSON_OUTPUT=""
+  exec 3>&-
+  JSON_FD_OPEN=0
+fi
 
 if [[ "$fails" -gt 0 ]]; then
   exit 1
