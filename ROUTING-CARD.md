@@ -33,6 +33,11 @@ Use this card to route ordinary prompts into the right CodeX lane.
   findings before committing. If Claude Code is unavailable, use the Codex
   reviewer subagent fallback and say that explicitly.
 
+- "advisor says", "ChatGPT says", "use this advisor review", "advisor review findings", "advisor scope", "evidence first":
+  from the CodeX root, read `docs/agent-protocol.md`; treat the advisor text as
+  scope, gather local evidence, patch the requested slice, then verify. Treat
+  these as fuzzy routing cues, not exact shell patterns.
+
 - "what route", "which tool", "how should you check", "look into this":
   read `/Users/stephengodman/CodeX/CODEX-TOOL-ROUTING.md` or run
   `/Users/stephengodman/CodeX/bin/codex-tool-route "<prompt>"`, then use the

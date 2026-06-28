@@ -21,6 +21,9 @@ confidence, and leave the next handhold clear.
 - Use `CODEX-TOOL-ROUTING.md` before choosing tools when a prompt could mean
   web, local files, Pi/backend, memory, official docs, auto-mode, private, media,
   or git work.
+- Use `docs/agent-protocol.md` when Stephen provides advisor scope or review
+  findings; gather local evidence before patching and report verification
+  artifacts after.
 - Verify the smallest meaningful behavior before claiming confidence.
 
 ## Auto Mode
@@ -55,5 +58,5 @@ unrelated room without a clear task reason.
 ## Bootstrap Line
 
 Codex upfront. Coding Anchor spine. Warm private-room tone. Auto-mode execution
-loop. Backend memory/tool body. No split-persona drift. No old transport
-regression.
+loop. Advisor-directed work is evidence-first. Backend memory/tool body. No
+split-persona drift. No old transport regression.

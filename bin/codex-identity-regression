@@ -140,6 +140,7 @@ for file in \
   "CODEX-REGRESSION-HARNESS.md" \
   "CODEX-CLAUDE-REVIEWER.md" \
   "CODEX-STARTUP-DROPIN.md" \
+  "docs/agent-protocol.md" \
   "TICKET-CODEX-OWNED-STARTUP-INTEGRATION.md" \
   "AGENTS.md" \
   "START-HERE.md" \
@@ -174,6 +175,8 @@ for file in \
   require_contains "$file" "CODEX-IDENTITY-REGRESSION.md" "$file loads identity regression"
 done
 
+require_contains "START-HERE.md" "docs/agent-protocol.md" "START-HERE.md surfaces advisor protocol"
+require_contains "BOOT.md" "docs/agent-protocol.md" "BOOT.md surfaces advisor protocol"
 require_contains "BOOT.md" "CODEX-PERSONAL-VOICE-PROFILE.md" "BOOT.md names personal voice profile"
 require_contains "BOOT.md" "CODEX-PERSONAL-MODES.md" "BOOT.md names personal modes"
 require_contains "BOOT.md" "CODEX-IDENTITY-REGRESSION.md" "BOOT.md names identity regression"
@@ -200,6 +203,7 @@ codex_check_output="$TMP_DIR/codex-check-tree-doctor.json"
 codex_check_empty_only_output="$TMP_DIR/codex-check-empty-only.json"
 ensure_standalone_json_output="$TMP_DIR/codex-ensure-standalone.json"
 ensure_standalone_text_output="$TMP_DIR/codex-ensure-standalone.txt"
+advisor_ignore_output="$TMP_DIR/advisor-receipts-ignore.txt"
 tool_route_output="$TMP_DIR/codex-tool-route-pi.txt"
 tool_route_pi5_output="$TMP_DIR/codex-tool-route-pi5.txt"
 tool_route_comma_output="$TMP_DIR/codex-tool-route-comma.txt"
@@ -242,6 +246,8 @@ require_command_output_contains "room handoff runtime outputs Claude reviewer co
 
 run_capture "codex-common env scrub runtime" "$common_output" bash -c 'set -euo pipefail; unset CODEX_ROOT CODEX_BIN_DIR CODEX_COMMON_DIR; source "$1"; codex_init_paths; test "$CODEX_ROOT" = "$2"; test "$CODEX_BIN_DIR" = "$2/bin"; tmp="$(codex_mktemp_dir codex-common-regression)"; codex_cleanup_add "$tmp" "$tmp-missing"; test -d "$tmp"; FOO_SECRET=keep; export FOO_SECRET; codex_run_without_env FOO_SECRET -- bash -c '\''test -z "${FOO_SECRET:-}"'\''; test "$FOO_SECRET" = keep; if codex_run_without_env FOO_SECRET BAR >/dev/null 2>&1; then exit 1; fi; codex_cleanup_run; test ! -e "$tmp"; printf "common smoke ok\n"' bash "$ROOT/bin/lib/codex-common.sh" "$ROOT"
 require_command_output_contains "codex-common env scrub leaves caller env intact" "$common_output" "common smoke ok"
+run_capture "advisor receipts gitignore runtime" "$advisor_ignore_output" bash -c 'set -euo pipefail; cd "$1"; path="receipts/advisor/example.md"; printf "%s\n" "$path" | git check-ignore --stdin --no-index | grep -Fx "$path" >/dev/null; test -z "$(git ls-files receipts/advisor)"; printf "%s ignored and no tracked advisor receipts\n" "$path"' bash "$ROOT"
+require_command_output_contains "advisor receipts gitignore runtime outputs ignored path" "$advisor_ignore_output" "receipts/advisor/example.md ignored and no tracked advisor receipts"
 run_capture "codex-check tree doctor runtime" "$codex_check_output" "$ROOT/bin/codex-check" --json --only tree_steward_doctor
 require_command_output_contains "codex-check runtime returns passing JSON" "$codex_check_output" '"ok": true'
 run_capture "ensure standalone JSON runtime" "$ensure_standalone_json_output" "$ROOT/bin/codex-ensure-standalone" --check --json
@@ -345,11 +351,31 @@ done
 require_contains "CODEX-IDENTITY-REGRESSION.md" "Personal mode answers are shorter, warmer, direct" "identity regression personal pass criteria"
 require_contains "CODEX-BEST-LANE.md" "CODEX-PERSONAL-VOICE-PROFILE.md" "best lane points to personal voice"
 require_contains "CODEX-BEST-LANE.md" "codex-identity-regression" "best lane points to harness"
+require_contains "CODEX-BEST-LANE.md" "docs/agent-protocol.md" "best lane points to advisor protocol"
+require_contains "CODEX-THREAD-PROFILE.md" "docs/agent-protocol.md" "thread profile points to advisor protocol"
+require_contains "CODEX-OWNED-BOOT.md" "docs/agent-protocol.md" "owned boot points to advisor protocol"
+require_contains ".gitignore" "receipts/" "gitignore excludes runtime receipts"
 require_contains "README.md" "codex-identity-regression" "README points to harness"
 require_contains "README.md" "codex-check" "README points to codex-check"
 require_contains "README.md" "codex-claude-review" "README points to Claude reviewer"
+require_contains "README.md" "docs/agent-protocol.md" "README points to advisor protocol"
 require_contains "ROUTING-CARD.md" "I can't tell" "routing card catches personal drift"
 require_contains "ROUTING-CARD.md" "codex-claude-review" "routing card catches Claude reviewer prompts"
+require_contains "ROUTING-CARD.md" "docs/agent-protocol.md" "routing card catches advisor protocol prompts"
+require_contains "ROUTING-CARD.md" "advisor says" "routing card catches advisor phrase"
+
+# These are structural protocol anchors. If the wording changes, update the
+# harness with the protocol edit so drift is intentional.
+require_contains "docs/agent-protocol.md" "Advisor/Executor Protocol" "advisor protocol has title"
+require_contains "docs/agent-protocol.md" "Evidence First" "advisor protocol requires evidence first"
+require_contains "docs/agent-protocol.md" "Patch Second" "advisor protocol requires patch second"
+require_contains "docs/agent-protocol.md" "Review Loop" "advisor protocol includes review loop"
+require_contains "docs/agent-protocol.md" "Codex remains the executor" "advisor protocol keeps Codex executor"
+require_contains "docs/agent-protocol.md" "codex-identity-regression" "advisor protocol names regression harness"
+require_contains "docs/agent-protocol.md" "partially fail" "advisor protocol handles partial evidence failure"
+require_contains "docs/agent-protocol.md" "receipts/advisor/" "advisor protocol defines persistent evidence path"
+require_contains "docs/agent-protocol.md" 'git rev-parse --show-toplevel' "advisor protocol anchors persistent evidence path"
+require_contains "docs/agent-protocol.md" "Do not use advisor confidence as verification" "advisor protocol rejects unverified advisor confidence"
 require_contains "bin/codex-check" "codex-status" "codex-check runs status"
 require_contains "bin/codex-check" "--skip-pi" "codex-check skips Pi by default"
 require_contains "bin/codex-check" "codex-tree-steward" "codex-check runs tree steward doctor"

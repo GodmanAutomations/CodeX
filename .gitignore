@@ -19,6 +19,7 @@ tmp/
 output/
 pulled/
 logs/
+# Runtime receipts; covers receipts/advisor/ and all other evidence output.
 receipts/
 private/
 attachment-vault/

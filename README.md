@@ -23,6 +23,7 @@ Use `/Users/stephengodman/CodeX` in room docs and launchers unless Stephen expli
 - `CODEX-PERSONAL-VOICE-PROFILE.md`
 - `CODEX-PERSONAL-MODES.md`
 - `CODEX-TOOL-ROUTING.md`
+- `docs/agent-protocol.md`
 - `START-HERE.md`
 - `BOOT.md`
 - `CURRENT.md`
@@ -47,6 +48,12 @@ Personal layer:
 
 ```text
 CODEX-PERSONAL-VOICE-PROFILE.md and CODEX-PERSONAL-MODES.md keep personal answers shorter, warmer, direct, and truthful while build work stays decisive and verified.
+```
+
+Advisor/executor layer:
+
+```text
+docs/agent-protocol.md keeps advisor-directed work evidence-first, scoped, reviewed, and verified while Codex remains the executor.
 ```
 
 Room health check:
