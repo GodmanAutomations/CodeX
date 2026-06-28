@@ -257,6 +257,7 @@ fi
 check_executable "Codex desktop app" "/Applications/Codex.app/Contents/MacOS/Codex"
 check_executable "Codex app env launcher" "/Users/stephengodman/bin/codex-app-op"
 check_executable "room browser wrapper" "$ROOT/bin/codex-browser"
+check_executable "room Brave dev wrapper" "$ROOT/bin/codex-brave-dev"
 check_executable "room startup" "$ROOT/bin/codex-startup"
 check_command "node" "node"
 check_command "npm" "npm"
