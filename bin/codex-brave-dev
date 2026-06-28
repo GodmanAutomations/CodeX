@@ -1,0 +1,488 @@
+#!/usr/bin/env python3
+"""CodeX logged-in Brave developer lane.
+
+This wrapper is for pages that need Stephen's real Brave profile, such as
+ChatGPT, billing portals, dashboards, and account-bound consoles. Keep public
+headless browsing on bin/codex-browser.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import socket
+import subprocess
+import sys
+import time
+from pathlib import Path
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from urllib.error import URLError
+from urllib.request import urlopen
+
+
+BRAVE_APP = "Brave Browser"
+BRAVE_BUNDLE = "com.brave.Browser"
+BRAVE_EXE = Path("/Applications/Brave Browser.app/Contents/MacOS/Brave Browser")
+DEFAULT_URL = "https://chatgpt.com/"
+DEFAULT_PORT = int(os.environ.get("CODEX_BRAVE_DEV_PORT", "9222"))
+SENSITIVE_URL_KEYS = {
+    "access_token",
+    "auth",
+    "code",
+    "id_token",
+    "key",
+    "password",
+    "refresh_token",
+    "secret",
+    "session",
+    "state",
+    "token",
+}
+
+
+def run(command: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        command,
+        check=check,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+
+def say(message: str) -> None:
+    print(message)
+
+
+def scrub_url(url: str | None) -> str | None:
+    if not url:
+        return url
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return "[invalid-url]"
+
+    def scrub_params(value: str) -> str:
+        return urlencode(
+            [
+                (key, "[redacted]" if key.lower() in SENSITIVE_URL_KEYS else param_value)
+                for key, param_value in parse_qsl(value, keep_blank_values=True)
+            ]
+        )
+
+    query = scrub_params(parts.query)
+    if "=" in parts.fragment:
+        fragment_prefix = "?" if parts.fragment.startswith("?") else ""
+        fragment_body = parts.fragment[1:] if fragment_prefix else parts.fragment
+        fragment = fragment_prefix + scrub_params(fragment_body)
+    else:
+        fragment = parts.fragment
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, query, fragment))
+
+
+def osascript(*lines: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+    command: list[str] = ["osascript"]
+    for line in lines:
+        command.extend(["-e", line])
+    return run(command, check=check)
+
+
+def enable_applescript_js() -> None:
+    run(["defaults", "write", BRAVE_BUNDLE, "AppleScriptEnabled", "-bool", "YES"])
+
+
+def applescript_js_enabled() -> bool:
+    result = run(["defaults", "read", BRAVE_BUNDLE, "AppleScriptEnabled"], check=False)
+    return result.returncode == 0 and result.stdout.strip() in {"1", "true", "YES", "yes"}
+
+
+def brave_running() -> bool:
+    return run(["pgrep", "-x", BRAVE_APP], check=False).returncode == 0
+
+
+def wait_for_brave_exit(timeout: float = 10.0) -> bool:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if not brave_running():
+            return True
+        time.sleep(0.25)
+    return not brave_running()
+
+
+def quit_brave(force: bool = False) -> bool:
+    osascript(f'tell application "{BRAVE_APP}" to quit', check=False)
+    if wait_for_brave_exit():
+        return True
+    if force:
+        run(["pkill", "-x", BRAVE_APP], check=False)
+        return wait_for_brave_exit(5.0)
+    return False
+
+
+def debugger_version(port: int) -> dict | None:
+    try:
+        with urlopen(f"http://127.0.0.1:{port}/json/version", timeout=0.75) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except (OSError, URLError, TimeoutError, json.JSONDecodeError):
+        return None
+
+
+def debugger_tabs(port: int) -> list[dict]:
+    try:
+        with urlopen(f"http://127.0.0.1:{port}/json/list", timeout=0.75) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (OSError, URLError, TimeoutError, json.JSONDecodeError):
+        return []
+    return payload if isinstance(payload, list) else []
+
+
+def page_tabs(port: int) -> list[dict]:
+    return [tab for tab in debugger_tabs(port) if tab.get("type") == "page"]
+
+
+def wait_for_debugger(port: int, timeout: float = 12.0) -> dict | None:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        version = debugger_version(port)
+        if version:
+            return version
+        time.sleep(0.25)
+    return None
+
+
+def active_tab_info() -> dict:
+    result = osascript(
+        f'tell application "{BRAVE_APP}"',
+        'if (count of windows) is 0 then return ""',
+        'set tabUrl to URL of active tab of front window',
+        'set tabTitle to title of active tab of front window',
+        'return tabUrl & linefeed & tabTitle',
+        "end tell",
+        check=False,
+    )
+    if result.returncode != 0 or not result.stdout.strip():
+        return {"available": False, "error": result.stderr.strip()}
+    raw = result.stdout.rstrip("\n")
+    if not raw:
+        return {"available": False, "error": "Brave has no windows"}
+    tab_url, _, tab_title = raw.partition("\n")
+    payload = {"url": tab_url, "title": tab_title}
+    payload["url"] = scrub_url(payload.get("url"))
+    payload["available"] = True
+    return payload
+
+
+def execute_js(script: str) -> subprocess.CompletedProcess[str]:
+    return run(
+        [
+            "osascript",
+            "-e",
+            "on run argv",
+            "-e",
+            "set jsSource to item 1 of argv",
+            "-e",
+            f'tell application "{BRAVE_APP}" to execute active tab of front window javascript jsSource',
+            "-e",
+            "end run",
+            "--",
+            script,
+        ],
+        check=False,
+    )
+
+
+def select_debug_tab(port: int, url_contains: str | None, title_contains: str | None, index: int | None) -> dict:
+    tabs = page_tabs(port)
+    if index is not None:
+        if index < 0 or index >= len(tabs):
+            raise ValueError(f"tab index {index} is outside available range 0..{len(tabs) - 1}")
+        return tabs[index]
+    for tab in tabs:
+        url = tab.get("url") or ""
+        title = tab.get("title") or ""
+        if url_contains and url_contains not in url:
+            continue
+        if title_contains and title_contains.lower() not in title.lower():
+            continue
+        return tab
+    if url_contains or title_contains:
+        raise ValueError("no DevTools page tab matched the requested filter")
+    for tab in tabs:
+        if not (tab.get("url") or "").startswith("chrome://"):
+            return tab
+    raise ValueError("no DevTools page tabs are available")
+
+
+def cdp_evaluate(tab: dict, expression: str, timeout_ms: int) -> dict:
+    ws_url = tab.get("webSocketDebuggerUrl")
+    if not ws_url:
+        raise ValueError("selected tab has no webSocketDebuggerUrl")
+    node_source = r"""
+const [wsUrl, expression, timeoutRaw] = process.argv.slice(1);
+const timeoutMs = Number(timeoutRaw || 20000);
+const ws = new WebSocket(wsUrl);
+let nextId = 1;
+const pending = new Map();
+const timeout = setTimeout(() => {
+  console.error(JSON.stringify({ ok: false, error: "CDP evaluation timed out" }));
+  process.exit(124);
+}, timeoutMs);
+function send(method, params = {}) {
+  const id = nextId++;
+  ws.send(JSON.stringify({ id, method, params }));
+  return new Promise((resolve, reject) => {
+    pending.set(id, { resolve, reject });
+  });
+}
+ws.addEventListener("open", async () => {
+  try {
+    await send("Runtime.enable");
+    const result = await send("Runtime.evaluate", {
+      expression,
+      awaitPromise: true,
+      returnByValue: true,
+      userGesture: false
+    });
+    clearTimeout(timeout);
+    console.log(JSON.stringify({ ok: true, result }, null, 2));
+    ws.close();
+  } catch (error) {
+    clearTimeout(timeout);
+    console.error(JSON.stringify({ ok: false, error: String(error && error.message || error) }));
+    process.exit(1);
+  }
+});
+ws.addEventListener("message", (event) => {
+  const message = JSON.parse(event.data);
+  if (!message.id || !pending.has(message.id)) return;
+  const item = pending.get(message.id);
+  pending.delete(message.id);
+  if (message.error) item.reject(new Error(message.error.message || JSON.stringify(message.error)));
+  else item.resolve(message);
+});
+ws.addEventListener("error", (event) => {
+  clearTimeout(timeout);
+  console.error(JSON.stringify({ ok: false, error: "WebSocket error" }));
+  process.exit(1);
+});
+"""
+    result = run(["node", "-e", node_source, ws_url, expression, str(timeout_ms)], check=False)
+    if result.returncode != 0:
+        raise RuntimeError((result.stderr or result.stdout).strip())
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(result.stdout.strip()) from exc
+
+
+def js_probe() -> dict:
+    result = execute_js(
+        "JSON.stringify({title: document.title, url: location.href, textLength: (document.body.innerText || '').length})"
+    )
+    if result.returncode != 0:
+        return {
+            "ok": False,
+            "error": (result.stderr or result.stdout).strip(),
+        }
+    try:
+        payload = json.loads(result.stdout.strip())
+    except json.JSONDecodeError:
+        payload = {"raw": result.stdout.strip()}
+    return {"ok": True, **payload}
+
+
+def command_setup(_args: argparse.Namespace) -> int:
+    enable_applescript_js()
+    say("Brave AppleScript JavaScript preference: enabled")
+    say("If Brave was already running, restart it once before expecting JS reads to work.")
+    return 0
+
+
+def command_open(args: argparse.Namespace) -> int:
+    enable_applescript_js()
+    url = args.url or DEFAULT_URL
+    if args.debug:
+        if debugger_version(args.port) is None:
+            if brave_running():
+                if not args.restart:
+                    say(
+                        f"Brave is running without DevTools on 127.0.0.1:{args.port}; "
+                        "rerun with --restart for the debug lane."
+                    )
+                    return 2
+                if not quit_brave(force=args.force):
+                    say("Brave did not quit cleanly; rerun with --force if you want CodeX to kill the stale main process.")
+                    return 2
+            subprocess.Popen(
+                [
+                    str(BRAVE_EXE),
+                    "--remote-debugging-address=127.0.0.1",
+                    f"--remote-debugging-port={args.port}",
+                    "--no-first-run",
+                    "--no-default-browser-check",
+                    url,
+                ],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            version = wait_for_debugger(args.port)
+            if not version:
+                say(f"Brave opened, but DevTools did not become ready on 127.0.0.1:{args.port}.")
+                return 1
+            say(f"Brave DevTools ready: {version.get('Browser', 'unknown')}")
+            return 0
+        run(["open", "-a", BRAVE_APP, url], check=False)
+        say(f"Brave DevTools already ready on 127.0.0.1:{args.port}")
+        return 0
+
+    run(["open", "-a", BRAVE_APP, url], check=False)
+    say(f"Brave opened: {url}")
+    return 0
+
+
+def command_status(args: argparse.Namespace) -> int:
+    payload = {
+        "brave_app": str(BRAVE_EXE),
+        "installed": BRAVE_EXE.exists(),
+        "running": brave_running(),
+        "applescript_js_preference": applescript_js_enabled(),
+        "active_tab": active_tab_info(),
+        "js_probe": js_probe() if brave_running() else {"ok": False, "error": "Brave is not running"},
+        "debugger": {
+            "port": args.port,
+            "ready": debugger_version(args.port) is not None,
+            "version": debugger_version(args.port),
+            "tabs": [
+                {"title": tab.get("title"), "url": scrub_url(tab.get("url")), "type": tab.get("type")}
+                for tab in page_tabs(args.port)
+            ],
+        },
+    }
+    if args.json:
+        print(json.dumps(payload, indent=2))
+    else:
+        say(f"installed: {'yes' if payload['installed'] else 'no'}")
+        say(f"running: {'yes' if payload['running'] else 'no'}")
+        say(f"AppleScript JS pref: {'enabled' if payload['applescript_js_preference'] else 'disabled'}")
+        tab = payload["active_tab"]
+        if tab.get("available"):
+            say(f"active tab: {tab.get('title')} | {tab.get('url')}")
+        else:
+            say(f"active tab: unavailable ({tab.get('error')})")
+        probe = payload["js_probe"]
+        say(f"AppleScript JS probe: {'pass' if probe.get('ok') else 'fail'}")
+        if not probe.get("ok"):
+            say(f"probe error: {probe.get('error')}")
+        say(f"DevTools 127.0.0.1:{args.port}: {'ready' if payload['debugger']['ready'] else 'closed'}")
+    return 0 if payload["installed"] else 1
+
+
+def command_tabs(args: argparse.Namespace) -> int:
+    tabs = page_tabs(args.port)
+    payload = [
+        {"index": index, "title": tab.get("title"), "url": scrub_url(tab.get("url"))}
+        for index, tab in enumerate(tabs)
+    ]
+    if args.json:
+        print(json.dumps(payload, indent=2))
+    else:
+        for item in payload:
+            say(f"{item['index']}: {item.get('title') or '(untitled)'} | {item.get('url')}")
+    return 0
+
+
+def command_js(args: argparse.Namespace) -> int:
+    if args.file:
+        script = Path(args.file).read_text()
+    else:
+        script = " ".join(args.script).strip()
+    if not script:
+        say("No JavaScript provided.")
+        return 2
+    # The JavaScript source is passed as a subprocess argv item and then read
+    # from AppleScript's argv handler; it is not interpolated into AppleScript.
+    result = execute_js(script)
+    if result.stdout:
+        print(result.stdout, end="")
+    if result.stderr:
+        print(result.stderr, end="", file=sys.stderr)
+    return result.returncode
+
+
+def command_cdp_js(args: argparse.Namespace) -> int:
+    if args.file:
+        script = Path(args.file).read_text()
+    else:
+        script = " ".join(args.script).strip()
+    if not script:
+        say("No JavaScript provided.")
+        return 2
+    try:
+        tab = select_debug_tab(args.port, args.url_contains, args.title_contains, args.index)
+        payload = cdp_evaluate(tab, script, args.timeout_ms)
+    except (RuntimeError, ValueError) as exc:
+        say(f"CDP evaluation failed: {exc}")
+        return 1
+    if args.json:
+        print(json.dumps(payload, indent=2))
+        return 0
+    result = payload.get("result", {}).get("result", {})
+    if "value" in result:
+        value = result["value"]
+        print(value if isinstance(value, str) else json.dumps(value, indent=2))
+    else:
+        print(json.dumps(result, indent=2))
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Logged-in Brave developer lane for CodeX.")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    sub.add_parser("setup", help="Persistently enable Brave JavaScript from Apple Events.").set_defaults(
+        func=command_setup
+    )
+
+    open_parser = sub.add_parser("open", help="Open Brave in normal or DevTools-ready mode.")
+    open_parser.add_argument("url", nargs="?", default=DEFAULT_URL)
+    open_parser.add_argument("--debug", action="store_true", help="Launch with a local DevTools port.")
+    open_parser.add_argument("--port", type=int, default=DEFAULT_PORT)
+    open_parser.add_argument("--restart", action="store_true", help="Gracefully restart Brave if debug is not ready.")
+    open_parser.add_argument("--force", action="store_true", help="Kill a stale Brave main process after graceful quit fails.")
+    open_parser.set_defaults(func=command_open)
+
+    status = sub.add_parser("status", help="Report Brave automation readiness.")
+    status.add_argument("--port", type=int, default=DEFAULT_PORT)
+    status.add_argument("--json", action="store_true")
+    status.set_defaults(func=command_status)
+
+    tabs = sub.add_parser("tabs", help="List DevTools-visible Brave page tabs.")
+    tabs.add_argument("--port", type=int, default=DEFAULT_PORT)
+    tabs.add_argument("--json", action="store_true")
+    tabs.set_defaults(func=command_tabs)
+
+    js = sub.add_parser("js", help="Run JavaScript in the active Brave tab through Apple Events.")
+    js.add_argument("script", nargs="*")
+    js.add_argument("--file", help="Read JavaScript from a file.")
+    js.set_defaults(func=command_js)
+
+    cdp_js = sub.add_parser("cdp-js", help="Run JavaScript in a DevTools-visible Brave tab.")
+    cdp_js.add_argument("script", nargs="*")
+    cdp_js.add_argument("--file", help="Read JavaScript from a file.")
+    cdp_js.add_argument("--port", type=int, default=DEFAULT_PORT)
+    cdp_js.add_argument("--url-contains")
+    cdp_js.add_argument("--title-contains")
+    cdp_js.add_argument("--index", type=int)
+    cdp_js.add_argument("--timeout-ms", type=int, default=20_000)
+    cdp_js.add_argument("--json", action="store_true")
+    cdp_js.set_defaults(func=command_cdp_js)
+
+    args = parser.parse_args()
+    return int(args.func(args))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

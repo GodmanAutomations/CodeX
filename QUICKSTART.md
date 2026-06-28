@@ -123,6 +123,20 @@ Use Camoufox as the hard default for CodeX browser work.
 
 Do not default to Chrome/profile/extension automation. Use Chrome only when Stephen explicitly asks for Chrome or the task requires a logged-in Chrome profile.
 
+For logged-in Brave profile work, use the dev-department lane:
+
+```bash
+CODEX_ROOT="${CODEX_ROOT:-$HOME/CodeX}"
+"$CODEX_ROOT/bin/codex-brave-dev" setup
+"$CODEX_ROOT/bin/codex-brave-dev" status
+"$CODEX_ROOT/bin/codex-brave-dev" open https://chatgpt.com/ --debug --restart
+"$CODEX_ROOT/bin/codex-brave-dev" tabs
+"$CODEX_ROOT/bin/codex-brave-dev" cdp-js 'document.title' --url-contains chatgpt.com
+```
+
+Use this for Stephen-authorized account pages that need the real Brave profile.
+Keep raw secrets out of terminal output, notes, and commits.
+
 ## Venice
 
 Venice is a CodeX-side model lane, not a raw-secret note lane.
