@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -286,15 +287,35 @@ def doctor(live: bool, json_mode: bool) -> int:
 
 
 def reload_env(json_mode: bool) -> int:
-    result = run([str(ENV_LOADER)], timeout=60)
+    if not ENV_LOADER.exists() or not os.access(ENV_LOADER, os.X_OK):
+        loader_ok = False
+        loader_output = f"env loader missing or not executable: {ENV_LOADER}"
+        loader_returncode = 127
+    else:
+        try:
+            result = run([str(ENV_LOADER)], timeout=60)
+            loader_ok = result.returncode == 0
+            loader_output = "\n".join(
+                part for part in [result.stdout.strip(), result.stderr.strip()] if part
+            )
+            loader_returncode = result.returncode
+        except Exception as exc:
+            loader_ok = False
+            loader_output = str(exc)
+            loader_returncode = 1
     status = json_command([str(TRELLO_LAUNCHER), "--status"], timeout=20)
     recon = json_command([str(RECON_LAUNCHER), "--status"], timeout=20)
     payload = {
-        "ok": result.returncode == 0 and bool(status.get("ok")) and bool(recon.get("ok")),
-        "env_loader_output": (result.stdout or result.stderr).strip(),
+        "ok": loader_ok and bool(status.get("ok")) and bool(recon.get("ok")),
+        "env_loader_output": loader_output,
+        "env_loader_returncode": loader_returncode,
         "trello_status": status,
         "recon_status": recon,
-        "note": "Codex app may need a restart for MCP tool-list changes; API env is refreshed now.",
+        "note": (
+            "Codex app may need a restart for MCP tool-list changes; API env is refreshed now."
+            if loader_ok
+            else "API env refresh did not complete; launcher statuses were still checked."
+        ),
         "safety": {"secrets_returned": False},
     }
     if json_mode:
@@ -302,7 +323,7 @@ def reload_env(json_mode: bool) -> int:
     else:
         print("CodeX MCP reload")
         print("")
-        print(payload["env_loader_output"] or f"env loader exit {result.returncode}")
+        print(payload["env_loader_output"] or f"env loader exit {loader_returncode}")
         print(f"Trello credential source: {status.get('credential_source') or 'unknown'}")
         print(f"Recon data root: {recon.get('data_root') or 'unknown'}")
         print(payload["note"])

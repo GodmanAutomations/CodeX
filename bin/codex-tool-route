@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="/Users/stephengodman/CodeX"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CARD="$ROOT/CODEX-TOOL-ROUTING.md"
 
 usage() {
@@ -24,7 +24,20 @@ if [ "$#" -eq 0 ]; then
   exit 0
 fi
 
-text=" $(printf '%s ' "$@" | tr '[:upper:]' '[:lower:]')"
+text=" $(printf '%s ' "$@" | tr '[:upper:]' '[:lower:]') "
+
+# Match pi/pi5 as a standalone word or sentence-punctuation-delimited token,
+# while avoiding substrings like api, pipeline, topic, or non-pi-mode.
+pi_token_re='[[:space:],.;:!?]pi5?[[:space:],.;:!?]'
+if [[ "$text" =~ $pi_token_re ]]; then
+  cat <<EOF
+route: Pi/backend truth
+first move: Run codex-thread --preflight, then SSH only as needed.
+verification: Check service state, health endpoint, logs, or targeted backend command.
+source: $CARD
+EOF
+  exit 0
+fi
 
 case "$text" in
   *secret*|*private*|*personal*|*credential*|*password*|*token*)
@@ -32,7 +45,7 @@ case "$text" in
     first="Use minimal necessary reads and keep raw private material out of logs/chat/git."
     verify="Confirm no raw secrets/private payloads were written to tracked files."
     ;;
-  *" pi "*|*" pi5 "*|*raspberry*|*backend*|*service*|*systemctl*|*ssh*|*codex-thread*)
+  *raspberry*|*backend*|*service*|*systemctl*|*ssh*|*codex-thread*)
     route="Pi/backend truth"
     first="Run codex-thread --preflight, then SSH only as needed."
     verify="Check service state, health endpoint, logs, or targeted backend command."

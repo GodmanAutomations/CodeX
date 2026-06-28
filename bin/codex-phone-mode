@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -u
 
-ROOT="/Users/stephengodman/CodeX"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 STATE_DIR="$ROOT/.tmp"
 CAFFEINATE_PID="$STATE_DIR/codex-phone-mode-caffeinate.pid"
 CAFFEINATE_LABEL="com.codex.phone-mode.caffeinate"

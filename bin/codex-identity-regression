@@ -1,20 +1,45 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="/Users/stephengodman/CodeX"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RECEIPT_DIR="$ROOT/receipts/regression"
 STAMP="$(date '+%Y%m%d-%H%M%S')"
 PASS_COUNT=0
 FAIL_COUNT=0
+TMP_DIR=""
+RECEIPT=""
+RECEIPT_TMP=""
+COMPLETED=0
+
+cleanup() {
+  local exit_code=$?
+  if [ "$exit_code" -ne 0 ] && [ "$COMPLETED" -eq 0 ] && [ -n "$RECEIPT" ] && [ -f "$RECEIPT" ]; then
+    printf 'INCOMPLETE exit=%s\n' "$exit_code" >>"$RECEIPT"
+  fi
+  if [ -n "$TMP_DIR" ]; then
+    rm -rf "$TMP_DIR"
+  fi
+  if [ -n "$RECEIPT_TMP" ] && [ -f "$RECEIPT_TMP" ]; then
+    rm -f "$RECEIPT_TMP"
+  fi
+}
+trap cleanup EXIT
 
 mkdir -p "$RECEIPT_DIR"
-RECEIPT="$(mktemp "$RECEIPT_DIR/${STAMP}-identity-regression.XXXXXX")" || {
+TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/codex-identity-regression.XXXXXX")" || {
+  echo "error: failed to create regression temp dir" >&2
+  exit 1
+}
+RECEIPT_TMP="$(mktemp "$RECEIPT_DIR/${STAMP}-identity-regression.XXXXXX")" || {
   echo "error: failed to create regression receipt" >&2
   exit 1
 }
+RECEIPT="${RECEIPT_TMP}.txt"
+mv "$RECEIPT_TMP" "$RECEIPT"
+RECEIPT_TMP=""
 
 log() {
-  printf '%s\n' "$*" | tee -a "$RECEIPT" >/dev/null
+  printf '%s\n' "$*" >>"$RECEIPT"
 }
 
 pass() {
@@ -49,6 +74,10 @@ require_contains() {
   local path="$1"
   local needle="$2"
   local label="$3"
+  if [ ! -f "$ROOT/$path" ]; then
+    fail "$label (missing file $path)"
+    return
+  fi
   if grep -Fq -- "$needle" "$ROOT/$path"; then
     pass "$label"
   else
@@ -160,10 +189,19 @@ require_contains "bin/codex-room" "CODEX-CLAUDE-REVIEWER.md" "room brief surface
 require_contains "bin/codex-room" "codex-claude-review" "room brief surfaces Claude reviewer command"
 require_contains "bin/codex-room" "CODEX_ROOM_READONLY" "room brief has read-only verification mode"
 
-startup_output="$(mktemp "${TMPDIR:-/tmp}/codex-startup-regression.XXXXXX")"
-brief_output="$(mktemp "${TMPDIR:-/tmp}/codex-room-brief-regression.XXXXXX")"
-handoff_output="$(mktemp "${TMPDIR:-/tmp}/codex-room-handoff-regression.XXXXXX")"
-trap 'rm -f "$startup_output" "$brief_output" "$handoff_output"' EXIT
+startup_output="$TMP_DIR/codex-startup-regression.txt"
+brief_output="$TMP_DIR/codex-room-brief-regression.txt"
+handoff_output="$TMP_DIR/codex-room-handoff-regression.txt"
+tool_route_output="$TMP_DIR/codex-tool-route-pi.txt"
+tool_route_pi5_output="$TMP_DIR/codex-tool-route-pi5.txt"
+tool_route_comma_output="$TMP_DIR/codex-tool-route-comma.txt"
+tool_route_plain_pi_output="$TMP_DIR/codex-tool-route-plain-pi.txt"
+tool_route_negative_output="$TMP_DIR/codex-tool-route-pipeline.txt"
+tool_route_topic_output="$TMP_DIR/codex-tool-route-topic.txt"
+tool_route_api_output="$TMP_DIR/codex-tool-route-api.txt"
+tool_route_epic_output="$TMP_DIR/codex-tool-route-epic.txt"
+tool_route_non_pi_output="$TMP_DIR/codex-tool-route-non-pi.txt"
+tool_route_pi_helper_output="$TMP_DIR/codex-tool-route-pi-helper.txt"
 
 run_capture "startup read-only runtime" "$startup_output" "$ROOT/bin/codex-startup" --read-only
 require_command_output_contains "startup runtime outputs owned boot" "$startup_output" "CODEX-OWNED-BOOT.md"
@@ -194,6 +232,27 @@ require_command_output_contains "room handoff runtime outputs Claude reviewer se
 require_command_output_contains "room handoff runtime outputs Claude reviewer docs" "$handoff_output" "CODEX-CLAUDE-REVIEWER.md"
 require_command_output_contains "room handoff runtime outputs Claude reviewer command" "$handoff_output" "bin/codex-claude-review"
 
+run_capture "tool route pi punctuation runtime" "$tool_route_output" "$ROOT/bin/codex-tool-route" "check pi?"
+require_command_output_contains "tool route pi punctuation hits backend lane" "$tool_route_output" "route: Pi/backend truth"
+run_capture "tool route pi5 runtime" "$tool_route_pi5_output" "$ROOT/bin/codex-tool-route" "pi5"
+require_command_output_contains "tool route pi5 hits backend lane" "$tool_route_pi5_output" "route: Pi/backend truth"
+run_capture "tool route pi comma runtime" "$tool_route_comma_output" "$ROOT/bin/codex-tool-route" "pi, restart"
+require_command_output_contains "tool route pi comma hits backend lane" "$tool_route_comma_output" "route: Pi/backend truth"
+run_capture "tool route plain pi runtime" "$tool_route_plain_pi_output" "$ROOT/bin/codex-tool-route" "use pi now"
+require_command_output_contains "tool route plain pi hits backend lane" "$tool_route_plain_pi_output" "route: Pi/backend truth"
+run_capture "tool route pi substring runtime" "$tool_route_negative_output" "$ROOT/bin/codex-tool-route" "pipeline status"
+require_command_output_contains "tool route pi substring does not hit backend lane" "$tool_route_negative_output" "route: Smallest safe first read"
+run_capture "tool route topic substring runtime" "$tool_route_topic_output" "$ROOT/bin/codex-tool-route" "topic about routing"
+require_command_output_contains "tool route topic substring does not hit backend lane" "$tool_route_topic_output" "route: Smallest safe first read"
+run_capture "tool route api substring runtime" "$tool_route_api_output" "$ROOT/bin/codex-tool-route" "api call"
+require_command_output_contains "tool route api substring does not hit backend lane" "$tool_route_api_output" "route: API/library behavior"
+run_capture "tool route epic substring runtime" "$tool_route_epic_output" "$ROOT/bin/codex-tool-route" "epic next slice"
+require_command_output_contains "tool route epic substring does not hit backend lane" "$tool_route_epic_output" "route: Long auto-mode work"
+run_capture "tool route non-pi hyphen runtime" "$tool_route_non_pi_output" "$ROOT/bin/codex-tool-route" "non-pi-mode"
+require_command_output_contains "tool route non-pi hyphen does not hit backend lane" "$tool_route_non_pi_output" "route: Smallest safe first read"
+run_capture "tool route pi-helper hyphen runtime" "$tool_route_pi_helper_output" "$ROOT/bin/codex-tool-route" "pi-helper"
+require_command_output_contains "tool route pi-helper hyphen does not hit backend lane" "$tool_route_pi_helper_output" "route: Smallest safe first read"
+
 require_contains "CODEX-OWNED-BOOT.md" "Do not answer personal questions with architecture unless Stephen asks about architecture." "owned boot blocks architecture over-explain"
 require_contains "CODEX-PERSONAL-VOICE-PROFILE.md" "Stop explaining the identity architecture unless Stephen asks about" "voice profile core rule"
 require_contains "CODEX-PERSONAL-VOICE-PROFILE.md" "no fake emotions" "voice profile fake-human guardrail"
@@ -223,25 +282,25 @@ require_contains "README.md" "codex-claude-review" "README points to Claude revi
 require_contains "ROUTING-CARD.md" "I can't tell" "routing card catches personal drift"
 require_contains "ROUTING-CARD.md" "codex-claude-review" "routing card catches Claude reviewer prompts"
 require_contains "CODEX-CLAUDE-REVIEWER.md" "subscription/OAuth" "Claude reviewer documents subscription auth"
-require_contains "bin/codex-claude-review" "-u ANTHROPIC_API_KEY" "Claude reviewer clears Anthropic API key by default"
-require_contains "bin/codex-claude-review" "-u CLAUDE_API_KEY" "Claude reviewer clears Claude API key by default"
-require_contains "bin/codex-claude-review" "-u ANTHROPIC_AUTH_TOKEN" "Claude reviewer clears auth token by default"
-require_contains "bin/codex-claude-review" "-u ANTHROPIC_API_AUTH_TOKEN" "Claude reviewer clears API auth token by default"
-require_contains "bin/codex-claude-review" "-u ANTHROPIC_BASE_URL" "Claude reviewer clears Anthropic base URL by default"
-require_contains "bin/codex-claude-review" "-u ANTHROPIC_PROXY_URL" "Claude reviewer clears Anthropic proxy URL by default"
-require_contains "bin/codex-claude-review" "-u CLAUDE_CODE_USE_BEDROCK" "Claude reviewer clears Bedrock selector by default"
-require_contains "bin/codex-claude-review" "-u CLAUDE_CODE_USE_VERTEX" "Claude reviewer clears Vertex selector by default"
-require_contains "bin/codex-claude-review" "-u AWS_BEARER_TOKEN_BEDROCK" "Claude reviewer clears Bedrock auth by default"
-require_contains "bin/codex-claude-review" "-u AWS_ACCESS_KEY_ID" "Claude reviewer clears AWS access key by default"
-require_contains "bin/codex-claude-review" "-u AWS_SECRET_ACCESS_KEY" "Claude reviewer clears AWS secret key by default"
-require_contains "bin/codex-claude-review" "-u AWS_SESSION_TOKEN" "Claude reviewer clears AWS session token by default"
-require_contains "bin/codex-claude-review" "-u ANTHROPIC_VERTEX_PROJECT_ID" "Claude reviewer clears Vertex project by default"
-require_contains "bin/codex-claude-review" "-u CLOUD_ML_REGION" "Claude reviewer clears Vertex region by default"
-require_contains "bin/codex-claude-review" "-u VERTEXAI_LOCATION" "Claude reviewer clears Vertex location by default"
-require_contains "bin/codex-claude-review" "-u GCLOUD_PROJECT" "Claude reviewer clears gcloud project by default"
-require_contains "bin/codex-claude-review" "-u GOOGLE_CLOUD_PROJECT" "Claude reviewer clears Google Cloud project by default"
-require_contains "bin/codex-claude-review" "-u GCP_PROJECT" "Claude reviewer clears GCP project by default"
-require_contains "bin/codex-claude-review" "-u GOOGLE_APPLICATION_CREDENTIALS" "Claude reviewer clears GCP credentials by default"
+require_contains "bin/codex-claude-review" "unset ANTHROPIC_API_KEY" "Claude reviewer clears Anthropic API key by default"
+require_contains "bin/codex-claude-review" "unset CLAUDE_API_KEY" "Claude reviewer clears Claude API key by default"
+require_contains "bin/codex-claude-review" "unset ANTHROPIC_AUTH_TOKEN" "Claude reviewer clears auth token by default"
+require_contains "bin/codex-claude-review" "unset ANTHROPIC_API_AUTH_TOKEN" "Claude reviewer clears API auth token by default"
+require_contains "bin/codex-claude-review" "unset ANTHROPIC_BASE_URL" "Claude reviewer clears Anthropic base URL by default"
+require_contains "bin/codex-claude-review" "unset ANTHROPIC_PROXY_URL" "Claude reviewer clears Anthropic proxy URL by default"
+require_contains "bin/codex-claude-review" "unset CLAUDE_CODE_USE_BEDROCK" "Claude reviewer clears Bedrock selector by default"
+require_contains "bin/codex-claude-review" "unset CLAUDE_CODE_USE_VERTEX" "Claude reviewer clears Vertex selector by default"
+require_contains "bin/codex-claude-review" "unset AWS_BEARER_TOKEN_BEDROCK" "Claude reviewer clears Bedrock auth by default"
+require_contains "bin/codex-claude-review" "unset AWS_ACCESS_KEY_ID" "Claude reviewer clears AWS access key by default"
+require_contains "bin/codex-claude-review" "unset AWS_SECRET_ACCESS_KEY" "Claude reviewer clears AWS secret key by default"
+require_contains "bin/codex-claude-review" "unset AWS_SESSION_TOKEN" "Claude reviewer clears AWS session token by default"
+require_contains "bin/codex-claude-review" "unset ANTHROPIC_VERTEX_PROJECT_ID" "Claude reviewer clears Vertex project by default"
+require_contains "bin/codex-claude-review" "unset CLOUD_ML_REGION" "Claude reviewer clears Vertex region by default"
+require_contains "bin/codex-claude-review" "unset VERTEXAI_LOCATION" "Claude reviewer clears Vertex location by default"
+require_contains "bin/codex-claude-review" "unset GCLOUD_PROJECT" "Claude reviewer clears gcloud project by default"
+require_contains "bin/codex-claude-review" "unset GOOGLE_CLOUD_PROJECT" "Claude reviewer clears Google Cloud project by default"
+require_contains "bin/codex-claude-review" "unset GCP_PROJECT" "Claude reviewer clears GCP project by default"
+require_contains "bin/codex-claude-review" "unset GOOGLE_APPLICATION_CREDENTIALS" "Claude reviewer clears GCP credentials by default"
 require_contains "bin/codex-claude-review" "safe_untracked_file" "Claude reviewer filters untracked files"
 require_contains "bin/codex-claude-review" "*.p8" "Claude reviewer filters Apple private key files"
 require_contains "bin/codex-claude-review" "*.pkcs12" "Claude reviewer filters PKCS12 key files"
@@ -251,6 +310,8 @@ require_contains "bin/codex-claude-review" "*id_dsa" "Claude reviewer filters DS
 require_contains "bin/codex-claude-review" "*id_ecdsa" "Claude reviewer filters ECDSA SSH key filenames"
 require_contains "bin/codex-claude-review" "*id_ed25519" "Claude reviewer filters SSH key filenames"
 require_contains "bin/codex-claude-review" "git rev-parse --verify" "Claude reviewer validates base ref"
+require_contains "bin/codex-claude-review" "command -v claude" "Claude reviewer resolves Claude from PATH"
+require_contains "bin/codex-claude-review" "claude binary not found" "Claude reviewer fails clearly when Claude binary is missing"
 require_contains "bin/codex-claude-review" "CODEX_CLAUDE_REVIEW_MAX_BUDGET_USD" "Claude reviewer budget is overrideable"
 require_contains "bin/codex-claude-review" "CODEX_CLAUDE_REVIEW_EFFORT" "Claude reviewer effort is overrideable"
 require_contains "bin/codex-claude-review" "ANTHROPIC_BETA_API_KEY" "Claude reviewer clears beta API key"
@@ -263,6 +324,7 @@ require_not_contains "TICKET-CODEX-OWNED-STARTUP-INTEGRATION.md" "Then load CODE
 log ""
 log "RESULT pass=$PASS_COUNT fail=$FAIL_COUNT"
 log "receipt: $RECEIPT"
+COMPLETED=1
 
 cat "$RECEIPT"
 
