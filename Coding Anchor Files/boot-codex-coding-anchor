@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="/Users/stephengodman/CodeX/Coding Anchor Files/codex-coding-anchor"
+if [ ! -x "$ROOT/bin/coding-anchor-boot" ]; then
+  printf 'ERROR missing boot target: %s/bin/coding-anchor-boot\n' "$ROOT" >&2
+  exit 1
+fi
+exec "$ROOT/bin/coding-anchor-boot" "$@"

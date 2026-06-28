@@ -76,6 +76,36 @@ OPENWEBUI-ADDING-STUFF-GUIDE.md
 # Large/reference bundles kept local
 Codex's Secret Sauce/
 Coding Anchor Files/
+!Coding Anchor Files/
+Coding Anchor Files/*
+!Coding Anchor Files/CODEX-CODING-ANCHOR.md
+!Coding Anchor Files/boot-codex-coding-anchor
+!Coding Anchor Files/launch-codex-coding-anchor
+!Coding Anchor Files/codex-coding-anchor/
+Coding Anchor Files/codex-coding-anchor/.DS_Store
+Coding Anchor Files/codex-coding-anchor/.playwright-mcp/
+Coding Anchor Files/codex-coding-anchor/.venv/
+Coding Anchor Files/codex-coding-anchor/receipts/
+Coding Anchor Files/codex-coding-anchor/state/*
+!Coding Anchor Files/codex-coding-anchor/state/current-mission.json
+!Coding Anchor Files/codex-coding-anchor/state/work-queue.json
+!Coding Anchor Files/codex-coding-anchor/*.md
+!Coding Anchor Files/codex-coding-anchor/requirements.txt
+!Coding Anchor Files/codex-coding-anchor/bin/
+!Coding Anchor Files/codex-coding-anchor/bin/*
+!Coding Anchor Files/codex-coding-anchor/config/
+!Coding Anchor Files/codex-coding-anchor/config/*
+!Coding Anchor Files/codex-coding-anchor/dashboards/
+!Coding Anchor Files/codex-coding-anchor/dashboards/*
+!Coding Anchor Files/codex-coding-anchor/missions/
+!Coding Anchor Files/codex-coding-anchor/missions/.gitkeep
+!Coding Anchor Files/codex-coding-anchor/missions/*
+!Coding Anchor Files/codex-coding-anchor/notes/
+!Coding Anchor Files/codex-coding-anchor/notes/*
+!Coding Anchor Files/codex-coding-anchor/protocols/
+!Coding Anchor Files/codex-coding-anchor/protocols/*
+!Coding Anchor Files/codex-coding-anchor/schemas/
+!Coding Anchor Files/codex-coding-anchor/schemas/*
 measurement-pipeline-v2/
 
 # Keep work notes opt-in so the repo stays readable.

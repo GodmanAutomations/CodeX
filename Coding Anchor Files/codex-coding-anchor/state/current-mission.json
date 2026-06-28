@@ -1,0 +1,33 @@
+{
+  "status": "active",
+  "updated_at": "2026-06-26T16:24:21-05:00",
+  "active_mission": "Keep the CodeX Coding Anchor boot path durable, compact, verifiable, and more autonomous inside clear lanes.",
+  "next_moves": [
+    "Use bin/coding-anchor-boot --brief for normal daily landing.",
+    "Use bin/coding-anchor-boot --full when Stephen wants full orientation printed back out.",
+    "Default to action inside the active lane: make the reversible move, verify it, retry once when appropriate, and continue through safe next slices.",
+    "Attempt an independent read-only reviewer subagent after meaningful file changes before final closeout; use a labeled local review fallback only if subagents are unavailable.",
+    "Use bin/coding-anchor-next to select the next safe unblocked queued slice after boot or slice closeout.",
+    "Use bin/coding-anchor-start <task-id> to mark selected pending queue work in progress before execution.",
+    "Use bin/coding-anchor-loop --dry-run --max-slices 3 to preview bounded continuation without creating a background daemon.",
+    "Use protocols/concise-agentic-output.md and protocols/agentic-decision-rule.md when Stephen asks for sharper, faster, or more autonomous execution.",
+    "Use bin/coding-anchor-agentic-check to verify concise autonomy anchors.",
+    "Adapt useful codex-workflows patterns only after inspection, not by blind install.",
+    "Create mission notes for project-specific work.",
+    "Keep parent-folder doorway files as thin routers into this packet."
+  ],
+  "verified": [
+    "Base packet exists inside Coding Anchor Files.",
+    "Parent folder is archive/quarantine, not live identity.",
+    "CodeX identity is explicit.",
+    "Room-brain boot path passes.",
+    "Fresh-session launcher dry-run passes.",
+    "Hardened doctor checks parent doorway, shell syntax, JSON state, mission-state shape, and launch dry-run.",
+    "Doctor receipts include process ids to avoid same-second boot receipt collisions.",
+    "Autonomy contract now defaults to action inside clear active lanes while preserving hard stop gates.",
+    "Post-work review protocol requires attempted independent reviewer subagent review after meaningful file changes, with labeled local review fallback only if subagents are unavailable.",
+    "Next-slice queue commands and state exist for selecting safe unblocked follow-up work.",
+    "The queue now has an explicit start transition before strict done closeout.",
+    "Concise agentic output and decision protocols exist for reducing narration while preserving verification and hard stop gates."
+  ]
+}

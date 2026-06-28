@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CodeX Coding Anchor Mission State",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "updated_at", "active_mission", "next_moves", "verified"],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["active", "paused", "blocked", "complete"]
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "active_mission": {
+      "type": "string",
+      "minLength": 1
+    },
+    "next_moves": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "verified": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  }
+}

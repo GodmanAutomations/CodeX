@@ -1,0 +1,158 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SOURCE_URL="https://github.com/trimstray/the-book-of-secret-knowledge"
+JSON=0
+PYTHON_BIN="${CODING_ANCHOR_PYTHON:-python3}"
+
+usage() {
+  cat <<'EOF'
+usage: coding-anchor-toolkit-check [--json]
+
+Report installed and missing optional operator tools for CodeX diagnostics.
+This command is read-only. It does not install packages.
+EOF
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --json)
+      JSON=1
+      shift
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    *)
+      printf 'unknown argument: %s\n' "$1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+TOOLS=(
+  "http_api|Hurl|hurl|hurl|plain-text HTTP/API smoke tests"
+  "http_api|HTTP timing|httpstat|httpstat|curl timing visualization"
+  "tls_cert|testssl|testssl|testssl,testssl.sh|TLS protocol and cipher checks"
+  "tls_cert|sslscan|sslscan|sslscan|TLS cipher enumeration"
+  "tls_cert|mkcert|mkcert|mkcert|local trusted development certificates"
+  "dns_network|mtr|mtr|mtr|combined traceroute and ping evidence"
+  "dns_network|iperf3|iperf3|iperf3|bandwidth checks between controlled hosts"
+  "dns_network|socat|socat|socat|socket relay and local connectivity probes"
+  "dns_network|ngrep|ngrep|ngrep|grep-like packet payload inspection"
+  "dns_network|tshark|wireshark|tshark|CLI packet capture inspection"
+  "dns_network|dnstwist|dnstwist|dnstwist|typosquat and lookalike-domain checks"
+  "dns_network|ssh-audit|ssh-audit|ssh-audit|SSH server configuration review"
+  "logs_perf|lnav|lnav|lnav|interactive log navigation"
+  "logs_perf|goaccess|goaccess|goaccess|web access log analysis"
+  "logs_perf|hyperfine|hyperfine|hyperfine|command benchmarking"
+  "logs_perf|dust|dust|dust|fast disk usage breakdowns"
+  "logs_perf|ncdu|ncdu|ncdu|interactive disk usage analysis"
+  "logs_perf|git-delta|git-delta|delta|readable git diffs"
+  "containers_security|trivy|trivy|trivy|container and dependency vulnerability scans"
+  "containers_security|lynis|lynis|lynis|macOS/Linux security audit"
+  "operator_basics|yq|yq|yq|YAML query and transformation"
+  "operator_basics|aria2|aria2|aria2c|resumable multi-source downloads"
+)
+
+has_any_command() {
+  local commands="$1"
+  local command_name
+  IFS=',' read -r -a command_list <<< "$commands"
+  for command_name in "${command_list[@]}"; do
+    if command -v "$command_name" >/dev/null 2>&1; then
+      printf '%s' "$command_name"
+      return 0
+    fi
+  done
+  return 1
+}
+
+installed_count=0
+missing_count=0
+missing_formulae=()
+json_rows=()
+
+if [ "$JSON" -eq 1 ] && ! command -v "$PYTHON_BIN" >/dev/null 2>&1 && [ ! -x "$PYTHON_BIN" ]; then
+  printf 'python unavailable for json output: %s\n' "$PYTHON_BIN" >&2
+  exit 127
+fi
+
+if [ "$JSON" -eq 0 ]; then
+  printf 'CodeX Operator Toolkit Check\n'
+  printf 'root: %s\n' "$ROOT"
+  printf 'source: %s\n' "$SOURCE_URL"
+  printf 'mode: read-only inventory\n'
+  printf '\n'
+fi
+
+for entry in "${TOOLS[@]}"; do
+  IFS='|' read -r lane label formula commands purpose <<< "$entry"
+  found_command=""
+  if found_command="$(has_any_command "$commands")"; then
+    installed_count=$((installed_count + 1))
+    status="installed"
+    if [ "$JSON" -eq 0 ]; then
+      printf 'PASS %-20s %-18s command=%s\n' "$lane" "$label" "$found_command"
+    fi
+  else
+    missing_count=$((missing_count + 1))
+    status="missing"
+    missing_formulae+=("$formula")
+    if [ "$JSON" -eq 0 ]; then
+      printf 'MISS %-20s %-18s formula=%s\n' "$lane" "$label" "$formula"
+    fi
+  fi
+
+  if [ "$JSON" -eq 1 ]; then
+    json_rows+=("$("$PYTHON_BIN" -c 'import json, sys; print(json.dumps(sys.argv[1:]))' "$lane" "$label" "$formula" "$commands" "$purpose" "$status" "$found_command")")
+  fi
+done
+
+if [ "$JSON" -eq 1 ]; then
+  "$PYTHON_BIN" - "$SOURCE_URL" "$installed_count" "$missing_count" "${json_rows[@]}" <<'PY'
+import json
+import sys
+
+source, installed, missing, *rows = sys.argv[1:]
+tools = []
+for row in rows:
+    lane, label, formula, commands, purpose, status, found_command = json.loads(row)
+    tools.append({
+        "lane": lane,
+        "label": label,
+        "formula": formula,
+        "commands": commands,
+        "purpose": purpose,
+        "status": status,
+        "found_command": found_command,
+    })
+
+print(json.dumps({
+    "source": source,
+    "mode": "read-only inventory",
+    "installed": int(installed),
+    "missing": int(missing),
+    "tools": tools,
+}, indent=2))
+PY
+  exit 0
+fi
+
+printf '\n'
+printf 'Summary: installed=%s missing=%s\n' "$installed_count" "$missing_count"
+
+if [ "$missing_count" -gt 0 ]; then
+  deduped="$(
+    printf '%s\n' "${missing_formulae[@]}" | awk 'NF && !seen[$0]++'
+  )"
+  printf 'Optional install command:\n'
+  printf 'brew install'
+  while IFS= read -r formula; do
+    [ -n "$formula" ] && printf ' %s' "$formula"
+  done <<< "$deduped"
+  printf '\n'
+fi

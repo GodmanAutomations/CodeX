@@ -1,0 +1,99 @@
+{
+  "version": 1,
+  "updated_at": "2026-06-26T16:56:35-05:00",
+  "policy": {
+    "max_auto_slices_default": 3,
+    "require_reviewer_after_meaningful_changes": true,
+    "stop_statuses": [
+      "blocked",
+      "needs_user"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "ca-next-001",
+      "title": "Install native next-slice queue commands",
+      "status": "done",
+      "priority": "high",
+      "dependencies": [],
+      "safe_to_auto": true,
+      "stop_gates": [],
+      "verification": [
+        "python3 -m json.tool state/work-queue.json >/dev/null",
+        "bin/coding-anchor-next --json",
+        "bin/coding-anchor-loop --dry-run --max-slices 1",
+        "bin/coding-anchor-doctor"
+      ],
+      "reviewer_required": true,
+      "notes": "Current implementation slice: add queue state, next/done/loop commands, protocol, and doctor coverage.",
+      "completed_at": "2026-06-26T16:32:51-05:00",
+      "completed_details": "Implemented native next-slice queue commands, strict completion gates, local jsonschema validation, and doctor coverage. Verified json parsing, bash syntax, bin/coding-anchor-next --json, bin/coding-anchor-loop --dry-run --max-slices 2, negative unreviewed closeout refusal, doctor pass receipt 20260626-163223-17604-doctor.txt, and independent reviewer follow-up reported no actionable issues.",
+      "completed_reviewed": true
+    },
+    {
+      "id": "ca-next-002",
+      "title": "Dogfood next-slice loop on one small packet improvement",
+      "status": "done",
+      "priority": "high",
+      "dependencies": [
+        "ca-next-001"
+      ],
+      "safe_to_auto": true,
+      "stop_gates": [],
+      "verification": [
+        "bin/coding-anchor-next",
+        "bin/coding-anchor-loop --dry-run --max-slices 2",
+        "bin/coding-anchor-doctor"
+      ],
+      "reviewer_required": true,
+      "notes": "Use the queue to select and complete one safe packet-hardening task without Stephen saying next slice.",
+      "started_at": "2026-06-26T16:33:47-05:00",
+      "completed_at": "2026-06-26T16:37:53-05:00",
+      "completed_details": "Dogfooded the next-slice loop by promoting ca-next-002 with bin/coding-anchor-start, adding the missing start transition, adding dry-run and temp-queue smoke coverage, tightening whitespace evidence validation, verifying next/loop/doctor behavior, and receiving independent reviewer clearance with no actionable issues.",
+      "completed_reviewed": true
+    },
+    {
+      "id": "ca-next-003",
+      "title": "Evaluate Taskmaster or taskqueue integration as an optional adapter",
+      "status": "done",
+      "priority": "medium",
+      "dependencies": [
+        "ca-next-002"
+      ],
+      "safe_to_auto": true,
+      "stop_gates": [],
+      "verification": [
+        "document adapter recommendation",
+        "no install unless explicitly chosen",
+        "bin/coding-anchor-doctor"
+      ],
+      "reviewer_required": false,
+      "notes": "Inspect integration path only; do not install a third-party framework over the packet.",
+      "started_at": "2026-06-26T16:38:23-05:00",
+      "completed_at": "2026-06-26T16:39:48-05:00",
+      "completed_details": "Documented adapter recommendation in notes/adapter-recommendation-2026-06-26.md after current GitHub/source review. Recommendation: keep native queue primary; do not install Task Master, Taskqueue MCP, Agent Task Queue, GitHub Agentic Workflows, or broad autonomous-agent frameworks over the packet by default; add adapters only for real project needs. Verified no install occurred and doctor passed at receipt 20260626-164154-73463-doctor.txt."
+    },
+    {
+      "id": "ca-agentic-001",
+      "title": "Install concise agentic output and decision rules",
+      "status": "done",
+      "priority": "high",
+      "dependencies": [
+        "ca-next-003"
+      ],
+      "safe_to_auto": true,
+      "stop_gates": [],
+      "verification": [
+        "bin/coding-anchor-agentic-check",
+        "bash -n bin/coding-anchor-agentic-check",
+        "bin/coding-anchor-doctor"
+      ],
+      "reviewer_required": true,
+      "notes": "Add concise output protocol, agentic decision rule, agentic-check command, and doctor/doc wiring.",
+      "started_at": "2026-06-26T16:48:14-05:00",
+      "completed_at": "2026-06-26T16:56:35-05:00",
+      "completed_details": "Installed concise agentic output and decision protocols, added bin/coding-anchor-agentic-check, wired doctor and full boot protocol surfacing, enforced the one-active-task queue invariant in next/doctor/schema, verified agentic-check, shell syntax, queue conflict behavior, schema conflict behavior, and doctor pass receipt 20260626-165441-99302-doctor.txt. Independent reviewer follow-up reported no remaining actionable issues.",
+      "completed_reviewed": true
+    }
+  ]
+}

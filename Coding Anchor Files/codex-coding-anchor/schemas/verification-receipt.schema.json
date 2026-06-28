@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CodeX Coding Anchor Verification Receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "checked_at", "scope", "checks", "next_action"],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["pass", "fail", "blocked", "partial"]
+    },
+    "checked_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "scope": {
+      "type": "string",
+      "minLength": 1
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "status", "evidence"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pass", "fail", "skipped"]
+          },
+          "evidence": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "next_action": {
+      "type": "string"
+    }
+  }
+}

@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CodeX Coding Anchor Work Queue",
+  "type": "object",
+  "required": ["version", "updated_at", "policy", "tasks"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "minLength": 1
+    },
+    "policy": {
+      "type": "object",
+      "required": [
+        "max_auto_slices_default",
+        "require_reviewer_after_meaningful_changes",
+        "stop_statuses"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "max_auto_slices_default": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "require_reviewer_after_meaningful_changes": {
+          "type": "boolean"
+        },
+        "stop_statuses": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "tasks": {
+      "type": "array",
+      "contains": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "const": "in_progress"
+          }
+        }
+      },
+      "minContains": 0,
+      "maxContains": 1,
+      "items": {
+        "type": "object",
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "done"
+                }
+              },
+              "required": ["status"]
+            },
+            "then": {
+              "required": ["completed_at", "completed_details"]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "status": {
+                  "const": "done"
+                },
+                "reviewer_required": {
+                  "const": true
+                }
+              },
+              "required": ["status", "reviewer_required"]
+            },
+            "then": {
+              "required": ["completed_reviewed"],
+              "properties": {
+                "completed_reviewed": {
+                  "const": true
+                }
+              }
+            }
+          }
+        ],
+        "required": [
+          "id",
+          "title",
+          "status",
+          "priority",
+          "dependencies",
+          "safe_to_auto",
+          "stop_gates",
+          "verification",
+          "reviewer_required",
+          "notes"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._-]*$"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "in_progress", "done", "blocked", "needs_user", "deferred"]
+          },
+          "priority": {
+            "type": "string",
+            "enum": ["high", "medium", "low"]
+          },
+          "dependencies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "safe_to_auto": {
+            "type": "boolean"
+          },
+          "stop_gates": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "verification": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reviewer_required": {
+            "type": "boolean"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "completed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "completed_details": {
+            "type": "string",
+            "pattern": "\\S"
+          },
+          "completed_reviewed": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  }
+}

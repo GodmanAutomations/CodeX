@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+QUEUE="${CODING_ANCHOR_QUEUE:-$ROOT/state/work-queue.json}"
+PYTHON_BIN="${CODING_ANCHOR_PYTHON:-python3}"
+if [ -x "$ROOT/.venv/bin/python" ]; then
+  PYTHON_BIN="$ROOT/.venv/bin/python"
+fi
+TASK_ID=""
+DETAILS=""
+REVIEWED=0
+
+usage() {
+  cat <<'EOF'
+usage: coding-anchor-done <task-id> --details "completion evidence" [--reviewed]
+
+Mark an eligible in-progress queue task done. Completion details are required.
+Use --reviewed when the task requires reviewer closeout.
+EOF
+}
+
+if [ "$#" -eq 0 ]; then
+  usage >&2
+  exit 2
+fi
+
+TASK_ID="$1"
+shift
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --details)
+      if [ "$#" -lt 2 ]; then
+        printf -- '--details requires a value\n' >&2
+        exit 2
+      fi
+      DETAILS="${2:-}"
+      shift 2
+      ;;
+    --reviewed)
+      REVIEWED=1
+      shift
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    *)
+      printf 'unknown argument: %s\n' "$1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+if [ -z "${DETAILS//[[:space:]]/}" ]; then
+  printf 'concrete completion details are required\n' >&2
+  exit 2
+fi
+
+"$PYTHON_BIN" - "$QUEUE" "$TASK_ID" "$DETAILS" "$REVIEWED" <<'PY'
+import datetime
+import json
+import sys
+
+queue_path, task_id, details, reviewed_arg = sys.argv[1:5]
+if not details.strip():
+    raise SystemExit("concrete completion details are required")
+reviewed = reviewed_arg == "1"
+now = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
+
+with open(queue_path, "r", encoding="utf-8") as handle:
+    queue = json.load(handle)
+
+tasks = queue.get("tasks", [])
+
+def blocked_reasons(task):
+    reasons = []
+    if task.get("reviewer_required") and not reviewed:
+        reasons.append("reviewer closeout required; rerun with --reviewed after review")
+    return reasons
+
+for task in tasks:
+    if task["id"] == task_id:
+        if task.get("status") != "in_progress":
+            raise SystemExit(f"task must be in_progress before completion: {task_id}")
+        reasons = blocked_reasons(task)
+        if reasons:
+            raise SystemExit(f"task is not eligible for completion: {'; '.join(reasons)}")
+        task["status"] = "done"
+        task["completed_at"] = now
+        task["completed_details"] = details.strip()
+        if reviewed:
+            task["completed_reviewed"] = True
+        queue["updated_at"] = now
+        break
+else:
+    raise SystemExit(f"unknown task id: {task_id}")
+
+with open(queue_path, "w", encoding="utf-8") as handle:
+    json.dump(queue, handle, indent=2)
+    handle.write("\n")
+
+print(f"done: {task_id}")
+print(f"updated_at: {now}")
+PY
