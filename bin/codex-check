@@ -125,8 +125,8 @@ def check_catalog(include_pi: bool) -> dict[str, dict[str, Any]]:
             "timeout": 90,
         },
         "ensure_standalone": {
-            "command": [str(BIN / "codex-ensure-standalone"), "--check"],
-            "kind": "exit-only",
+            "command": [str(BIN / "codex-ensure-standalone"), "--check", "--json"],
+            "kind": "json",
             "timeout": 90,
         },
         "phone_summary": {
