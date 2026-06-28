@@ -55,6 +55,17 @@ Apply and send a phone notification:
 /Users/stephengodman/CodeX/bin/codex-phone-mode --apply --notify
 ```
 
+Pushover alerts are silent by default for phone mode and watchdog:
+
+```bash
+CODEX_PUSHOVER_PRIORITY=-1
+CODEX_PUSHOVER_SOUND=none
+```
+
+Set those env vars only when an audible alert is intentional. The phone lane
+accepts priority `-2`, `-1`, `0`, or `1`; emergency priority `2` is not used
+because Pushover requires extra retry/expire fields for that mode.
+
 Full auto watchdog:
 
 ```bash

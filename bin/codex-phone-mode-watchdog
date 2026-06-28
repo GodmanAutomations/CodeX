@@ -21,6 +21,8 @@ REPAIR_TIMEOUT_SECONDS=90
 RESTORE_TIMEOUT_SECONDS=20
 BATTERY_WARN_PERCENT=30
 BATTERY_SLEEP_PERCENT=20
+PUSHOVER_PRIORITY="${CODEX_PUSHOVER_PRIORITY:--1}"
+PUSHOVER_SOUND="${CODEX_PUSHOVER_SOUND:-none}"
 
 usage() {
   cat <<'USAGE'
@@ -34,6 +36,8 @@ Usage:
 
 The watchdog is a one-shot LaunchAgent job. When installed, launchd runs --once
 every five minutes and at load.
+Pushover notifications are silent by default: CODEX_PUSHOVER_PRIORITY=-1 and
+CODEX_PUSHOVER_SOUND=none. Override those env vars only for audible alerts.
 USAGE
 }
 
@@ -85,12 +89,35 @@ value_usable() {
   [[ -n "$value" && "$value" != op://* ]]
 }
 
+pushover_priority() {
+  # Keep in sync with bin/codex-phone-mode.
+  case "$PUSHOVER_PRIORITY" in
+    -2|-1|0|1)
+      printf '%s' "$PUSHOVER_PRIORITY"
+      ;;
+    *)
+      printf '%s' "-1"
+      ;;
+  esac
+}
+
+pushover_sound() {
+  # Keep in sync with bin/codex-phone-mode.
+  if [[ "$PUSHOVER_SOUND" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]]; then
+    printf '%s' "$PUSHOVER_SOUND"
+  else
+    printf '%s' "none"
+  fi
+}
+
 send_pushover() {
   local title="$1"
   local message="$2"
-  local token user
+  local token user priority sound
   token="$(env_value PUSHOVER_TOKEN)"
   user="$(env_value PUSHOVER_USER_KEY)"
+  priority="$(pushover_priority)"
+  sound="$(pushover_sound)"
   if [[ -z "$user" || "$user" == op://* ]]; then
     user="$(env_value PUSHOVER_USER)"
   fi
@@ -103,6 +130,8 @@ send_pushover() {
     --form-string "user=$user" \
     --form-string "title=$title" \
     --form-string "message=$message" \
+    --form-string "priority=$priority" \
+    --form-string "sound=$sound" \
     https://api.pushover.net/1/messages.json >/dev/null
 }
 
@@ -110,6 +139,9 @@ notify_state() {
   local state="$1"
   local title="$2"
   local message="$3"
+  local priority sound
+  priority="$(pushover_priority)"
+  sound="$(pushover_sound)"
   mkdir -p "$STATE_DIR"
   local previous=""
   if [[ -r "$STATE_FILE" ]]; then
@@ -120,9 +152,9 @@ notify_state() {
     return 0
   fi
   if send_pushover "$title" "$message"; then
-    log_line "notify=sent state=$state"
+    log_line "notify=sent state=$state priority=$priority sound=$sound"
   else
-    log_line "notify=failed state=$state"
+    log_line "notify=failed state=$state priority=$priority sound=$sound"
   fi
   printf '%s\n' "$state" >"$STATE_FILE"
 }
