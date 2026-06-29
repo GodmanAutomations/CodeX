@@ -58,6 +58,14 @@ HELP
       printf 'Missing CODEX-CLAUDE-REVIEWER.md\n'
     fi
     printf '\nCommand: `%s/bin/codex-claude-review`\n' "$ROOM"
+    printf '\n## Claude Teaming\n\n'
+    printf 'Source: CODEX-CLAUDE-TEAMING.md\n\n'
+    if [ -f "$ROOM/CODEX-CLAUDE-TEAMING.md" ]; then
+      sed -n '1,100p' "$ROOM/CODEX-CLAUDE-TEAMING.md"
+    else
+      printf 'Missing CODEX-CLAUDE-TEAMING.md\n'
+    fi
+    printf '\nCommand: `%s/bin/codex-claude-team --template`\n' "$ROOM"
     printf '\n## Tool Routing\n\n'
     sed -n '1,100p' "$ROOM/CODEX-TOOL-ROUTING.md"
     printf '\n## Identity Lock\n\n'
@@ -130,6 +138,14 @@ HELP
       printf 'Missing CODEX-CLAUDE-REVIEWER.md\n'
     fi
     printf '\nCommand: `%s/bin/codex-claude-review`\n' "$ROOM"
+    printf '\n## Claude Teaming\n\n'
+    printf 'Source: CODEX-CLAUDE-TEAMING.md\n\n'
+    if [ -f "$ROOM/CODEX-CLAUDE-TEAMING.md" ]; then
+      sed -n '1,120p' "$ROOM/CODEX-CLAUDE-TEAMING.md"
+    else
+      printf 'Missing CODEX-CLAUDE-TEAMING.md\n'
+    fi
+    printf '\nCommand: `%s/bin/codex-claude-team --template`\n' "$ROOM"
     printf '\n## Tool Routing\n\n'
     sed -n '1,120p' "$ROOM/CODEX-TOOL-ROUTING.md"
     printf '\n## Identity Lock\n\n'

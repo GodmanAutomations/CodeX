@@ -33,6 +33,12 @@ Use this card to route ordinary prompts into the right CodeX lane.
   findings before committing. If Claude Code is unavailable, use the Codex
   reviewer subagent fallback and say that explicitly.
 
+- "team up with Claude", "ask Claude", "Claude advisor", "Claude second brain", "send this to Claude":
+  read `/Users/stephengodman/CodeX/CODEX-CLAUDE-TEAMING.md`; for non-git
+  work, prepare a scoped packet with
+  `/Users/stephengodman/CodeX/bin/codex-claude-team --template`, then send only
+  bounded, secret-free context through `bin/codex-claude-team --prompt FILE`.
+
 - "advisor says", "ChatGPT says", "use this advisor review", "advisor review findings", "advisor scope", "evidence first":
   from the CodeX root, read `docs/agent-protocol.md`; treat the advisor text as
   scope, gather local evidence, patch the requested slice, then verify. Treat

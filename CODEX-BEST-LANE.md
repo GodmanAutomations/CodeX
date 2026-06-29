@@ -117,6 +117,11 @@ keeps execution ownership; Claude reviews the prepared diff with edit tools
 disabled. If Claude Code is unavailable, fall back to the current Codex reviewer
 subagent path and record that fallback.
 
+For non-git workpapers, tax folders, broad records work, or workflow decisions,
+use `CODEX-CLAUDE-TEAMING.md` and
+`/Users/stephengodman/CodeX/bin/codex-claude-team`. Codex prepares a bounded
+packet, Claude advises or reviews, then Codex verifies and integrates.
+
 ## Advisor/Executor Protocol
 
 When Stephen brings an outside advisor into the loop, read

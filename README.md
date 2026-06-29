@@ -24,6 +24,7 @@ Use `/Users/stephengodman/CodeX` in room docs and launchers unless Stephen expli
 - `CODEX-PERSONAL-MODES.md`
 - `CODEX-TOOL-ROUTING.md`
 - `docs/agent-protocol.md`
+- `CODEX-CLAUDE-TEAMING.md`
 - `START-HERE.md`
 - `BOOT.md`
 - `CURRENT.md`
@@ -66,6 +67,7 @@ Room health check:
 /Users/stephengodman/CodeX/bin/codex-doctor-room
 /Users/stephengodman/CodeX/bin/codex-identity-regression
 /Users/stephengodman/CodeX/bin/codex-claude-review
+/Users/stephengodman/CodeX/bin/codex-claude-team --template
 ```
 
 Tree / Trello MCP preflight:

@@ -161,6 +161,7 @@ for file in \
   "CODEX-STICKY-STARTUP.md" \
   "CODEX-REGRESSION-HARNESS.md" \
   "CODEX-CLAUDE-REVIEWER.md" \
+  "CODEX-CLAUDE-TEAMING.md" \
   "CODEX-STARTUP-DROPIN.md" \
   "docs/agent-protocol.md" \
   "TICKET-CODEX-OWNED-STARTUP-INTEGRATION.md" \
@@ -180,6 +181,7 @@ require_exec "bin/codex-identity-regression"
 require_exec "bin/codex-check"
 require_exec "bin/codex-ensure-standalone"
 require_exec "bin/codex-claude-review"
+require_exec "bin/codex-claude-team"
 require_file "bin/lib/codex-common.sh"
 
 for file in \
@@ -208,6 +210,8 @@ require_contains "bin/codex-startup" "CODEX-REGRESSION-HARNESS.md" "startup surf
 require_contains "bin/codex-startup" "codex-identity-regression" "startup surfaces regression harness command"
 require_contains "bin/codex-startup" "CODEX-CLAUDE-REVIEWER.md" "startup surfaces Claude reviewer docs"
 require_contains "bin/codex-startup" "codex-claude-review" "startup surfaces Claude reviewer command"
+require_contains "bin/codex-startup" "CODEX-CLAUDE-TEAMING.md" "startup surfaces Claude teaming docs"
+require_contains "bin/codex-startup" "codex-claude-team" "startup surfaces Claude teaming command"
 require_contains "bin/codex-startup" "--read-only" "startup has read-only verification mode"
 require_contains "bin/codex-room" "Identity Regression Harness" "room brief surfaces regression harness"
 require_contains "bin/codex-room" "CODEX-REGRESSION-HARNESS.md" "room brief surfaces regression docs"
@@ -215,6 +219,9 @@ require_contains "bin/codex-room" "codex-identity-regression" "room brief surfac
 require_contains "bin/codex-room" "Claude Reviewer" "room brief surfaces Claude reviewer"
 require_contains "bin/codex-room" "CODEX-CLAUDE-REVIEWER.md" "room brief surfaces Claude reviewer docs"
 require_contains "bin/codex-room" "codex-claude-review" "room brief surfaces Claude reviewer command"
+require_contains "bin/codex-room" "Claude Teaming" "room brief surfaces Claude teaming"
+require_contains "bin/codex-room" "CODEX-CLAUDE-TEAMING.md" "room brief surfaces Claude teaming docs"
+require_contains "bin/codex-room" "codex-claude-team" "room brief surfaces Claude teaming command"
 require_contains "bin/codex-room" "CODEX_ROOM_READONLY" "room brief has read-only verification mode"
 
 startup_output="$TMP_DIR/codex-startup-regression.txt"
@@ -228,6 +235,7 @@ codex_check_phone_output="$TMP_DIR/codex-check-phone.json"
 codex_check_ensure_output="$TMP_DIR/codex-check-ensure-standalone.json"
 codex_check_empty_only_output="$TMP_DIR/codex-check-empty-only.json"
 codex_check_bad_profile_output="$TMP_DIR/codex-check-bad-profile.json"
+claude_team_template_output="$TMP_DIR/codex-claude-team-template.txt"
 ensure_standalone_json_output="$TMP_DIR/codex-ensure-standalone.json"
 ensure_standalone_text_output="$TMP_DIR/codex-ensure-standalone.txt"
 advisor_ignore_output="$TMP_DIR/advisor-receipts-ignore.txt"
@@ -252,6 +260,8 @@ require_command_output_contains "startup runtime outputs regression harness" "$s
 require_command_output_contains "startup runtime outputs harness command" "$startup_output" "bin/codex-identity-regression"
 require_command_output_contains "startup runtime outputs Claude reviewer" "$startup_output" "CODEX-CLAUDE-REVIEWER.md"
 require_command_output_contains "startup runtime outputs Claude reviewer command" "$startup_output" "bin/codex-claude-review"
+require_command_output_contains "startup runtime outputs Claude teaming" "$startup_output" "CODEX-CLAUDE-TEAMING.md"
+require_command_output_contains "startup runtime outputs Claude teaming command" "$startup_output" "bin/codex-claude-team"
 require_command_output_contains "startup runtime skips mutable checks" "$startup_output" "skipped in read-only startup preview"
 
 run_capture "room brief read-only runtime" "$brief_output" env CODEX_ROOM_READONLY=1 "$ROOT/bin/codex-room" brief
@@ -261,6 +271,9 @@ require_command_output_contains "room brief runtime outputs harness command" "$b
 require_command_output_contains "room brief runtime outputs Claude reviewer section" "$brief_output" "## Claude Reviewer"
 require_command_output_contains "room brief runtime outputs Claude reviewer docs" "$brief_output" "CODEX-CLAUDE-REVIEWER.md"
 require_command_output_contains "room brief runtime outputs Claude reviewer command" "$brief_output" "bin/codex-claude-review"
+require_command_output_contains "room brief runtime outputs Claude teaming section" "$brief_output" "## Claude Teaming"
+require_command_output_contains "room brief runtime outputs Claude teaming docs" "$brief_output" "CODEX-CLAUDE-TEAMING.md"
+require_command_output_contains "room brief runtime outputs Claude teaming command" "$brief_output" "bin/codex-claude-team"
 require_command_output_contains "room brief runtime skips mutable memory status" "$brief_output" "Skipped in read-only room brief."
 
 run_capture "room handoff read-only runtime" "$handoff_output" env CODEX_ROOM_READONLY=1 "$ROOT/bin/codex-room" handoff
@@ -270,6 +283,14 @@ require_command_output_contains "room handoff runtime outputs harness command" "
 require_command_output_contains "room handoff runtime outputs Claude reviewer section" "$handoff_output" "## Claude Reviewer"
 require_command_output_contains "room handoff runtime outputs Claude reviewer docs" "$handoff_output" "CODEX-CLAUDE-REVIEWER.md"
 require_command_output_contains "room handoff runtime outputs Claude reviewer command" "$handoff_output" "bin/codex-claude-review"
+require_command_output_contains "room handoff runtime outputs Claude teaming section" "$handoff_output" "## Claude Teaming"
+require_command_output_contains "room handoff runtime outputs Claude teaming docs" "$handoff_output" "CODEX-CLAUDE-TEAMING.md"
+require_command_output_contains "room handoff runtime outputs Claude teaming command" "$handoff_output" "bin/codex-claude-team"
+
+run_capture "Claude team template runtime" "$claude_team_template_output" "$ROOT/bin/codex-claude-team" --template tax-workpaper-reviewer
+require_command_output_contains "Claude team template names role" "$claude_team_template_output" "Use your tax-workpaper-reviewer lane"
+require_command_output_contains "Claude team template keeps Codex scope" "$claude_team_template_output" "What CodeX verified"
+require_command_output_contains "Claude team template blocks final totals" "$claude_team_template_output" "Do not calculate or call final tax/legal/financial totals final"
 
 run_capture "codex-common env scrub runtime" "$common_output" bash -c 'set -euo pipefail; unset CODEX_ROOT CODEX_BIN_DIR CODEX_COMMON_DIR; source "$1"; codex_init_paths; test "$CODEX_ROOT" = "$2"; test "$CODEX_BIN_DIR" = "$2/bin"; tmp="$(codex_mktemp_dir codex-common-regression)"; codex_cleanup_add "$tmp" "$tmp-missing"; test -d "$tmp"; FOO_SECRET=keep; export FOO_SECRET; codex_run_without_env FOO_SECRET -- bash -c '\''test -z "${FOO_SECRET:-}"'\''; test "$FOO_SECRET" = keep; if codex_run_without_env FOO_SECRET BAR >/dev/null 2>&1; then exit 1; fi; codex_cleanup_run; test ! -e "$tmp"; printf "common smoke ok\n"' bash "$ROOT/bin/lib/codex-common.sh" "$ROOT"
 require_command_output_contains "codex-common env scrub leaves caller env intact" "$common_output" "common smoke ok"
@@ -502,17 +523,23 @@ require_contains "CODEX-IDENTITY-REGRESSION.md" "Personal mode answers are short
 require_contains "CODEX-BEST-LANE.md" "CODEX-PERSONAL-VOICE-PROFILE.md" "best lane points to personal voice"
 require_contains "CODEX-BEST-LANE.md" "codex-identity-regression" "best lane points to harness"
 require_contains "CODEX-BEST-LANE.md" "docs/agent-protocol.md" "best lane points to advisor protocol"
+require_contains "CODEX-BEST-LANE.md" "CODEX-CLAUDE-TEAMING.md" "best lane points to Claude teaming"
 require_contains "CODEX-THREAD-PROFILE.md" "docs/agent-protocol.md" "thread profile points to advisor protocol"
 require_contains "CODEX-OWNED-BOOT.md" "docs/agent-protocol.md" "owned boot points to advisor protocol"
 require_contains ".gitignore" "receipts/" "gitignore excludes runtime receipts"
 require_contains "README.md" "codex-identity-regression" "README points to harness"
 require_contains "README.md" "codex-check" "README points to codex-check"
 require_contains "README.md" "codex-claude-review" "README points to Claude reviewer"
+require_contains "README.md" "codex-claude-team" "README points to Claude teaming"
 require_contains "README.md" "docs/agent-protocol.md" "README points to advisor protocol"
 require_contains "ROUTING-CARD.md" "I can't tell" "routing card catches personal drift"
 require_contains "ROUTING-CARD.md" "codex-claude-review" "routing card catches Claude reviewer prompts"
+require_contains "ROUTING-CARD.md" "codex-claude-team" "routing card catches Claude teaming prompts"
 require_contains "ROUTING-CARD.md" "docs/agent-protocol.md" "routing card catches advisor protocol prompts"
 require_contains "ROUTING-CARD.md" "advisor says" "routing card catches advisor phrase"
+require_contains "CODEX-CLAUDE-TEAMING.md" "Codex is the system keeper and executor" "Claude teaming keeps Codex executor"
+require_contains "CODEX-CLAUDE-TEAMING.md" "Claude is Claude Code" "Claude teaming keeps Claude identity clean"
+require_contains "CODEX-CLAUDE-TEAMING.md" "codex-claude-team --template" "Claude teaming documents template command"
 
 # These are structural protocol anchors. If the wording changes, update the
 # harness with the protocol edit so drift is intentional.
@@ -579,6 +606,11 @@ require_contains "bin/codex-claude-review" "CODEX_CLAUDE_REVIEW_EFFORT" "Claude 
 require_contains "bin/codex-claude-review" "ANTHROPIC_BETA_API_KEY" "Claude reviewer clears beta API key"
 require_contains "CODEX-CLAUDE-REVIEWER.md" "--tools \"\"" "Claude reviewer documents disabled tools"
 require_contains "CODEX-CLAUDE-REVIEWER.md" "--effort low" "Claude reviewer documents low-effort default"
+require_contains "CODEX-CLAUDE-REVIEWER.md" "CODEX-CLAUDE-TEAMING.md" "Claude reviewer points to teaming for non-git packets"
+require_contains "bin/codex-claude-team" "codex_run_without_env" "Claude team uses shared env scrub helper"
+require_contains "bin/codex-claude-team" "--tools" "Claude team disables tools"
+require_contains "bin/codex-claude-team" "CODEX_CLAUDE_TEAM_MAX_PROMPT_BYTES" "Claude team caps prompt size"
+require_contains "bin/codex-claude-team" "prompt filename looks secret-like" "Claude team blocks secret-like prompt files"
 
 require_not_contains "CODEX-STARTUP-DROPIN.md" "Then load CODEX-OWNED-BOOT.md and CODEX-IDENTITY-REGRESSION.md." "startup dropin avoids old two-file pointer"
 require_not_contains "TICKET-CODEX-OWNED-STARTUP-INTEGRATION.md" "Then load CODEX-OWNED-BOOT.md and CODEX-IDENTITY-REGRESSION.md." "startup ticket avoids old two-file pointer"
