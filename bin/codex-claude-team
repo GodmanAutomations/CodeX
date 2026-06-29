@@ -1,0 +1,231 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+COMMON_SH="$SCRIPT_DIR/lib/codex-common.sh"
+if [ ! -r "$COMMON_SH" ]; then
+  echo "error: missing CodeX shell library: $COMMON_SH" >&2
+  exit 127
+fi
+source "$COMMON_SH"
+codex_init_paths
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  codex-claude-team --template [role]
+  codex-claude-team --prompt FILE [--role ROLE] [--model MODEL] [--effort EFFORT] [--max-budget-usd USD] [--dry-run]
+
+Purpose:
+  Send a scoped non-git advisory/review packet to Claude Code using the logged-in
+  subscription/OAuth path by default. Codex remains the executor.
+
+Roles:
+  reviewer | advisor | researcher | config-doctor | tax-workpaper-reviewer
+
+Safety:
+  The prompt file is sent as-is. Keep raw secrets, full account numbers, private
+  keys, recovery codes, and unnecessary personal detail out of the packet.
+USAGE
+}
+
+template() {
+  local role="${1:-advisor}"
+  cat <<EOF
+Use your ${role} lane for this. Claude is Claude Code, not Ace.
+
+Goal:
+
+Exact paths:
+- [fill in exact path]
+
+What CodeX verified:
+- [fill in verified evidence]
+
+What not to touch:
+- Do not edit files.
+- Do not calculate or call final tax/legal/financial totals final unless the packet explicitly asks.
+- Do not ask for secrets or print sensitive identifiers.
+
+Current risks:
+- [fill in current risks]
+
+Desired output:
+- Findings first, severity ordered.
+- Concrete next fixes for Codex.
+- Residual risk.
+
+Return format:
+
+1. Verdict
+2. Findings
+3. Recommended Codex Actions
+4. Verification Gaps
+5. Next Slice
+EOF
+}
+
+role="advisor"
+prompt_file=""
+dry_run=0
+model="${CODEX_CLAUDE_TEAM_MODEL:-sonnet}"
+effort="${CODEX_CLAUDE_TEAM_EFFORT:-low}"
+max_budget_usd="${CODEX_CLAUDE_TEAM_MAX_BUDGET_USD:-2}"
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --template)
+      shift
+      template "${1:-advisor}"
+      exit 0
+      ;;
+    --prompt)
+      prompt_file="${2:-}"
+      [ -n "$prompt_file" ] || { echo "error: --prompt needs a file" >&2; exit 2; }
+      shift 2
+      ;;
+    --role)
+      role="${2:-}"
+      [ -n "$role" ] || { echo "error: --role needs a value" >&2; exit 2; }
+      shift 2
+      ;;
+    --model)
+      model="${2:-}"
+      [ -n "$model" ] || { echo "error: --model needs a value" >&2; exit 2; }
+      shift 2
+      ;;
+    --effort)
+      effort="${2:-}"
+      [ -n "$effort" ] || { echo "error: --effort needs a value" >&2; exit 2; }
+      shift 2
+      ;;
+    --max-budget-usd)
+      max_budget_usd="${2:-}"
+      [ -n "$max_budget_usd" ] || { echo "error: --max-budget-usd needs a value" >&2; exit 2; }
+      shift 2
+      ;;
+    --dry-run)
+      dry_run=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "error: unknown argument: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+[ -n "$prompt_file" ] || {
+  echo "error: --prompt FILE is required unless --template is used" >&2
+  usage >&2
+  exit 2
+}
+[ -r "$prompt_file" ] || {
+  echo "error: prompt file not readable: $prompt_file" >&2
+  exit 2
+}
+
+case "$role" in
+  reviewer|advisor|researcher|config-doctor|tax-workpaper-reviewer) ;;
+  *)
+    echo "error: unsupported role: $role" >&2
+    exit 2
+    ;;
+esac
+
+case "$(basename "$prompt_file" | tr '[:upper:]' '[:lower:]')" in
+  *.env|*.env.*|*credential*|*secret*|*token*|*password*|*apikey*|*api-key*|*private*key*|*id_rsa*|*id_dsa*|*id_ecdsa*|*id_ed25519*|*.pem|*.p8|*.p12|*.pfx|*.pkcs12|*.key|*.keystore)
+    echo "error: prompt filename looks secret-like; refusing to send: $prompt_file" >&2
+    exit 2
+    ;;
+esac
+
+max_prompt_bytes="${CODEX_CLAUDE_TEAM_MAX_PROMPT_BYTES:-200000}"
+prompt_bytes="$(wc -c <"$prompt_file" | tr -d ' ')"
+if [ "$prompt_bytes" -gt "$max_prompt_bytes" ]; then
+  echo "error: prompt is too large: ${prompt_bytes} bytes > ${max_prompt_bytes}" >&2
+  exit 2
+fi
+
+if [ -z "${CLAUDE_BIN:-}" ]; then
+  CLAUDE_BIN="$(command -v claude || true)"
+  if [ -z "$CLAUDE_BIN" ] && [ -x "/Users/stephengodman/bin/claude" ]; then
+    CLAUDE_BIN="/Users/stephengodman/bin/claude"
+  fi
+fi
+[ -n "$CLAUDE_BIN" ] || {
+  echo "error: claude binary not found; set CLAUDE_BIN or install claude in PATH" >&2
+  exit 127
+}
+[ -x "$CLAUDE_BIN" ] || {
+  echo "error: Claude Code CLI not executable at $CLAUDE_BIN" >&2
+  exit 127
+}
+
+receipt_dir="$CODEX_ROOT/receipts/claude-team"
+mkdir -p "$receipt_dir"
+stamp="$(date +%Y%m%d-%H%M%S)"
+receipt="$receipt_dir/${stamp}-${role}.md"
+
+claude_cmd=("$CLAUDE_BIN" \
+  "--print" \
+  "--no-session-persistence" \
+  "--tools" "" \
+  "--model" "$model" \
+  "--effort" "$effort" \
+  "--max-budget-usd" "$max_budget_usd")
+
+auth_env_vars=(
+  ANTHROPIC_API_KEY
+  CLAUDE_API_KEY
+  ANTHROPIC_AUTH_TOKEN
+  ANTHROPIC_BETA_API_KEY
+  ANTHROPIC_API_AUTH_TOKEN
+  ANTHROPIC_BASE_URL
+  ANTHROPIC_PROXY_URL
+  CLAUDE_CODE_USE_BEDROCK
+  CLAUDE_CODE_USE_VERTEX
+  AWS_BEARER_TOKEN_BEDROCK
+  AWS_ACCESS_KEY_ID
+  AWS_SECRET_ACCESS_KEY
+  AWS_SESSION_TOKEN
+  ANTHROPIC_VERTEX_PROJECT_ID
+  CLOUD_ML_REGION
+  VERTEXAI_LOCATION
+  GCLOUD_PROJECT
+  GOOGLE_CLOUD_PROJECT
+  GCP_PROJECT
+  GOOGLE_APPLICATION_CREDENTIALS
+)
+
+if [ "$dry_run" -eq 1 ]; then
+  printf 'role: %s\n' "$role"
+  printf 'prompt: %s (%s bytes)\n' "$prompt_file" "$prompt_bytes"
+  printf 'receipt: %s\n' "$receipt"
+  printf 'command: %q ' "${claude_cmd[@]}"
+  printf '\n'
+  exit 0
+fi
+
+{
+  printf '# Claude Team Result\n\n'
+  printf -- '- role: `%s`\n' "$role"
+  printf -- '- prompt: `%s`\n' "$prompt_file"
+  printf -- '- model: `%s`\n' "$model"
+  printf -- '- effort: `%s`\n' "$effort"
+  printf -- '- generated_at: `%s`\n\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf '## Output\n\n'
+} >"$receipt"
+
+if codex_run_without_env "${auth_env_vars[@]}" -- "${claude_cmd[@]}" <"$prompt_file" | tee -a "$receipt"; then
+  printf '\nreceipt: %s\n' "$receipt"
+else
+  rc=$?
+  printf '\nerror: Claude team call failed with rc=%s\nreceipt: %s\n' "$rc" "$receipt" >&2
+  exit "$rc"
+fi

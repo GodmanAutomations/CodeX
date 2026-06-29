@@ -24,7 +24,8 @@ CodeX Coding Anchor is an execution posture, not a separate model.
 ## Routing
 
 - CodeX owns implementation, verification, and room hardening here.
-- Ace/Claude remains useful for broad strategy or conversation-heavy synthesis.
+- Claude Code remains useful for broad strategy, review, and conversation-heavy
+  synthesis. Do not route through an Ace persona layer.
 - Rook, Anchor, Gemini, and old archive material are not identities for this
   packet.
 

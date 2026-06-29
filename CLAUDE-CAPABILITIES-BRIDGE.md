@@ -8,7 +8,20 @@ Generated there: 2026-06-03.
 
 This is a bridge map, not a CodeX identity file.
 
-Use it when CodeX needs to know whether a task is better handled by Claude/Ace or by a Claude-only skill, connector, agent, hook, or workflow.
+Use it when CodeX needs to know whether a task is better handled by Claude Code
+or by a Claude-only skill, connector, agent, hook, or workflow.
+
+Current correction:
+
+- There is no active Ace persona.
+- Claude is Claude Code, configured as a clean coding/review operator.
+- Do not route through or refer to an Ace identity layer.
+- Claude's CodeX-local settings/config surface lives under
+  `/Users/stephengodman/CodeX/.claude/`; prefer this room-local surface over
+  old global persona paths when working in CodeX.
+- Use `CODEX-CLAUDE-REVIEWER.md` for the current reviewer contract.
+- Use `CLAUDE-OPUS-4.8-CODING-BEAST-RESEARCH.md` as the current rebuild
+  research note for Claude Code's clean operator profile.
 
 ## Rule
 

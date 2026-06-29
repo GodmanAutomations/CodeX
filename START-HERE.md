@@ -39,6 +39,8 @@ This is the front door for the CodeX room.
 - `CODEX-REGRESSION-HARNESS.md` - executable identity and personal-voice
   regression checks.
 - `CODEX-CLAUDE-REVIEWER.md` - Claude Code outside-reviewer contract.
+- `CODEX-CLAUDE-TEAMING.md` - Codex keeper plus Claude Code reviewer/advisor
+  teaming contract and scoped packet route.
 - `CODEX-TOOL-ROUTING.md` - truth-source routing for choosing tools quickly.
 - `QUICKSTART.md` - clipboard startup prompt and common commands.
 - `CONTINUITY.md` - continuity lane map.

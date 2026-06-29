@@ -80,6 +80,8 @@ After meaningful CodeX code, startup, routing, automation, or protocol changes:
 
 1. Run the smallest local validation that exercises the changed behavior.
 2. Run `/Users/stephengodman/CodeX/bin/codex-claude-review` when available.
+   For non-git workpapers or workflow packets, use
+   `/Users/stephengodman/CodeX/bin/codex-claude-team --prompt FILE`.
 3. Fix concrete review findings that point to real behavior, safety, or
    maintainability issues.
 4. Do not chase purely theoretical notes past the point of practical value;

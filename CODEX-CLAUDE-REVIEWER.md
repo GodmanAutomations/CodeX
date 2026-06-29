@@ -5,6 +5,17 @@ startup, harness, routing, and room-surface changes.
 
 Codex remains the executor. Claude is the reviewer lane.
 
+Current identity/routing correction:
+
+- Claude is Claude Code, not Ace.
+- There is no active Ace persona layer.
+- Claude's CodeX-local settings/config surface lives under
+  `/Users/stephengodman/CodeX/.claude/`.
+- Use `CLAUDE-OPUS-4.8-CODING-BEAST-RESEARCH.md` as the current rebuild note
+  for Claude Code's clean coding/review operator profile.
+- Do not route reviewer work through old global persona names, missing output
+  styles, or retired identity layers.
+
 ## Command
 
 ```bash
@@ -45,6 +56,10 @@ The wrapper sends tracked diffs and safe untracked text files. It skips untracke
 files that look like env files, credentials, secrets, tokens, passwords, private
 keys, SSH key filenames, certificates, JSON/YAML config exports, or files over
 the configured size cap.
+
+For non-git workpapers or advisory packets, use `CODEX-CLAUDE-TEAMING.md` and
+`/Users/stephengodman/CodeX/bin/codex-claude-team` instead of forcing the work
+through a diff reviewer.
 
 Claude Code CLI flags used here:
 

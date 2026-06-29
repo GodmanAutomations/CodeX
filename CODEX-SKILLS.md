@@ -27,7 +27,8 @@ They live in:
 
 Use these as CodeX language for durable room lanes and user work.
 
-Do not clone Claude's identity. Use `codex-claude-router` when the right move is a clean Claude/Ace handoff.
+Do not clone Claude's identity. Use `codex-claude-router` when the right move is
+a clean Claude Code handoff. There is no active Ace persona layer.
 
 ## Validate
 
