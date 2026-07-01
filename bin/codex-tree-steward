@@ -265,8 +265,20 @@ def scan_content(policy: dict[str, object], rows: list[tuple[str, str]]) -> list
         text = read_text_for_scan(path, max_bytes)
         if text is None:
             continue
+        active_patterns = []
+        for item, compiled in patterns:
+            include_paths = [
+                str(pattern)
+                for pattern in item.get("include_paths", [])
+                if str(pattern).strip()
+            ]
+            if include_paths and not any(fnmatch.fnmatch(relative, pattern) for pattern in include_paths):
+                continue
+            active_patterns.append((item, compiled))
+        if not active_patterns:
+            continue
         for line_number, line in enumerate(text.splitlines(), start=1):
-            for item, compiled in patterns:
+            for item, compiled in active_patterns:
                 if compiled.search(line):
                     name = str(item.get("name") or "content_check")
                     if name == "raw_secret_assignment" and any(value in line for value in allowed_secret_values):
@@ -470,20 +482,36 @@ def write_receipts(payload: dict[str, Any]) -> None:
 
 def run_doctor(json_mode: bool) -> int:
     policy = load_policy()
+    doctor_id = f"{os.getpid()}-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
+    secret_probe_name = f"TREE_STEWARD_DOCTOR_SECRET_{doctor_id}.md"
+    mcp_probe_name = f"tree_steward_doctor_probe_{doctor_id}.py"
     probes = [
-        ROOT / "TREE_STEWARD_DOCTOR_SECRET.md",
-        ROOT / "mcp_servers" / "tree_steward_doctor_probe.py",
+        ROOT / secret_probe_name,
+        ROOT / "mcp_servers" / mcp_probe_name,
     ]
     checks: list[dict[str, Any]] = []
     try:
         stale_path_probe = "REDACTED" + "-Code"
+        label_only_probe = "api" + "_key label only; Authorization: Bearer <redacted>"
         secret_assignment_probe = (
             "api" + "_key = 'notarealsecretvalueusedforpolicydoctor000000'"
         )
+        colon_secret_probe = (
+            '"tok'
+            + 'en": "'
+            + 'notarealsecretvalueusedforpolicydoctor000000"'
+        )
+        auth_header_probe = (
+            "Authorization: Bearer "
+            + "abcdefghijklmnopqrstuvwxyz0123456789"
+        )
         probes[0].write_text(
             "doctor probe\n"
+            f"{label_only_probe}\n"
             f"legacy_path = '{stale_path_probe}'\n"
-            f"{secret_assignment_probe}\n",
+            f"{secret_assignment_probe}\n"
+            f"{colon_secret_probe}\n"
+            f"{auth_header_probe}\n",
             encoding="utf-8",
         )
         probes[1].write_text("# doctor probe\nprint('tree steward doctor')\n", encoding="utf-8")
@@ -496,8 +524,46 @@ def run_doctor(json_mode: bool) -> int:
             }
         )
         secret_findings = [
-            item for item in payload["findings"] if item["path"] == "TREE_STEWARD_DOCTOR_SECRET.md"
+            item for item in payload["findings"] if Path(item["path"]).name == secret_probe_name
         ]
+        label_findings = [
+            item for item in secret_findings if item["name"] == "sensitive_label_only"
+        ]
+        blocking_findings = [
+            item for item in secret_findings if item["severity"] == "block"
+        ]
+        auth_value_findings = [
+            item for item in secret_findings if item["name"] == "authorization_bearer_value"
+        ]
+        preflight_policy = policy.get("trello_mcp_preflight", {})
+        blocked_categories = set(
+            str(item)
+            for item in (
+                preflight_policy.get("blocked_categories", [])
+                if isinstance(preflight_policy, dict)
+                else []
+            )
+            if str(item).strip()
+        ) or DEFAULT_BLOCK_CATEGORIES
+        blocked_severities = set(
+            str(item)
+            for item in (
+                preflight_policy.get("blocked_content_severities", [])
+                if isinstance(preflight_policy, dict)
+                else []
+            )
+            if str(item).strip()
+        ) or {"block"}
+        entry_blockers = sum(
+            1 for item in payload["entries"] if item["category"] in blocked_categories
+        )
+        content_blockers = sum(
+            1 for item in payload["findings"] if item["severity"] in blocked_severities
+        )
+        label_blockers = sum(
+            1 for item in label_findings if item["severity"] in blocked_severities
+        )
+        expected_strict_blockers = entry_blockers + content_blockers
         checks.append(
             {
                 "name": "untracked_content_scan",
@@ -505,10 +571,42 @@ def run_doctor(json_mode: bool) -> int:
                 "detail": [item["name"] for item in secret_findings],
             }
         )
+        checks.append(
+            {
+                "name": "label_findings_do_not_block",
+                "ok": bool(label_findings) and all(item["severity"] == "warn" for item in label_findings),
+                "detail": [item["severity"] for item in label_findings],
+            }
+        )
+        checks.append(
+            {
+                "name": "auth_values_block",
+                "ok": bool(auth_value_findings) and all(item["severity"] == "block" for item in auth_value_findings),
+                "detail": [item["severity"] for item in auth_value_findings],
+            }
+        )
+        checks.append(
+            {
+                "name": "preflight_blocker_count_excludes_labels",
+                "ok": (
+                    "warn" not in blocked_severities
+                    and label_blockers == 0
+                    and payload["strict_blockers"] == expected_strict_blockers
+                ),
+                "detail": {
+                    "blocked_content_severities": sorted(blocked_severities),
+                    "entry_blockers": entry_blockers,
+                    "content_blockers": content_blockers,
+                    "label_blockers": label_blockers,
+                    "expected_strict_blockers": expected_strict_blockers,
+                    "actual_strict_blockers": payload["strict_blockers"],
+                },
+            }
+        )
         mcp_entries = [
             item
             for item in payload["entries"]
-            if item["path"] == "mcp_servers/tree_steward_doctor_probe.py"
+            if item["path"] == f"mcp_servers/{mcp_probe_name}"
         ]
         checks.append(
             {
@@ -520,9 +618,20 @@ def run_doctor(json_mode: bool) -> int:
         )
         checks.append(
             {
-                "name": "trello_preflight_blocks_warn_findings",
-                "ok": not payload["strict_pass"] and payload["strict_blockers"] >= len(secret_findings),
-                "detail": {"strict_blockers": payload["strict_blockers"]},
+                "name": "trello_preflight_blocks_values_not_labels",
+                "ok": not payload["strict_pass"]
+                and payload["strict_blockers"] == expected_strict_blockers
+                and bool(label_findings)
+                and label_blockers == 0
+                and all(item["severity"] == "warn" for item in label_findings),
+                "detail": {
+                    "strict_blockers": payload["strict_blockers"],
+                    "expected_strict_blockers": expected_strict_blockers,
+                    "secret_findings": len(secret_findings),
+                    "blocking_findings": len(blocking_findings),
+                    "label_findings": len(label_findings),
+                    "auth_value_findings": len(auth_value_findings),
+                },
             }
         )
         output = {

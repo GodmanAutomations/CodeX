@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEFAULT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+ROOT="${1:-${CODEX_ROOT:-$DEFAULT_ROOT}}"
+CODEX_BIN="${CODEX_BIN:-/Users/stephengodman/.local/bin/codex}"
+PLUGIN_PATTERN='codex-security|record-and-replay|openai-developers|github@openai-curated|google-drive@openai-curated|cloudflare@openai-curated|vercel@openai-curated'
+
+if command -v "$CODEX_BIN" >/dev/null 2>&1; then
+  RUN_CODEX="$CODEX_BIN"
+elif command -v codex >/dev/null 2>&1; then
+  RUN_CODEX="codex"
+else
+  RUN_CODEX=""
+fi
+
+section() {
+  printf '\n## %s\n' "$1"
+}
+
+section "Codex"
+if [ -n "$RUN_CODEX" ]; then
+  "$RUN_CODEX" --version || echo "codex version unavailable"
+else
+  echo "codex unavailable"
+fi
+
+section "Git"
+if git -C "$ROOT" rev-parse --show-toplevel >/dev/null 2>&1; then
+  git -C "$ROOT" branch --show-current
+  git -C "$ROOT" status --short
+else
+  echo "git repo unavailable at $ROOT"
+fi
+
+section "Open PRs"
+if command -v gh >/dev/null 2>&1; then
+  gh pr list --repo GodmanAutomations/CodeX --state open --json number,title,headRefName,reviewDecision,statusCheckRollup,url || echo "gh pr list unavailable"
+else
+  echo "gh unavailable"
+fi
+
+section "Cloud Tasks"
+if [ -n "$RUN_CODEX" ]; then
+  "$RUN_CODEX" cloud list --json --limit 10 || echo "codex cloud list unavailable"
+else
+  echo "codex unavailable"
+fi
+
+section "Plugins"
+if [ -n "$RUN_CODEX" ]; then
+  "$RUN_CODEX" plugin list | grep -E "$PLUGIN_PATTERN" || true
+else
+  echo "codex unavailable"
+fi
+
+section "App Server"
+if [ -n "$RUN_CODEX" ]; then
+  "$RUN_CODEX" app-server daemon version || true
+else
+  echo "codex unavailable"
+fi
