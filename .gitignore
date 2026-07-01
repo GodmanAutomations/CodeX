@@ -54,6 +54,8 @@ node_modules/
 
 # Local financial exports
 transactions.csv
+Copilot-Money-Setup/
+Lowest-Effort Workflow to Finish the Tax Answer Sheet Project.md
 
 # Generated or bulky artifacts
 backups/
@@ -69,6 +71,7 @@ list_of_superskills.py
 GPTREVIEWOFCHAT.md
 INSPECTOR-GADGET-NEO4J-MCP-CAMOUFOX-GUIDE.md
 OPENWEBUI-ADDING-STUFF-GUIDE.md
+CLAUDE-OPUS-4.8-CODING-BEAST-RESEARCH.md
 *.png
 *.jpg
 *.jpeg
@@ -91,6 +94,7 @@ Coding Anchor Files/*
 Coding Anchor Files/codex-coding-anchor/.DS_Store
 Coding Anchor Files/codex-coding-anchor/.playwright-mcp/
 Coding Anchor Files/codex-coding-anchor/.venv/
+Coding Anchor Files/codex-coding-anchor/outputs/
 Coding Anchor Files/codex-coding-anchor/receipts/
 Coding Anchor Files/codex-coding-anchor/state/*
 !Coding Anchor Files/codex-coding-anchor/state/current-mission.json

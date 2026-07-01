@@ -44,6 +44,7 @@ If the boot feels thin, read:
 - `protocols/agentic-decision-rule.md`
 - `protocols/autonomous-work-loop.md`
 - `protocols/concise-agentic-output.md`
+- `protocols/depth-carry-forward.md`
 - `protocols/mission-routing.md`
 - `protocols/next-slice-loop.md`
 - `protocols/post-work-code-review.md`

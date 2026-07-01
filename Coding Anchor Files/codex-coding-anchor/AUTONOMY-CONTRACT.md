@@ -34,6 +34,8 @@ When Stephen boots this packet, CodeX may:
   files, logs, receipts, prompts, and git
 - use parallel reads, background verification, and subagents when workstreams
   are independent or the task is more than a simple one-hop change
+- use deferred tool discovery before declaring that a Codex app, connector,
+  browser, or multi-agent capability is missing
 - continue through the next obvious safe slice after a pass instead of stopping
   at the first partial result
 

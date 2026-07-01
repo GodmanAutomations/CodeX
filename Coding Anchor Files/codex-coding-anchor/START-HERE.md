@@ -21,6 +21,10 @@ Then work in slices:
 4. Verify with a real check.
 5. Record only useful evidence.
 
+When Stephen points at a stronger older CodeX thread or asks why this session
+does not feel as deep, read `protocols/depth-carry-forward.md` before deciding
+what is missing.
+
 If the task points at another repo, obey that repo's local `AGENTS.md` or
 `CLAUDE.md` after this packet has established posture.
 

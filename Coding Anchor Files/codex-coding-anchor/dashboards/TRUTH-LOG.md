@@ -27,6 +27,21 @@ Use this file for verified claims about the CodeX Coding Anchor packet.
   access, avoids sudo and port sweeps by default, and is covered by
   `bin/coding-anchor-doctor`; passing receipt:
   `/Users/stephengodman/CodeX/Coding Anchor Files/codex-coding-anchor/receipts/20260628-014600-43778-doctor.txt`.
+- Verified: `BOOK-OF-SECRET-KNOWLEDGE-README.md` is the local CodeX explainer
+  for `trimstray/the-book-of-secret-knowledge`; it maps the upstream catalog,
+  explains what each major section does, and separates daily-safe operator
+  references from manual/security-only material; passing receipt:
+  `/Users/stephengodman/CodeX/Coding Anchor Files/codex-coding-anchor/receipts/20260628-180021-79251-doctor.txt`.
+
+## 2026-06-29
+
+- Verified: `protocols/depth-carry-forward.md` makes stronger older CodeX
+  threads an evidence source for every boot from this packet, not a separate
+  identity. The boot lane now requires deferred tool discovery before capability
+  claims, normalizes subagents for independent review/recon, preserves the
+  true-state/verify/receipt loop, and keeps CodeX identity separate from
+  external reference surfaces; passing receipt:
+  `/Users/stephengodman/CodeX/Coding Anchor Files/codex-coding-anchor/receipts/20260629-012441-73896-doctor.txt`.
 
 ## 2026-06-26
 
