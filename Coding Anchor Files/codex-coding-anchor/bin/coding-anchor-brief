@@ -11,6 +11,8 @@ printf '%s\n' '- true-state inventory'
 printf '%s\n' '- smallest useful move'
 printf '%s\n' '- structured evidence when useful'
 printf '%s\n' '- verification before close'
+printf '%s\n' '- tool discovery before capability claims'
+printf '%s\n' '- depth carry-forward from verified CodeX runs'
 printf '%s\n' '- mission control and open-loop resume'
 printf '\n'
 printf 'Boot: %s/bin/coding-anchor-boot\n' "$ROOT"

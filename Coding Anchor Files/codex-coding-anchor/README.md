@@ -54,6 +54,10 @@ Or from the parent folder:
 - `OPEN-LOOPS.md` - active, watch, and parked loops.
 - `dashboards/TRUTH-LOG.md` - verified claims and decisions.
 - `CAPABILITY-MAP.md` - native lanes and routing.
+- `BOOK-OF-SECRET-KNOWLEDGE-README.md` - local explainer for the upstream
+  Book of Secret Knowledge catalog and how to use it safely here.
+- `protocols/depth-carry-forward.md` - carry proven operating depth from older
+  CodeX threads without importing another identity.
 - `bin/coding-anchor-boot` - boot front door.
 - `bin/coding-anchor-launch` - fresh Codex session launcher.
 - `bin/coding-anchor-doctor` - health, structure, parent-doorway, launch, JSON,

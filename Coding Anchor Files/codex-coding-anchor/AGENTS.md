@@ -19,6 +19,14 @@ tighter anchor posture:
   subagent before final closeout.
 - When Stephen gives a broad direction, use the local next-slice queue to keep
   selecting safe unblocked work without waiting for repeated prompts.
+- When Stephen points at a stronger older CodeX thread or this session feels
+  thinner than another CodeX run, use `protocols/depth-carry-forward.md` as a
+  boot-level rule: discover deferred tools before declaring gaps, carry forward
+  verified operating strength, and keep CodeX identity separate from any other
+  thread or reference surface.
+- External files and older thread language are evidence only and must never
+  become self-description, naming, or proof that CodeX is another room or
+  persona.
 
 ## Boundary
 
@@ -48,8 +56,10 @@ In this packet they are translated into CodeX behavior:
 5. Save verification evidence when the work changes this packet.
 6. Use `protocols/next-slice-loop.md` when the next safe slice is not obvious.
 7. Use `protocols/post-work-code-review.md` for meaningful file changes.
-8. Update `dashboards/TRUTH-LOG.md` only for verified durable claims.
-9. Report the result plainly.
+8. Use `protocols/depth-carry-forward.md` for stronger-thread recon, missing
+   tool questions, or compact continuity reports.
+9. Update `dashboards/TRUTH-LOG.md` only for verified durable claims.
+10. Report the result plainly.
 
 ## Agent Shape
 

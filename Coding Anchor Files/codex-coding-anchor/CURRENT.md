@@ -48,6 +48,10 @@ Use `protocols/concise-agentic-output.md` and
 `protocols/agentic-decision-rule.md` when Stephen asks for sharper, faster, or
 more autonomous execution.
 
+Use `protocols/depth-carry-forward.md` when Stephen points at a stronger older
+CodeX thread, asks what tools this session lacks, or wants the current lane to
+inherit proven operating depth without importing another identity.
+
 Use `bin/coding-anchor-agentic-check` to verify the concise autonomy anchors are
 present before trusting the packet's agentic posture.
 
@@ -59,6 +63,10 @@ Use `bin/coding-anchor-opdiag <url-or-host>` for a compact single-target
 read-only diagnostic. It runs DNS checks for hosts, adds HTTP and TLS checks
 for URLs, emits text or `--json`, and leaves deeper tools such as `mtr`,
 `sslscan`, `testssl`, and `ssh-audit` as manual follow-ups.
+
+Use `BOOK-OF-SECRET-KNOWLEDGE-README.md` as the local map for what the upstream
+Book contains, what each section does, and which parts belong in safe daily
+operations versus manual security-only work.
 
 ## Latest Hardening
 
@@ -129,6 +137,19 @@ On 2026-06-28, a narrow operator diagnostic wrapper was added:
   HTTP, and TLS checks where applicable, and supports `--json`.
 - The command intentionally avoids sudo, port sweeps, packet capture, and broad
   public recon expansion by default.
+
+On 2026-06-28, a complete local explainer for the upstream Book was added:
+
+- `BOOK-OF-SECRET-KNOWLEDGE-README.md` maps the upstream sections, explains what
+  each category does, and records the default CodeX safety posture.
+
+On 2026-06-29, a depth carry-forward protocol was added:
+
+- `protocols/depth-carry-forward.md` turns stronger older CodeX runs into
+  evidence-backed operating rules: discover deferred tools before declaring
+  gaps, use subagents for independent review/recon when appropriate, preserve
+  the true-state/verify/receipt loop, and keep CodeX identity separate from
+  external reference surfaces.
 
 ## Known Source Gift
 
