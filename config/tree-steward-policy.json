@@ -135,6 +135,9 @@
     {
       "name": "sensitive_label_only",
       "pattern": "(?i)\\b(api[_-]?key|token|secret|password|authorization|bearer|cookie|session|jwt)\\b",
+      "include_paths": [
+        "TREE_STEWARD_DOCTOR_SECRET_*.md"
+      ],
       "severity": "warn",
       "message": "Sensitive label or policy term only; not a blocking value finding"
     }
