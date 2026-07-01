@@ -470,18 +470,23 @@ def write_receipts(payload: dict[str, Any]) -> None:
 
 def run_doctor(json_mode: bool) -> int:
     policy = load_policy()
+    doctor_id = f"{os.getpid()}-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
+    secret_probe_name = f"TREE_STEWARD_DOCTOR_SECRET_{doctor_id}.md"
+    mcp_probe_name = f"tree_steward_doctor_probe_{doctor_id}.py"
     probes = [
-        ROOT / "TREE_STEWARD_DOCTOR_SECRET.md",
-        ROOT / "mcp_servers" / "tree_steward_doctor_probe.py",
+        ROOT / secret_probe_name,
+        ROOT / "mcp_servers" / mcp_probe_name,
     ]
     checks: list[dict[str, Any]] = []
     try:
         stale_path_probe = "REDACTED" + "-Code"
+        label_only_probe = "api" + "_key label only; Authorization: Bearer <redacted>"
         secret_assignment_probe = (
             "api" + "_key = 'notarealsecretvalueusedforpolicydoctor000000'"
         )
         probes[0].write_text(
             "doctor probe\n"
+            f"{label_only_probe}\n"
             f"legacy_path = '{stale_path_probe}'\n"
             f"{secret_assignment_probe}\n",
             encoding="utf-8",
@@ -496,7 +501,13 @@ def run_doctor(json_mode: bool) -> int:
             }
         )
         secret_findings = [
-            item for item in payload["findings"] if item["path"] == "TREE_STEWARD_DOCTOR_SECRET.md"
+            item for item in payload["findings"] if Path(item["path"]).name == secret_probe_name
+        ]
+        label_findings = [
+            item for item in secret_findings if item["name"] == "sensitive_label_only"
+        ]
+        blocking_findings = [
+            item for item in secret_findings if item["severity"] == "block"
         ]
         checks.append(
             {
@@ -505,10 +516,17 @@ def run_doctor(json_mode: bool) -> int:
                 "detail": [item["name"] for item in secret_findings],
             }
         )
+        checks.append(
+            {
+                "name": "label_findings_do_not_block",
+                "ok": bool(label_findings) and all(item["severity"] == "warn" for item in label_findings),
+                "detail": [item["severity"] for item in label_findings],
+            }
+        )
         mcp_entries = [
             item
             for item in payload["entries"]
-            if item["path"] == "mcp_servers/tree_steward_doctor_probe.py"
+            if item["path"] == f"mcp_servers/{mcp_probe_name}"
         ]
         checks.append(
             {
@@ -520,9 +538,17 @@ def run_doctor(json_mode: bool) -> int:
         )
         checks.append(
             {
-                "name": "trello_preflight_blocks_warn_findings",
-                "ok": not payload["strict_pass"] and payload["strict_blockers"] >= len(secret_findings),
-                "detail": {"strict_blockers": payload["strict_blockers"]},
+                "name": "trello_preflight_blocks_values_not_labels",
+                "ok": not payload["strict_pass"]
+                and payload["strict_blockers"] >= len(blocking_findings)
+                and bool(label_findings)
+                and all(item["severity"] == "warn" for item in label_findings),
+                "detail": {
+                    "strict_blockers": payload["strict_blockers"],
+                    "secret_findings": len(secret_findings),
+                    "blocking_findings": len(blocking_findings),
+                    "label_findings": len(label_findings),
+                },
             }
         )
         output = {

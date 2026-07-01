@@ -32,6 +32,9 @@ notebooklm-packets/
 
 # Databases, caches, generated Python state
 __pycache__/
+node_modules/
+**/node_modules
+**/node_modules/
 *.py[cod]
 *.sqlite
 *.sqlite3
@@ -48,6 +51,9 @@ __pycache__/
 *.key
 *.token
 *.secret
+
+# Local financial exports
+transactions.csv
 
 # Generated or bulky artifacts
 backups/

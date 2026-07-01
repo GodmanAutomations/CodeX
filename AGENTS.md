@@ -85,8 +85,56 @@ This trust does not permit sloppy or unsafe behavior:
 - Do not leak raw credentials.
 - Do not fake access, test results, or verification.
 - Do not perform destructive git or filesystem actions unless Stephen explicitly asks.
-- Do not force-push, `git reset --hard`, or remove user work without explicit approval.
+- Routine non-destructive git pipeline work is executor-owned: commit the
+  coherent verified slice, push the branch, open/update PRs, check readiness,
+  merge ready PRs, and clean up completed branches without asking Stephen.
+- Use `git-steward` before repo cleanup or when a repo is backed up. Use
+  `git-pipeline` for exact-path commit, push, PR, and merge flow.
+- Do not ask Stephen routine git questions. If the next question is "should I
+  commit/push/PR/merge this verified slice?", the default answer is yes.
+- Never force-push, `git reset --hard`, broad-delete, remove unclear user work,
+  or mix unrelated dirty work into a commit.
 - Do not widen into other rooms or broad home-directory surfaces unless Stephen points there or the current task truly requires it.
+
+## Cloud Codex / PR Lane
+
+Use Cloud Codex as the default second-pass reviewer for version-controlled
+CodeX slices when the work can be represented as a clean branch and PR.
+
+- Start implementation slices on a feature branch, not dirty `main`.
+- Use `git-pipeline start-slice`, exact-path commits, `git-pipeline push-pr`,
+  and `git-pipeline request-review` instead of hand-rolled PR flow when possible.
+- Post `@codex review` on PRs after the local slice is verified.
+- Use Cloud Codex for PR review, CI-failure fixes, and repo-contained follow-up
+  tasks.
+- Use `bin/codex-elite-status` as the read-only status command for recurring
+  repo/cloud/plugin/app-server triage.
+- Use `automation/CODEX-ELITE-AUTOMATIONS.md` as the source for Codex app
+  automation prompts until a supported automation-create CLI exists.
+- Keep Mac-local/runtime truth local: Docker, Ollama, OpenWeb, NotebookLM
+  source packs, private files, and unpushed dirty state must be verified locally
+  or summarized into the PR before expecting Cloud Codex to understand them.
+- Do not let Cloud Codex replace local verification for behavior that depends
+  on this Mac, local services, local credentials, or private room files.
+
+## Review Guidelines
+
+Cloud Codex and local reviewers should prioritize these issues as P0/P1:
+
+- Any committed secret, token, cookie, API key, private key, `.env` value, or
+  credential-bearing log.
+- Any broad staging/commit that mixes unrelated dirty work into the reviewed
+  slice.
+- Any direct-to-`main` workflow for non-trivial CodeX changes when a PR could
+  reasonably be used.
+- Any generated artifact, vendor blob, cache, database, receipt dump, or bulky
+  output committed without a clear reason and reviewable scope.
+- Any claim of local runtime success without a command, receipt, or explicit
+  verification note.
+- Any OpenWeb/Ollama/NotebookLM/Cloudflare change that assumes cloud state can
+  see Mac-local state without a handoff packet or source pack.
+- Any script that prints secrets, copies credentials into receipts, or sends
+  private local context to cloud tools without redaction.
 
 ## Remove Command Rule
 
@@ -129,6 +177,11 @@ Still require Stephen's explicit instruction before:
 - Use `/Users/stephengodman/CodeX/SYSTEM-TREE.md` for the NotebookLM map, local map files, search exclusions, and refresh commands.
 - Use `/Users/stephengodman/bin/refresh-systree` after major folder moves; use `--upload` only when the NotebookLM sources should be replaced.
 - NotebookLM CLI lives at `/Users/stephengodman/.local/bin/notebooklm`; `refresh-systree --upload` uses it.
+- NotebookLM source uploads and review-question runs should follow the
+  `codex-notebooklm-rag` skill: use the live `000_AI/notebooklm-py` client,
+  upload curated/redacted source packs with receipts, ask one question at a
+  time, wait for each response, reuse the conversation ID for a review thread,
+  and save each answer as a local receipt.
 - `/Users/stephengodman/system_tree/paths_all.txt` was removed to Trash by Claude after verification; do not recreate it unless Stephen explicitly asks.
 
 ## CodeX Skills Rule

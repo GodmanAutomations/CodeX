@@ -1,6 +1,6 @@
 {
-  "version": 1,
-  "description": "CodeX worktree hygiene policy for autonomous Trello MCP and room-control work.",
+  "version": 2,
+  "description": "CodeX worktree hygiene policy for autonomous Trello MCP and room-control work. Content scans protect values, not labels.",
   "content_scan_max_bytes": 1000000,
   "strict_block_categories": [
     "needs_human_review",
@@ -79,8 +79,9 @@
     ".env",
     "credential",
     "1password",
-    "secret",
-    "token"
+    "private-key",
+    "id_rsa",
+    "id_ed25519"
   ],
   "content_checks": [
     {
@@ -110,8 +111,14 @@
     {
       "name": "raw_secret_assignment",
       "pattern": "(?i)(api[_-]?key|token|secret|password)\\s*=\\s*['\\\"]?[A-Za-z0-9_./+=-]{24,}",
+      "severity": "block",
+      "message": "Possible raw secret value assignment; inspect without printing values"
+    },
+    {
+      "name": "sensitive_label_only",
+      "pattern": "(?i)\\b(api[_-]?key|token|secret|password|authorization|bearer|cookie|session|jwt)\\b",
       "severity": "warn",
-      "message": "Possible raw secret assignment; inspect without printing values"
+      "message": "Sensitive label or policy term only; not a blocking value finding"
     }
   ],
   "content_scan_excludes": [
@@ -139,8 +146,7 @@
       "ignored_or_archive_candidate"
     ],
     "blocked_content_severities": [
-      "block",
-      "warn"
+      "block"
     ],
     "candice_rewire_requires_explicit_instruction": true
   }
