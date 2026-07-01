@@ -79,6 +79,9 @@
     ".env",
     "credential",
     "1password",
+    "secret",
+    "token",
+    "password",
     "private-key",
     "id_rsa",
     "id_ed25519"
@@ -110,7 +113,7 @@
     },
     {
       "name": "raw_secret_assignment",
-      "pattern": "(?i)(api[_-]?key|token|secret|password)\\s*=\\s*['\\\"]?[A-Za-z0-9_./+=-]{24,}",
+      "pattern": "(?i)(api[_-]?key|token|secret|password)['\\\"]?\\s*[:=]\\s*['\\\"]?[A-Za-z0-9_./+=-]{24,}",
       "severity": "block",
       "message": "Possible raw secret value assignment; inspect without printing values"
     },

@@ -496,6 +496,11 @@ def run_doctor(json_mode: bool) -> int:
         secret_assignment_probe = (
             "api" + "_key = 'notarealsecretvalueusedforpolicydoctor000000'"
         )
+        colon_secret_probe = (
+            '"tok'
+            + 'en": "'
+            + 'notarealsecretvalueusedforpolicydoctor000000"'
+        )
         auth_header_probe = (
             "Authorization: Bearer "
             + "abcdefghijklmnopqrstuvwxyz0123456789"
@@ -505,6 +510,7 @@ def run_doctor(json_mode: bool) -> int:
             f"{label_only_probe}\n"
             f"legacy_path = '{stale_path_probe}'\n"
             f"{secret_assignment_probe}\n"
+            f"{colon_secret_probe}\n"
             f"{auth_header_probe}\n",
             encoding="utf-8",
         )
@@ -529,6 +535,35 @@ def run_doctor(json_mode: bool) -> int:
         auth_value_findings = [
             item for item in secret_findings if item["name"] == "authorization_bearer_value"
         ]
+        preflight_policy = policy.get("trello_mcp_preflight", {})
+        blocked_categories = set(
+            str(item)
+            for item in (
+                preflight_policy.get("blocked_categories", [])
+                if isinstance(preflight_policy, dict)
+                else []
+            )
+            if str(item).strip()
+        ) or DEFAULT_BLOCK_CATEGORIES
+        blocked_severities = set(
+            str(item)
+            for item in (
+                preflight_policy.get("blocked_content_severities", [])
+                if isinstance(preflight_policy, dict)
+                else []
+            )
+            if str(item).strip()
+        ) or {"block"}
+        entry_blockers = sum(
+            1 for item in payload["entries"] if item["category"] in blocked_categories
+        )
+        content_blockers = sum(
+            1 for item in payload["findings"] if item["severity"] in blocked_severities
+        )
+        label_blockers = sum(
+            1 for item in label_findings if item["severity"] in blocked_severities
+        )
+        expected_strict_blockers = entry_blockers + content_blockers
         checks.append(
             {
                 "name": "untracked_content_scan",
@@ -550,6 +585,24 @@ def run_doctor(json_mode: bool) -> int:
                 "detail": [item["severity"] for item in auth_value_findings],
             }
         )
+        checks.append(
+            {
+                "name": "preflight_blocker_count_excludes_labels",
+                "ok": (
+                    "warn" not in blocked_severities
+                    and label_blockers == 0
+                    and payload["strict_blockers"] == expected_strict_blockers
+                ),
+                "detail": {
+                    "blocked_content_severities": sorted(blocked_severities),
+                    "entry_blockers": entry_blockers,
+                    "content_blockers": content_blockers,
+                    "label_blockers": label_blockers,
+                    "expected_strict_blockers": expected_strict_blockers,
+                    "actual_strict_blockers": payload["strict_blockers"],
+                },
+            }
+        )
         mcp_entries = [
             item
             for item in payload["entries"]
@@ -567,11 +620,13 @@ def run_doctor(json_mode: bool) -> int:
             {
                 "name": "trello_preflight_blocks_values_not_labels",
                 "ok": not payload["strict_pass"]
-                and payload["strict_blockers"] >= len(blocking_findings)
+                and payload["strict_blockers"] == expected_strict_blockers
                 and bool(label_findings)
+                and label_blockers == 0
                 and all(item["severity"] == "warn" for item in label_findings),
                 "detail": {
                     "strict_blockers": payload["strict_blockers"],
+                    "expected_strict_blockers": expected_strict_blockers,
                     "secret_findings": len(secret_findings),
                     "blocking_findings": len(blocking_findings),
                     "label_findings": len(label_findings),
