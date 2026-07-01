@@ -484,11 +484,13 @@ def run_doctor(json_mode: bool) -> int:
         secret_assignment_probe = (
             "api" + "_key = 'notarealsecretvalueusedforpolicydoctor000000'"
         )
+        auth_header_probe = "Authorization: Bearer abcdefghijklmnopqrstuvwxyz0123456789"
         probes[0].write_text(
             "doctor probe\n"
             f"{label_only_probe}\n"
             f"legacy_path = '{stale_path_probe}'\n"
-            f"{secret_assignment_probe}\n",
+            f"{secret_assignment_probe}\n"
+            f"{auth_header_probe}\n",
             encoding="utf-8",
         )
         probes[1].write_text("# doctor probe\nprint('tree steward doctor')\n", encoding="utf-8")
@@ -509,6 +511,9 @@ def run_doctor(json_mode: bool) -> int:
         blocking_findings = [
             item for item in secret_findings if item["severity"] == "block"
         ]
+        auth_value_findings = [
+            item for item in secret_findings if item["name"] == "authorization_bearer_value"
+        ]
         checks.append(
             {
                 "name": "untracked_content_scan",
@@ -521,6 +526,13 @@ def run_doctor(json_mode: bool) -> int:
                 "name": "label_findings_do_not_block",
                 "ok": bool(label_findings) and all(item["severity"] == "warn" for item in label_findings),
                 "detail": [item["severity"] for item in label_findings],
+            }
+        )
+        checks.append(
+            {
+                "name": "auth_values_block",
+                "ok": bool(auth_value_findings) and all(item["severity"] == "block" for item in auth_value_findings),
+                "detail": [item["severity"] for item in auth_value_findings],
             }
         )
         mcp_entries = [
@@ -548,6 +560,7 @@ def run_doctor(json_mode: bool) -> int:
                     "secret_findings": len(secret_findings),
                     "blocking_findings": len(blocking_findings),
                     "label_findings": len(label_findings),
+                    "auth_value_findings": len(auth_value_findings),
                 },
             }
         )

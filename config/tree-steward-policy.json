@@ -115,6 +115,24 @@
       "message": "Possible raw secret value assignment; inspect without printing values"
     },
     {
+      "name": "authorization_bearer_value",
+      "pattern": "(?i)\\bauthorization\\s*:\\s*bearer\\s+[A-Za-z0-9._~+/=-]{16,}",
+      "severity": "block",
+      "message": "Possible bearer authorization value; inspect without printing values"
+    },
+    {
+      "name": "cookie_session_value",
+      "pattern": "(?i)\\b(cookie|set-cookie)\\s*:\\s*[^\\n]*(session|jwt|token|auth)[^\\n=]*=[A-Za-z0-9._~%+/=-]{16,}",
+      "severity": "block",
+      "message": "Possible cookie/session credential value; inspect without printing values"
+    },
+    {
+      "name": "jwt_value",
+      "pattern": "\\beyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\b",
+      "severity": "block",
+      "message": "Possible JWT value; inspect without printing values"
+    },
+    {
       "name": "sensitive_label_only",
       "pattern": "(?i)\\b(api[_-]?key|token|secret|password|authorization|bearer|cookie|session|jwt)\\b",
       "severity": "warn",
