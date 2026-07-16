@@ -30,6 +30,11 @@ FIRSTRUN_SH="${BOOTFS}/firstrun.sh"
 [ -f "${CMDLINE_TXT}" ] || die "Missing ${CMDLINE_TXT}"
 [ -f "${FIRSTRUN_SH}" ] || die "Missing ${FIRSTRUN_SH} (set a username/SSH in Raspberry Pi Imager so firstrun.sh exists, or see docs)."
 
+# Back up the boot files we may edit (once — don't clobber an existing .bak).
+for _f in "${CONFIG_TXT}" "${CMDLINE_TXT}" "${FIRSTRUN_SH}"; do
+  [ -f "${_f}.bak" ] || cp "${_f}" "${_f}.bak"
+done
+
 # 1. Enable the dwc2 overlay.
 if grep -q '^dtoverlay=dwc2$' "${CONFIG_TXT}"; then
   log "dwc2 overlay already present in config.txt"
@@ -38,11 +43,16 @@ else
   log "Added dtoverlay=dwc2 to config.txt"
 fi
 
-# 2. Load dwc2,g_ether early via cmdline.txt (single-line file).
+# 2. Load dwc2,g_ether early via cmdline.txt (a single-line, space-separated
+#    file). Append the token at end-of-line rather than depending on a specific
+#    neighbour like `rootwait` (which may be the last token or absent), then
+#    verify it landed so we never log success on a silent no-op.
 if grep -q 'modules-load=dwc2,g_ether' "${CMDLINE_TXT}"; then
   log "cmdline.txt already loads dwc2,g_ether"
 else
-  sed -i.bak 's/rootwait /rootwait modules-load=dwc2,g_ether /' "${CMDLINE_TXT}"
+  sed -i 's/[[:space:]]*$/ modules-load=dwc2,g_ether/' "${CMDLINE_TXT}"
+  grep -q 'modules-load=dwc2,g_ether' "${CMDLINE_TXT}" \
+    || die "Failed to add modules-load to cmdline.txt (restore ${CMDLINE_TXT}.bak)."
   log "Patched cmdline.txt (backup: cmdline.txt.bak)"
 fi
 
@@ -55,6 +65,7 @@ else
     /rm -f \/boot\/firstrun\.sh/ && !done {
       print "cp /usr/lib/udev/rules.d/85-nm-unmanaged.rules /etc/udev/rules.d/85-nm-unmanaged.rules"
       print "sed '\''s/^[^#]*gadget/# &/'\'' -i /etc/udev/rules.d/85-nm-unmanaged.rules"
+      print "mkdir -p /etc/NetworkManager/system-connections"
       print "CONNFILE1=/etc/NetworkManager/system-connections/usb0-dhcp.nmconnection"
       print "UUID1=$(cat /proc/sys/kernel/random/uuid)"
       print "cat > ${CONNFILE1} <<EOFUSB1"

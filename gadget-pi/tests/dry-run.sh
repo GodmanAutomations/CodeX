@@ -30,7 +30,14 @@ check "cloud-config header" "#cloud-config"            "${bootfs}/user-data"
 check "hostname set"        "hostname: test-pi"         "${bootfs}/user-data"
 check "gadget enabled"      "enable_usb_gadget: true"   "${bootfs}/user-data"
 check "ssh enabled"         "enable_ssh: true"          "${bootfs}/user-data"
-check "password present"    'plain_text_password: "s3cret"' "${bootfs}/user-data"
+check "chpasswd module"     "chpasswd:"                 "${bootfs}/user-data"
+check "password present"    'password: "s3cret"'        "${bootfs}/user-data"
+check "plaintext type"      "type: text"                "${bootfs}/user-data"
+if grep -q 'plain_text_password' "${bootfs}/user-data"; then
+  printf '  \033[31mFAIL\033[0m still uses unsupported plain_text_password key\n'; fail=$((fail + 1))
+else
+  printf '  \033[32mok\033[0m   no unsupported plain_text_password key\n'; pass=$((pass + 1))
+fi
 
 echo "== write-user-data.sh (ssh key) =="
 bootfs="${tmp}/boot-key"; mkdir -p "${bootfs}"; : > "${bootfs}/user-data"
@@ -51,7 +58,23 @@ check "dwc2 overlay"     "dtoverlay=dwc2"              "${bootfs}/config.txt"
 check "modules-load"     "modules-load=dwc2,g_ether"   "${bootfs}/cmdline.txt"
 check "usb0-dhcp conn"   "usb0-dhcp"                    "${bootfs}/firstrun.sh"
 check "nm-unmanaged fix" "85-nm-unmanaged.rules"        "${bootfs}/firstrun.sh"
+check "nm dir mkdir"     "mkdir -p /etc/NetworkManager/system-connections" "${bootfs}/firstrun.sh"
 check "portable uuid"    "/proc/sys/kernel/random/uuid" "${bootfs}/firstrun.sh"
+check "config.txt bak"   ""                             "${bootfs}/config.txt.bak"
+check "firstrun bak"     ""                             "${bootfs}/firstrun.sh.bak"
+
+echo "== patch-bookworm-bootfs.sh (rootwait as last token) =="
+bootfs="${tmp}/boot-bw2"; mkdir -p "${bootfs}"
+echo "console=serial0,115200 root=/dev/mmcblk0p2 rootwait" > "${bootfs}/cmdline.txt"
+echo "# base config" > "${bootfs}/config.txt"
+printf '#!/bin/bash\nrm -f /boot/firstrun.sh\n' > "${bootfs}/firstrun.sh"
+BOOTFS="${bootfs}" "${ROOT}/scripts/host/patch-bookworm-bootfs.sh" >/dev/null
+check "modules-load appended" "modules-load=dwc2,g_ether" "${bootfs}/cmdline.txt"
+if [ "$(wc -l < "${bootfs}/cmdline.txt")" -eq 1 ]; then
+  printf '  \033[32mok\033[0m   cmdline.txt stays single-line\n'; pass=$((pass + 1))
+else
+  printf '  \033[31mFAIL\033[0m cmdline.txt became multi-line\n'; fail=$((fail + 1))
+fi
 if grep -q 'uuid -v4' "${bootfs}/firstrun.sh"; then
   printf '  \033[31mFAIL\033[0m firstrun.sh still uses non-portable uuid -v4\n'; fail=$((fail + 1))
 else

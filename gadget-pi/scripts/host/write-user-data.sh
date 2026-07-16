@@ -98,8 +98,16 @@ users:
     groups: ${GROUPS_LINE}
     shell: /bin/bash
     lock_passwd: false
-    plain_text_password: "${PI_PASSWORD}"
     sudo: ALL=(ALL) NOPASSWD:ALL
+
+# Set the login password via the chpasswd module (the supported cloud-init
+# mechanism; the per-user 'plain_text_passwd' key is unreliable across versions).
+chpasswd:
+  expire: false
+  users:
+    - name: ${PI_USER}
+      password: "${PI_PASSWORD}"
+      type: text
 
 rpi:
   enable_usb_gadget: true

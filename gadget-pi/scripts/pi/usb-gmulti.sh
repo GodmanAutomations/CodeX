@@ -89,6 +89,9 @@ stop() {
     rm -f "$G/configs/c.1/mass_storage.0" || true
     rmdir "$G/functions/ecm.usb0" || true
     rmdir "$G/functions/acm.gs0" || true
+    # configfs auto-creates lun.0 under the mass_storage function; remove it
+    # first or the function directory can't be rmdir'd.
+    rmdir "$G/functions/mass_storage.0/lun.0" 2>/dev/null || true
     rmdir "$G/functions/mass_storage.0" || true
     rmdir "$G/configs/c.1/strings/0x409" || true
     rmdir "$G/configs/c.1" || true
