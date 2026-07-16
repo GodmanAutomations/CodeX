@@ -33,10 +33,13 @@ check "ssh enabled"         "enable_ssh: true"          "${bootfs}/user-data"
 check "chpasswd module"     "chpasswd:"                 "${bootfs}/user-data"
 check "password present"    'password: "s3cret"'        "${bootfs}/user-data"
 check "plaintext type"      "type: text"                "${bootfs}/user-data"
-if grep -q 'plain_text_password' "${bootfs}/user-data"; then
-  printf '  \033[31mFAIL\033[0m still uses unsupported plain_text_password key\n'; fail=$((fail + 1))
+# Catch both the real (unreliable) cloud-init key 'plain_text_passwd' and the
+# invalid 'plain_text_password' typo, as an actual YAML key (line start, not in
+# a '#' comment) via the shared 'plain_text_pass' prefix.
+if grep -qE '^[[:space:]]*plain_text_pass' "${bootfs}/user-data"; then
+  printf '  \033[31mFAIL\033[0m still uses a plain_text_pass* key\n'; fail=$((fail + 1))
 else
-  printf '  \033[32mok\033[0m   no unsupported plain_text_password key\n'; pass=$((pass + 1))
+  printf '  \033[32mok\033[0m   no plain_text_pass* key\n'; pass=$((pass + 1))
 fi
 
 echo "== write-user-data.sh (ssh key) =="

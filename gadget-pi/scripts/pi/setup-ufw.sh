@@ -40,7 +40,11 @@ fi
 # Wi-Fi), enabling default-deny with only usb0 allowed would kill your session.
 if [ -n "${SSH_CONNECTION:-}" ]; then
   server_ip="$(echo "${SSH_CONNECTION}" | awk '{print $3}')"
-  if [ -n "${server_ip}" ] && ! ip addr show dev "${GADGET_IFACE}" 2>/dev/null | grep -qw "${server_ip}"; then
+  # Compare exact addresses, not a regex/substring match: extract the bare IPs
+  # configured on the gadget iface and test for an exact whole-line match, so a
+  # look-alike IP (e.g. 10.55.0.10 vs 10.55.0.1) can't be a false positive.
+  iface_ips="$(ip -o addr show dev "${GADGET_IFACE}" 2>/dev/null | awk '{print $4}' | cut -d/ -f1)"
+  if [ -n "${server_ip}" ] && ! printf '%s\n' "${iface_ips}" | grep -qxF "${server_ip}"; then
     warn "Your SSH session is on ${server_ip}, which is NOT on ${GADGET_IFACE}."
     warn "Enabling the firewall now may terminate this session and lock you out."
     confirm "Proceed with enabling the firewall?"
