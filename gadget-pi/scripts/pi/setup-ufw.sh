@@ -36,6 +36,17 @@ if [ -n "${TRUSTED_LAN}" ]; then
   ufw allow proto tcp from "${TRUSTED_LAN}" to any port 5900 comment 'VNC on trusted LAN'
 fi
 
+# Lockout guard: if you're connected over SSH on some other interface (e.g.
+# Wi-Fi), enabling default-deny with only usb0 allowed would kill your session.
+if [ -n "${SSH_CONNECTION:-}" ]; then
+  server_ip="$(echo "${SSH_CONNECTION}" | awk '{print $3}')"
+  if [ -n "${server_ip}" ] && ! ip addr show dev "${GADGET_IFACE}" 2>/dev/null | grep -qw "${server_ip}"; then
+    warn "Your SSH session is on ${server_ip}, which is NOT on ${GADGET_IFACE}."
+    warn "Enabling the firewall now may terminate this session and lock you out."
+    confirm "Proceed with enabling the firewall?"
+  fi
+fi
+
 ufw --force enable
 ufw status verbose
 log "Firewall active. Control traffic is limited to ${GADGET_IFACE}${TRUSTED_LAN:+ and ${TRUSTED_LAN}}."

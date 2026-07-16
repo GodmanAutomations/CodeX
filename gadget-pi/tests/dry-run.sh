@@ -17,7 +17,8 @@ check() { # check "desc" "expected-substring" file
   fi
 }
 
-tmp="$(mktemp -d)"
+# Portable across GNU and BSD/macOS mktemp (BSD needs an explicit template).
+tmp="$(mktemp -d "${TMPDIR:-/tmp}/gadget-pi.XXXXXX")"
 trap 'rm -rf "${tmp}"' EXIT
 
 echo "== write-user-data.sh (password) =="
@@ -50,6 +51,12 @@ check "dwc2 overlay"     "dtoverlay=dwc2"              "${bootfs}/config.txt"
 check "modules-load"     "modules-load=dwc2,g_ether"   "${bootfs}/cmdline.txt"
 check "usb0-dhcp conn"   "usb0-dhcp"                    "${bootfs}/firstrun.sh"
 check "nm-unmanaged fix" "85-nm-unmanaged.rules"        "${bootfs}/firstrun.sh"
+check "portable uuid"    "/proc/sys/kernel/random/uuid" "${bootfs}/firstrun.sh"
+if grep -q 'uuid -v4' "${bootfs}/firstrun.sh"; then
+  printf '  \033[31mFAIL\033[0m firstrun.sh still uses non-portable uuid -v4\n'; fail=$((fail + 1))
+else
+  printf '  \033[32mok\033[0m   no non-portable uuid -v4\n'; pass=$((pass + 1))
+fi
 
 echo "== patch idempotency (second run must not double-apply) =="
 BOOTFS="${bootfs}" "${ROOT}/scripts/host/patch-bookworm-bootfs.sh" >/dev/null

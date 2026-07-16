@@ -32,6 +32,9 @@ lsblk -o NAME,SIZE,FSTYPE,LABEL,MOUNTPOINT,MODEL "${SSD_DEV}" || true
 warn "ALL DATA on ${SSD_DEV} will be ERASED."
 confirm "Repartition and format ${SSD_DEV} now?"
 
+# Unmount any active mounts on the target device to avoid "resource busy".
+umount "${SSD_DEV}"* 2>/dev/null || true
+
 log "Creating GPT + single ext4 partition on ${SSD_DEV} ..."
 parted -s "${SSD_DEV}" mklabel gpt
 parted -s "${SSD_DEV}" mkpart primary ext4 1MiB 100%
@@ -53,6 +56,8 @@ UUID="$(blkid -s UUID -o value "${SSD_PART}")"
 FSTAB_LINE="UUID=${UUID} ${SSD_MOUNT} ext4 defaults,nofail,x-systemd.device-timeout=10s 0 2"
 if grep -q "UUID=${UUID}" /etc/fstab; then
   log "fstab already has an entry for this UUID"
+elif grep -qE "[[:space:]]${SSD_MOUNT}[[:space:]]" /etc/fstab; then
+  warn "fstab already mounts ${SSD_MOUNT} (different device). Not appending, to avoid a duplicate mount point."
 else
   echo "${FSTAB_LINE}" >> /etc/fstab
   log "Appended to /etc/fstab: ${FSTAB_LINE}"
@@ -63,7 +68,8 @@ chown "${PI_USER}:${PI_USER}" "${SSD_MOUNT}"
 mkdir -p "${SSD_MOUNT}/projects" "${SSD_MOUNT}/transfers"
 chown -R "${PI_USER}:${PI_USER}" "${SSD_MOUNT}/projects" "${SSD_MOUNT}/transfers"
 
-home="/home/${PI_USER}"
+home="$(getent passwd "${PI_USER}" | cut -d: -f6)"
+: "${home:=/home/${PI_USER}}"
 if [ -d "${home}" ]; then
   ln -sfn "${SSD_MOUNT}/projects"  "${home}/projects"
   ln -sfn "${SSD_MOUNT}/transfers" "${home}/transfers"

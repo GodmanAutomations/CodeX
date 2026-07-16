@@ -18,6 +18,8 @@ ACTION="${1:-start}"
 G=/sys/kernel/config/usb_gadget/g1
 LUN_IMG="${LUN_IMG:-/pi-share.img}"
 LUN_SIZE_MB="${LUN_SIZE_MB:-256}"
+GADGET_MANUFACTURER="${GADGET_MANUFACTURER:-Gadget-Pi}"
+GADGET_PRODUCT="${GADGET_PRODUCT:-Pi USB Multi}"
 
 start() {
   modprobe libcomposite
@@ -31,9 +33,12 @@ start() {
   echo 0x0100 > "$G/bcdDevice"
 
   mkdir -p "$G/strings/0x409"
-  echo "StephenPi"      > "$G/strings/0x409/manufacturer"
-  echo "Pi USB Multi"   > "$G/strings/0x409/product"
-  awk '/Serial/ {print $3}' /proc/cpuinfo > "$G/strings/0x409/serialnumber"
+  echo "$GADGET_MANUFACTURER" > "$G/strings/0x409/manufacturer"
+  echo "$GADGET_PRODUCT"      > "$G/strings/0x409/product"
+  local serial
+  serial="$(awk '/Serial/ {print $3}' /proc/cpuinfo)"
+  # Some hosts refuse to enumerate a gadget with an empty serial number.
+  echo "${serial:-0000000000000000}" > "$G/strings/0x409/serialnumber"
 
   mkdir -p "$G/configs/c.1/strings/0x409"
   echo "ECM+Serial+ROStorage" > "$G/configs/c.1/strings/0x409/configuration"
@@ -46,7 +51,17 @@ start() {
   echo 02:12:34:56:78:9a > "$G/functions/ecm.usb0/dev_addr"
   echo 06:12:34:56:78:9a > "$G/functions/ecm.usb0/host_addr"
 
-  [ -f "$LUN_IMG" ] || dd if=/dev/zero of="$LUN_IMG" bs=1M count="$LUN_SIZE_MB" status=none
+  # Create + format the backing image the first time so the host sees a mountable
+  # filesystem (FAT32 for broad iPad/macOS/Windows compatibility) rather than a
+  # blank, unformatted, write-protected volume.
+  if [ ! -f "$LUN_IMG" ]; then
+    dd if=/dev/zero of="$LUN_IMG" bs=1M count="$LUN_SIZE_MB" status=none
+    if command -v mkfs.vfat >/dev/null 2>&1; then
+      mkfs.vfat -F 32 "$LUN_IMG" >/dev/null
+    elif command -v mkfs.ext4 >/dev/null 2>&1; then
+      mkfs.ext4 -F "$LUN_IMG" >/dev/null
+    fi
+  fi
   echo 1          > "$G/functions/mass_storage.0/stall"
   echo 1          > "$G/functions/mass_storage.0/lun.0/ro"
   echo "$LUN_IMG" > "$G/functions/mass_storage.0/lun.0/file"
@@ -57,7 +72,11 @@ start() {
 
   local udc=""
   local d
-  for d in /sys/class/udc/*/; do udc="$(basename "$d")"; break; done
+  for d in /sys/class/udc/*/; do
+    [ -d "$d" ] || continue   # skip the literal glob when no UDC exists
+    udc="$(basename "$d")"
+    break
+  done
   [ -n "$udc" ] || { echo "No UDC available" >&2; exit 1; }
   echo "$udc" > "$G/UDC"
 }

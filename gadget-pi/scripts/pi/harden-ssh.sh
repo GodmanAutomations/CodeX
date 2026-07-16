@@ -17,7 +17,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FORCE=0
 [ "${1:-}" = "--force" ] && FORCE=1
 
-keyfile="/home/${PI_USER}/.ssh/authorized_keys"
+user_home="$(getent passwd "${PI_USER}" | cut -d: -f6)"
+: "${user_home:=/home/${PI_USER}}"
+keyfile="${user_home}/.ssh/authorized_keys"
 if [ ! -s "${keyfile}" ] && [ "${FORCE}" -ne 1 ]; then
   die "No authorized_keys for ${PI_USER} at ${keyfile}. Set up a key first, or pass --force to proceed anyway (risky)."
 fi

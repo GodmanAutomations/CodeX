@@ -52,6 +52,11 @@ sudo systemctl enable usb-gmulti.service
 > host↔Pi file transfer, use SCP/SFTP over the ECM link instead (see
 > [06-security.md](06-security.md)).
 
+The USB descriptor strings default to a generic `Gadget-Pi` / `Pi USB Multi` and
+can be overridden per run: `GADGET_MANUFACTURER=... GADGET_PRODUCT=... sudo
+./scripts/pi/usb-gmulti.sh start`. The backing image is FAT32-formatted on first
+creation so the host sees a mountable (read-only) volume rather than a blank disk.
+
 The configfs flow the script follows: create the gadget dir → set vendor/product
 IDs and strings → create functions → set the ECM MAC addresses and the mass-storage
 backing file → symlink functions into `configs/c.1` → bind by writing the UDC name

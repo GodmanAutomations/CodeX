@@ -57,7 +57,10 @@ if [ "${USE_KEY}" = "1" ]; then
   : "${KEY_FILE:=${PI_SSH_PUBKEY_FILE:-}}"
   [ -n "${KEY_FILE}" ] || die "SSH key mode: set PI_SSH_PUBKEY_FILE or pass a path."
   [ -f "${KEY_FILE}" ] || die "SSH public key not found: ${KEY_FILE}"
-  PUBKEY="$(tr -d '\n' < "${KEY_FILE}")"
+  # Indent every non-blank key line into the YAML list. This supports a file
+  # containing multiple keys and preserves each key's trailing comment.
+  PUBKEYS="$(sed '/^[[:space:]]*$/d; s/^/      - /' "${KEY_FILE}")"
+  [ -n "${PUBKEYS}" ] || die "No usable keys found in ${KEY_FILE}."
   log "Writing key-authenticated user-data (key: ${KEY_FILE})"
   cat > "${TARGET}" <<EOF
 #cloud-config
@@ -71,7 +74,7 @@ users:
     shell: /bin/bash
     lock_passwd: false
     ssh_authorized_keys:
-      - ${PUBKEY}
+${PUBKEYS}
     sudo: ALL=(ALL) NOPASSWD:ALL
 
 rpi:

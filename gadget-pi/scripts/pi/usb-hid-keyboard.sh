@@ -11,6 +11,8 @@ set -euo pipefail
 [ "$(id -u)" -eq 0 ] || { echo "Run as root (sudo $0)" >&2; exit 1; }
 
 G=/sys/kernel/config/usb_gadget/hidkbd
+GADGET_MANUFACTURER="${GADGET_MANUFACTURER:-Gadget-Pi}"
+GADGET_PRODUCT="${GADGET_PRODUCT:-Pi HID Keyboard}"
 modprobe libcomposite
 mount -t configfs none /sys/kernel/config 2>/dev/null || true
 
@@ -18,8 +20,8 @@ mkdir -p "$G"
 echo 0x1d6b > "$G/idVendor"
 echo 0x0104 > "$G/idProduct"
 mkdir -p "$G/strings/0x409"
-echo "StephenPi"       > "$G/strings/0x409/manufacturer"
-echo "Pi HID Keyboard" > "$G/strings/0x409/product"
+echo "$GADGET_MANUFACTURER" > "$G/strings/0x409/manufacturer"
+echo "$GADGET_PRODUCT"      > "$G/strings/0x409/product"
 echo "0001"            > "$G/strings/0x409/serialnumber"
 
 mkdir -p "$G/configs/c.1/strings/0x409"
@@ -35,7 +37,11 @@ printf '\x05\x01\x09\x06\xa1\x01\x05\x07\x19\xe0\x29\xe7\x15\x00\x25\x01\x75\x01
 
 ln -snf "$G/functions/hid.usb0" "$G/configs/c.1/"
 udc=""
-for d in /sys/class/udc/*/; do udc="$(basename "$d")"; break; done
+for d in /sys/class/udc/*/; do
+  [ -d "$d" ] || continue   # skip the literal glob when no UDC exists
+  udc="$(basename "$d")"
+  break
+done
 [ -n "$udc" ] || { echo "No UDC available" >&2; exit 1; }
 echo "$udc" > "$G/UDC"
 

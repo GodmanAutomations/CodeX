@@ -23,9 +23,9 @@ _COMMON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GADGET_PI_ROOT="$(cd "${_COMMON_DIR}/.." && pwd)"
 export GADGET_PI_ROOT
 
-# Load config/gadget.env if it exists. Variables already exported in the
-# environment win, because the .env file uses `export VAR=...` and we source it
-# first — so to override, set the variable before invoking the script.
+# Load config/gadget.env if it exists. The shipped gadget.env.example uses the
+# `export VAR="${VAR:-default}"` form, so a value already set in the environment
+# takes precedence — an inline `VAR=... ./script` override wins over the file.
 _gadget_env="${GADGET_PI_ROOT}/config/gadget.env"
 if [ -f "${_gadget_env}" ]; then
   # shellcheck source=/dev/null
