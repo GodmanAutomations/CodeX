@@ -1,0 +1,14 @@
+# Real config with secrets — never commit.
+config/gadget.env
+
+# Disk images and backups.
+*.img
+*.img.xz
+*.img.gz
+*.img.zip
+*.sha256
+
+# Editor / OS cruft.
+.DS_Store
+*.bak
+*.new

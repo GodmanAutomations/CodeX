@@ -1,0 +1,16 @@
+[Unit]
+Description=USB composite gadget: ECM + ACM + RO mass storage
+DefaultDependencies=no
+After=local-fs.target
+Before=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Install usb-gmulti.sh to a stable path (see docs/04-advanced-gadgets.md):
+#   sudo install -m 0755 scripts/pi/usb-gmulti.sh /usr/local/sbin/usb-gmulti.sh
+ExecStart=/usr/local/sbin/usb-gmulti.sh start
+ExecStop=/usr/local/sbin/usb-gmulti.sh stop
+
+[Install]
+WantedBy=sysinit.target

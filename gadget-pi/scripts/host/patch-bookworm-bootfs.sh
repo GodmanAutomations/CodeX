@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+#
+# patch-bookworm-bootfs.sh — legacy fallback. Patch a freshly flashed Bookworm
+# boot partition for USB Ethernet gadget mode (dwc2 + g_ether) and teach
+# NetworkManager not to ignore the gadget interface.
+#
+# Runs on the HOST. Prefer the Trixie path (write-user-data.sh) unless you must
+# stay on Bookworm. See docs/03-bookworm-fallback.md.
+#
+# Usage:
+#   ./patch-bookworm-bootfs.sh                 # uses BOOTFS from gadget.env
+#   ./patch-bookworm-bootfs.sh /path/to/bootfs
+#
+# Idempotent: safe to run twice. Backs up cmdline.txt before editing.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../common.sh
+. "${SCRIPT_DIR}/../common.sh"
+
+BOOTFS="${1:-${BOOTFS:-}}"
+require BOOTFS
+[ -d "${BOOTFS}" ] || die "BOOTFS is not a directory: ${BOOTFS}"
+
+CONFIG_TXT="${BOOTFS}/config.txt"
+CMDLINE_TXT="${BOOTFS}/cmdline.txt"
+FIRSTRUN_SH="${BOOTFS}/firstrun.sh"
+
+[ -f "${CONFIG_TXT}" ]  || die "Missing ${CONFIG_TXT} (is this a Bookworm boot partition prepared by Raspberry Pi Imager?)"
+[ -f "${CMDLINE_TXT}" ] || die "Missing ${CMDLINE_TXT}"
+[ -f "${FIRSTRUN_SH}" ] || die "Missing ${FIRSTRUN_SH} (set a username/SSH in Raspberry Pi Imager so firstrun.sh exists, or see docs)."
+
+# 1. Enable the dwc2 overlay.
+if grep -q '^dtoverlay=dwc2$' "${CONFIG_TXT}"; then
+  log "dwc2 overlay already present in config.txt"
+else
+  printf '\n[all]\ndtoverlay=dwc2\n' >> "${CONFIG_TXT}"
+  log "Added dtoverlay=dwc2 to config.txt"
+fi
+
+# 2. Load dwc2,g_ether early via cmdline.txt (single-line file).
+if grep -q 'modules-load=dwc2,g_ether' "${CMDLINE_TXT}"; then
+  log "cmdline.txt already loads dwc2,g_ether"
+else
+  sed -i.bak 's/rootwait /rootwait modules-load=dwc2,g_ether /' "${CMDLINE_TXT}"
+  log "Patched cmdline.txt (backup: cmdline.txt.bak)"
+fi
+
+# 3. Inject NetworkManager connections + unmanaged-rule override into firstrun.sh
+#    just before it deletes itself.
+if grep -q 'usb0-dhcp' "${FIRSTRUN_SH}"; then
+  log "firstrun.sh already patched for usb0"
+else
+  awk '
+    /rm -f \/boot\/firstrun\.sh/ && !done {
+      print "cp /usr/lib/udev/rules.d/85-nm-unmanaged.rules /etc/udev/rules.d/85-nm-unmanaged.rules"
+      print "sed '\''s/^[^#]*gadget/# &/'\'' -i /etc/udev/rules.d/85-nm-unmanaged.rules"
+      print "CONNFILE1=/etc/NetworkManager/system-connections/usb0-dhcp.nmconnection"
+      print "UUID1=$(uuid -v4)"
+      print "cat > ${CONNFILE1} <<EOFUSB1"
+      print "[connection]"
+      print "id=usb0-dhcp"
+      print "uuid=${UUID1}"
+      print "type=ethernet"
+      print "interface-name=usb0"
+      print "autoconnect-priority=100"
+      print "autoconnect-retries=2"
+      print ""
+      print "[ethernet]"
+      print ""
+      print "[ipv4]"
+      print "dhcp-timeout=3"
+      print "method=auto"
+      print ""
+      print "[ipv6]"
+      print "addr-gen-mode=default"
+      print "method=auto"
+      print ""
+      print "[proxy]"
+      print "EOFUSB1"
+      print "CONNFILE2=/etc/NetworkManager/system-connections/usb0-ll.nmconnection"
+      print "UUID2=$(uuid -v4)"
+      print "cat > ${CONNFILE2} <<EOFUSB2"
+      print "[connection]"
+      print "id=usb0-ll"
+      print "uuid=${UUID2}"
+      print "type=ethernet"
+      print "interface-name=usb0"
+      print "autoconnect-priority=50"
+      print ""
+      print "[ethernet]"
+      print ""
+      print "[ipv4]"
+      print "method=link-local"
+      print ""
+      print "[ipv6]"
+      print "addr-gen-mode=default"
+      print "method=auto"
+      print ""
+      print "[proxy]"
+      print "EOFUSB2"
+      print "chmod 600 ${CONNFILE1} ${CONNFILE2}"
+      done=1
+    }
+    { print }
+  ' "${FIRSTRUN_SH}" > "${FIRSTRUN_SH}.new"
+  mv "${FIRSTRUN_SH}.new" "${FIRSTRUN_SH}"
+  chmod +x "${FIRSTRUN_SH}"
+  log "Patched firstrun.sh with usb0 NetworkManager connections"
+fi
+
+sync
+log "Bookworm boot partition patched at ${BOOTFS}"
+log "Remember: also place a userconf.txt + empty 'ssh' file if not set via Imager (see docs/03)."
