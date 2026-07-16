@@ -46,6 +46,7 @@ BOOTFS="${bootfs}" PI_HOSTNAME="test-pi" PI_USER="tester" \
   "${ROOT}/scripts/host/write-user-data.sh" --ssh-key "${key}" >/dev/null
 check "authorized key"   "ssh-ed25519 AAAATESTKEY" "${bootfs}/user-data"
 check "pwauth disabled"  "ssh_pwauth: false"        "${bootfs}/user-data"
+check "passwd locked"    "lock_passwd: true"        "${bootfs}/user-data"
 check "gadget enabled"   "enable_usb_gadget: true"  "${bootfs}/user-data"
 
 echo "== patch-bookworm-bootfs.sh =="

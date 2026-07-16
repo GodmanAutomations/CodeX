@@ -72,7 +72,7 @@ users:
   - name: ${PI_USER}
     groups: ${GROUPS_LINE}
     shell: /bin/bash
-    lock_passwd: false
+    lock_passwd: true
     ssh_authorized_keys:
 ${PUBKEYS}
     sudo: ALL=(ALL) NOPASSWD:ALL

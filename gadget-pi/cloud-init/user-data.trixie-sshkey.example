@@ -12,7 +12,7 @@ users:
   - name: USERNAME
     groups: users,adm,dialout,audio,netdev,video,plugdev,cdrom,games,input,gpio,spi,i2c,render,sudo
     shell: /bin/bash
-    lock_passwd: false
+    lock_passwd: true
     ssh_authorized_keys:
       - ssh-ed25519 AAAA_REPLACE_WITH_REAL_PUBLIC_KEY user@host
     sudo: ALL=(ALL) NOPASSWD:ALL

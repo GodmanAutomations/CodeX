@@ -50,7 +50,11 @@ fi
 if grep -q 'modules-load=dwc2,g_ether' "${CMDLINE_TXT}"; then
   log "cmdline.txt already loads dwc2,g_ether"
 else
-  sed -i 's/[[:space:]]*$/ modules-load=dwc2,g_ether/' "${CMDLINE_TXT}"
+  # Use a temp file instead of `sed -i` — GNU and BSD/macOS sed disagree on the
+  # `-i` syntax, and this script runs host-side on both. (The original was
+  # already backed up to .bak above.)
+  sed 's/[[:space:]]*$/ modules-load=dwc2,g_ether/' "${CMDLINE_TXT}" > "${CMDLINE_TXT}.tmp"
+  mv "${CMDLINE_TXT}.tmp" "${CMDLINE_TXT}"
   grep -q 'modules-load=dwc2,g_ether' "${CMDLINE_TXT}" \
     || die "Failed to add modules-load to cmdline.txt (restore ${CMDLINE_TXT}.bak)."
   log "Patched cmdline.txt (backup: cmdline.txt.bak)"
