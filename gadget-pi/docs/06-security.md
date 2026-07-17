@@ -44,6 +44,12 @@ sudo GADGET_IFACE=usb0 ./scripts/pi/setup-ufw.sh
 Resulting policy: default-deny inbound, default-allow outbound, plus
 `allow in on usb0` for ports 22 and 5900.
 
+It first prompts to **reset** `ufw` to a clean state — this discards any existing
+rules so the final policy is exactly the gadget-only one described (otherwise a
+stale `allow` rule could keep SSH/VNC reachable on another interface). It also
+warns and asks for confirmation if your current SSH session is on a non-`usb0`
+interface, to avoid locking yourself out.
+
 ## <a id="vnc"></a>VNC (desktop access)
 
 VNC is a convenience layer on top of SSH, not a replacement. Modern Raspberry Pi

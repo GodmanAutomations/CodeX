@@ -80,9 +80,18 @@ chown -R "${PI_USER}:${PI_USER}" "${SSD_MOUNT}/projects" "${SSD_MOUNT}/transfers
 home="$(getent passwd "${PI_USER}" | cut -d: -f6)"
 : "${home:=/home/${PI_USER}}"
 if [ -d "${home}" ]; then
-  ln -sfn "${SSD_MOUNT}/projects"  "${home}/projects"
-  ln -sfn "${SSD_MOUNT}/transfers" "${home}/transfers"
-  log "Linked ${home}/projects and ${home}/transfers -> ${SSD_MOUNT}"
+  for _name in projects transfers; do
+    link="${home}/${_name}"
+    # `ln -sfn` into an existing REAL directory would nest the link inside it
+    # rather than replace it, silently leaving the home path unchanged. Only
+    # (re)create the symlink when the path is absent or already a symlink.
+    if [ -d "${link}" ] && [ ! -L "${link}" ]; then
+      warn "${link} already exists as a real directory; leaving it. Move its contents into ${SSD_MOUNT}/${_name} manually if you want it on the SSD."
+    else
+      ln -sfn "${SSD_MOUNT}/${_name}" "${link}"
+      log "Linked ${link} -> ${SSD_MOUNT}/${_name}"
+    fi
+  done
 fi
 
 log "SSD data volume ready at ${SSD_MOUNT}"

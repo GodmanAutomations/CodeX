@@ -40,6 +40,14 @@ if [ -n "${SSH_CONNECTION:-}" ]; then
   fi
 fi
 
+# Start from a known-clean ruleset so the result matches the documented intent
+# (control traffic only over the gadget interface). Any pre-existing ufw rules
+# would otherwise persist and could leave SSH/VNC reachable on other interfaces.
+# This is destructive to existing rules, so confirm first.
+warn "This resets ufw to defaults, discarding ALL existing rules, before applying the ${GADGET_IFACE}-only policy."
+confirm "Reset ufw and apply the gadget-only policy?"
+ufw --force reset
+
 ufw default deny incoming
 ufw default allow outgoing
 
