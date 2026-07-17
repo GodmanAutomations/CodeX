@@ -156,6 +156,19 @@ else
   printf '  \033[31mFAIL\033[0m modules-load tokens: %s (expected 1)\n' "${m}"; fail=$((fail + 1))
 fi
 
+# Both modules present only in a LATER modules-load token must still be detected.
+bootfs="${tmp}/boot-ml2"; mkdir -p "${bootfs}"
+echo "modules-load=foo rootwait modules-load=dwc2,g_ether" > "${bootfs}/cmdline.txt"
+echo "# base config" > "${bootfs}/config.txt"
+printf '#!/bin/bash\nrm -f /boot/firstrun.sh\n' > "${bootfs}/firstrun.sh"
+BOOTFS="${bootfs}" "${ROOT}/scripts/host/patch-bookworm-bootfs.sh" >/dev/null
+m="$(grep -oE 'modules-load=' "${bootfs}/cmdline.txt" | wc -l | tr -d ' ')"
+if [ "${m}" -eq 2 ]; then
+  printf '  \033[32mok\033[0m   later modules-load token detected (no append)\n'; pass=$((pass + 1))
+else
+  printf '  \033[31mFAIL\033[0m modules-load tokens: %s (expected 2)\n' "${m}"; fail=$((fail + 1))
+fi
+
 echo "== patch-bookworm-bootfs.sh (missing firstrun anchor fails loudly) =="
 bootfs="${tmp}/boot-noanchor"; mkdir -p "${bootfs}"
 echo "console=serial0,115200 rootwait" > "${bootfs}/cmdline.txt"
