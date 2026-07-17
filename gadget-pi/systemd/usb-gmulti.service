@@ -3,6 +3,9 @@ Description=USB composite gadget: ECM + ACM + RO mass storage
 DefaultDependencies=no
 After=local-fs.target
 Before=network-pre.target
+# The script is installed manually (see below); skip cleanly if it's absent
+# instead of hard-failing at boot when the unit is enabled before install.
+ConditionPathExists=/usr/local/sbin/usb-gmulti.sh
 
 [Service]
 Type=oneshot

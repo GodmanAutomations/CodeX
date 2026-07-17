@@ -23,6 +23,23 @@ log "Installing ufw ..."
 apt-get update
 apt-get install -y ufw
 
+# Lockout guard FIRST. If ufw is already active, the `ufw default deny` and
+# `ufw allow` commands below take effect immediately — so a session on a non-
+# gadget interface could be dropped before we ever reach `ufw enable`. Check
+# before touching any rules.
+if [ -n "${SSH_CONNECTION:-}" ]; then
+  server_ip="$(echo "${SSH_CONNECTION}" | awk '{print $3}')"
+  # Compare exact addresses, not a regex/substring match: extract the bare IPs
+  # configured on the gadget iface and test for an exact whole-line match, so a
+  # look-alike IP (e.g. 10.55.0.10 vs 10.55.0.1) can't be a false positive.
+  iface_ips="$(ip -o addr show dev "${GADGET_IFACE}" 2>/dev/null | awk '{print $4}' | cut -d/ -f1)"
+  if [ -n "${server_ip}" ] && ! printf '%s\n' "${iface_ips}" | grep -qxF "${server_ip}"; then
+    warn "Your SSH session is on ${server_ip}, which is NOT on ${GADGET_IFACE}."
+    warn "Configuring the firewall now may terminate this session and lock you out."
+    confirm "Proceed with configuring and enabling the firewall?"
+  fi
+fi
+
 ufw default deny incoming
 ufw default allow outgoing
 
@@ -34,21 +51,6 @@ if [ -n "${TRUSTED_LAN}" ]; then
   log "Allowing SSH/VNC from trusted LAN ${TRUSTED_LAN} ..."
   ufw allow proto tcp from "${TRUSTED_LAN}" to any port 22 comment 'SSH on trusted LAN'
   ufw allow proto tcp from "${TRUSTED_LAN}" to any port 5900 comment 'VNC on trusted LAN'
-fi
-
-# Lockout guard: if you're connected over SSH on some other interface (e.g.
-# Wi-Fi), enabling default-deny with only usb0 allowed would kill your session.
-if [ -n "${SSH_CONNECTION:-}" ]; then
-  server_ip="$(echo "${SSH_CONNECTION}" | awk '{print $3}')"
-  # Compare exact addresses, not a regex/substring match: extract the bare IPs
-  # configured on the gadget iface and test for an exact whole-line match, so a
-  # look-alike IP (e.g. 10.55.0.10 vs 10.55.0.1) can't be a false positive.
-  iface_ips="$(ip -o addr show dev "${GADGET_IFACE}" 2>/dev/null | awk '{print $4}' | cut -d/ -f1)"
-  if [ -n "${server_ip}" ] && ! printf '%s\n' "${iface_ips}" | grep -qxF "${server_ip}"; then
-    warn "Your SSH session is on ${server_ip}, which is NOT on ${GADGET_IFACE}."
-    warn "Enabling the firewall now may terminate this session and lock you out."
-    confirm "Proceed with enabling the firewall?"
-  fi
 fi
 
 ufw --force enable
