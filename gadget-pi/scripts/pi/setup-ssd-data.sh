@@ -86,9 +86,11 @@ UUID="$(blkid -s UUID -o value "${SSD_PART}")"
 [ -n "${UUID}" ] || die "Could not read UUID of ${SSD_PART}."
 
 FSTAB_LINE="UUID=${UUID} ${SSD_MOUNT} ext4 defaults,nofail,x-systemd.device-timeout=10s 0 2"
-if grep -q "UUID=${UUID}" /etc/fstab; then
+# Field-based checks (not regex), so a UUID or mount point containing regex
+# metacharacters can't make grep -E error or mismatch after we've formatted.
+if awk -v u="UUID=${UUID}" '!/^[[:space:]]*#/ && $1 == u { f=1 } END { exit f?0:1 }' /etc/fstab; then
   log "fstab already has an entry for this UUID"
-elif grep -qE "[[:space:]]${SSD_MOUNT}[[:space:]]" /etc/fstab; then
+elif awk -v m="${SSD_MOUNT}" '!/^[[:space:]]*#/ && $2 == m { f=1 } END { exit f?0:1 }' /etc/fstab; then
   warn "fstab already mounts ${SSD_MOUNT} (different device). Not appending, to avoid a duplicate mount point."
 else
   echo "${FSTAB_LINE}" >> /etc/fstab
