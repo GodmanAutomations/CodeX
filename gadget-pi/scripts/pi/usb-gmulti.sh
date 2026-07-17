@@ -61,6 +61,15 @@ start() {
   echo "$GADGET_DEV_MAC"  > "$G/functions/ecm.usb0/dev_addr"
   echo "$GADGET_HOST_MAC" > "$G/functions/ecm.usb0/host_addr"
 
+  # Guard the backing-image path: a device node or other non-regular file here
+  # would let the dd below irreversibly overwrite a real disk (e.g. /dev/sda).
+  case "$LUN_IMG" in
+    /dev/*) echo "Refusing: LUN_IMG ($LUN_IMG) is under /dev." >&2; exit 1 ;;
+  esac
+  if [ -e "$LUN_IMG" ] && [ ! -f "$LUN_IMG" ]; then
+    echo "Refusing: LUN_IMG ($LUN_IMG) exists and is not a regular file." >&2; exit 1
+  fi
+
   # Create + format the backing image the first time so the host sees a mountable
   # filesystem (FAT32 for broad iPad/macOS/Windows compatibility) rather than a
   # blank, unformatted, write-protected volume.
