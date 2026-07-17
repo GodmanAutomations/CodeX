@@ -124,6 +124,11 @@ else
   ' "${FIRSTRUN_SH}" > "${FIRSTRUN_SH}.new"
   mv "${FIRSTRUN_SH}.new" "${FIRSTRUN_SH}"
   chmod +x "${FIRSTRUN_SH}"
+  # The awk anchors on the self-delete line ("rm -f /boot/firstrun.sh"). If
+  # Imager changes that line's format the injection is a silent no-op, so verify
+  # the marker actually landed rather than logging a false success.
+  grep -q 'usb0-dhcp' "${FIRSTRUN_SH}" \
+    || die "firstrun.sh injection did not apply (anchor line not found). Restore ${FIRSTRUN_SH}.bak and see docs/03 for the manual steps."
   log "Patched firstrun.sh with usb0 NetworkManager connections"
 fi
 

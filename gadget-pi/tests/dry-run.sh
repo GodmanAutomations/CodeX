@@ -128,6 +128,18 @@ else
   printf '  \033[31mFAIL\033[0m dwc2 applied %s times\n' "${n}"; fail=$((fail + 1))
 fi
 
+echo "== patch-bookworm-bootfs.sh (missing firstrun anchor fails loudly) =="
+bootfs="${tmp}/boot-noanchor"; mkdir -p "${bootfs}"
+echo "console=serial0,115200 rootwait" > "${bootfs}/cmdline.txt"
+echo "# base config" > "${bootfs}/config.txt"
+# firstrun.sh without the expected self-delete anchor line.
+printf '#!/bin/bash\necho hello\n' > "${bootfs}/firstrun.sh"
+if BOOTFS="${bootfs}" "${ROOT}/scripts/host/patch-bookworm-bootfs.sh" >/dev/null 2>&1; then
+  printf '  \033[31mFAIL\033[0m patcher reported success without injecting firstrun.sh\n'; fail=$((fail + 1))
+else
+  printf '  \033[32mok\033[0m   patcher fails when the firstrun anchor is missing\n'; pass=$((pass + 1))
+fi
+
 echo "== patch idempotency (dwc2 with existing parameters) =="
 bootfs="${tmp}/boot-bw3"; mkdir -p "${bootfs}"
 echo "console=serial0,115200 rootwait" > "${bootfs}/cmdline.txt"
