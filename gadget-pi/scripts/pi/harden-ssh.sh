@@ -14,6 +14,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 [ "$(id -u)" -eq 0 ] || die "Run as root (sudo $0)."
 
 : "${PI_USER:=${SUDO_USER:-pi}}"
+# PI_USER is written verbatim into an AllowUsers line; a value with whitespace or
+# newlines could break sshd_config or allow extra users. Require a single token.
+case "${PI_USER}" in
+  "" | *[!A-Za-z0-9._-]*) die "PI_USER must be a single token of [A-Za-z0-9._-]; got: '${PI_USER}'" ;;
+esac
 FORCE=0
 [ "${1:-}" = "--force" ] && FORCE=1
 

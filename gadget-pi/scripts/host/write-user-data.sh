@@ -45,6 +45,14 @@ require PI_HOSTNAME
 require PI_USER
 : "${PI_TIMEZONE:=America/Chicago}"
 
+# A newline/CR in any of these would break (or change the meaning of) the
+# generated YAML. Reject them up front. (PI_PASSWORD is checked in its branch.)
+for _v in PI_HOSTNAME PI_USER PI_TIMEZONE; do
+  case "${!_v}" in
+    *$'\n'* | *$'\r'*) die "${_v} must not contain newlines or carriage returns." ;;
+  esac
+done
+
 [ -d "${BOOTFS}" ] || die "BOOTFS is not a directory: ${BOOTFS}"
 # On genuine Trixie boot partitions cloud-init ships a user-data stub. We warn
 # rather than hard-fail so the script also works on a manually prepared volume.
