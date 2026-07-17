@@ -14,7 +14,7 @@ place a `userconf.txt` and an empty `ssh` file on the boot partition:
 
 ```bash
 # From config/gadget.env: PI_USER, PI_PASSWORD, BOOTFS
-HASH="$(echo "$PI_PASSWORD" | openssl passwd -6 -stdin)"
+HASH="$(printf '%s' "$PI_PASSWORD" | openssl passwd -6 -stdin)"
 printf '%s:%s\n' "$PI_USER" "$HASH" > "$BOOTFS/userconf.txt"
 touch "$BOOTFS/ssh"
 sync

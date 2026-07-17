@@ -61,6 +61,13 @@ start() {
   echo "$GADGET_DEV_MAC"  > "$G/functions/ecm.usb0/dev_addr"
   echo "$GADGET_HOST_MAC" > "$G/functions/ecm.usb0/host_addr"
 
+  # LUN_SIZE_MB is passed to dd count=; reject anything that isn't a positive
+  # integer before it can make dd fail or misbehave.
+  case "$LUN_SIZE_MB" in
+    "" | *[!0-9]*) echo "LUN_SIZE_MB must be a positive integer (MB), got: '$LUN_SIZE_MB'" >&2; exit 1 ;;
+  esac
+  [ "$LUN_SIZE_MB" -gt 0 ] || { echo "LUN_SIZE_MB must be greater than 0" >&2; exit 1; }
+
   # Guard the backing-image path: a device node or other non-regular file here
   # would let the dd below irreversibly overwrite a real disk (e.g. /dev/sda).
   case "$LUN_IMG" in
