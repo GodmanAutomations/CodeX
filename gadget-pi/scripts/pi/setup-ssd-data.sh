@@ -48,6 +48,14 @@ udevadm settle 2>/dev/null || true
 
 [ -b "${SSD_PART}" ] || die "Expected partition ${SSD_PART} did not appear. Check SSD_PART in gadget.env."
 
+# The user confirmed SSD_DEV, but SSD_PART is a separate config value. Make sure
+# it's actually a partition of the disk we just repartitioned before formatting,
+# so a misconfigured SSD_PART can't wipe a partition on some other disk.
+_parent="$(lsblk -no PKNAME "${SSD_PART}" 2>/dev/null | head -n1)"
+if [ -z "${_parent}" ] || [ "/dev/${_parent}" != "${SSD_DEV}" ]; then
+  die "${SSD_PART} is not a partition of ${SSD_DEV} (parent: /dev/${_parent:-unknown}). Refusing to format. Check SSD_PART in gadget.env."
+fi
+
 log "Formatting ${SSD_PART} as ext4 (label: pidata) ..."
 mkfs.ext4 -F -L pidata "${SSD_PART}"
 
