@@ -21,6 +21,17 @@ require SSD_PART
 : "${SSD_MOUNT:=/srv/data}"
 : "${PI_USER:=${SUDO_USER:-pi}}"
 
+# SSD_MOUNT goes into /etc/fstab (space-separated) and drives mkdir/chown, so a
+# bad value could corrupt fstab or operate on the root filesystem. Require a
+# non-root absolute path with no whitespace.
+case "${SSD_MOUNT}" in
+  "") die "SSD_MOUNT must not be empty." ;;
+  "/") die "SSD_MOUNT must not be the root filesystem (/)." ;;
+  *[[:space:]]*) die "SSD_MOUNT must not contain whitespace: '${SSD_MOUNT}'." ;;
+  /*) : ;;  # absolute path, good
+  *) die "SSD_MOUNT must be an absolute path: '${SSD_MOUNT}'." ;;
+esac
+
 # Declare the external commands used after the destructive step up-front, so a
 # missing tool fails fast before we repartition/format rather than mid-flight.
 # (partprobe/udevadm are best-effort and guarded with `|| true` below.)
