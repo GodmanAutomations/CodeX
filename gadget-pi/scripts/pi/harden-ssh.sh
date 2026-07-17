@@ -22,7 +22,11 @@ esac
 FORCE=0
 [ "${1:-}" = "--force" ] && FORCE=1
 
-user_home="$(getent passwd "${PI_USER}" | cut -d: -f6)"
+# Fail clearly if the user doesn't exist rather than dying silently in the
+# getent|cut pipeline below (set -euo pipefail).
+_pwent="$(getent passwd "${PI_USER}")" \
+  || die "User '${PI_USER}' does not exist. Set PI_USER in gadget.env to a real account."
+user_home="$(printf '%s' "${_pwent}" | cut -d: -f6)"
 : "${user_home:=/home/${PI_USER}}"
 keyfile="${user_home}/.ssh/authorized_keys"
 if [ ! -s "${keyfile}" ] && [ "${FORCE}" -ne 1 ]; then
