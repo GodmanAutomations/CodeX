@@ -17,14 +17,12 @@ users:
     # template locks the password and uses NOPASSWD instead.)
     sudo: ALL=(ALL) ALL
 
-# Set the login password via the chpasswd module (the supported cloud-init
-# mechanism; the per-user 'plain_text_passwd' key is unreliable across versions).
+# Set the login password via the chpasswd module. The list literal block keeps
+# the password verbatim (cloud-init splits USERNAME:PASSWORD on the first colon).
 chpasswd:
   expire: false
-  users:
-    - name: USERNAME
-      password: "PLAINTEXT-PASSWORD"
-      type: text
+  list: |
+    USERNAME:PLAINTEXT-PASSWORD
 
 rpi:
   enable_usb_gadget: true

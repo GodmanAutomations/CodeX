@@ -101,15 +101,12 @@ else
   require PI_PASSWORD
   [ "${PI_PASSWORD}" = "CHANGE-ME-NOW" ] && warn "PI_PASSWORD is still the placeholder — change it in config/gadget.env."
   log "Writing password-authenticated user-data (consider --ssh-key instead)"
-  # A newline/CR can't be represented in a single-line YAML scalar; reject it
-  # rather than emit invalid user-data that breaks first-boot provisioning.
+  # The password goes into a chpasswd `list:` literal block as USER:PASSWORD on
+  # one line, so a newline/CR would break it (or inject another entry). Reject
+  # those; every other character is preserved verbatim by the literal block.
   case "${PI_PASSWORD}" in
     *$'\n'* | *$'\r'*) die "PI_PASSWORD must not contain newlines or carriage returns." ;;
   esac
-  # Escape for a YAML double-quoted scalar so a password containing " or \\ can't
-  # produce invalid user-data: backslashes first, then double-quotes.
-  pw_yaml="${PI_PASSWORD//\\/\\\\}"
-  pw_yaml="${pw_yaml//\"/\\\"}"
   cat > "${TARGET}" <<EOF
 #cloud-config
 hostname: ${PI_HOSTNAME}
@@ -126,14 +123,12 @@ users:
     # because it locks the password and has nothing to authenticate sudo with.
     sudo: ALL=(ALL) ALL
 
-# Set the login password via the chpasswd module (the supported cloud-init
-# mechanism; the per-user 'plain_text_passwd' key is unreliable across versions).
+# Set the login password via the chpasswd module. The list literal block keeps
+# the password verbatim (cloud-init splits USER:PASSWORD on the first colon).
 chpasswd:
   expire: false
-  users:
-    - name: ${PI_USER}
-      password: "${pw_yaml}"
-      type: text
+  list: |
+    ${PI_USER}:${PI_PASSWORD}
 
 rpi:
   enable_usb_gadget: true

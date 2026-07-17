@@ -31,8 +31,8 @@ check "hostname set"        "hostname: test-pi"         "${bootfs}/user-data"
 check "gadget enabled"      "enable_usb_gadget: true"   "${bootfs}/user-data"
 check "ssh enabled"         "enable_ssh: true"          "${bootfs}/user-data"
 check "chpasswd module"     "chpasswd:"                 "${bootfs}/user-data"
-check "password present"    'password: "s3cret"'        "${bootfs}/user-data"
-check "plaintext type"      "type: text"                "${bootfs}/user-data"
+check "chpasswd list block"  "list: |"                  "${bootfs}/user-data"
+check "user:password line"  "tester:s3cret"             "${bootfs}/user-data"
 # Catch both the real (unreliable) cloud-init key 'plain_text_passwd' and the
 # invalid 'plain_text_password' typo, as an actual YAML key (line start, not in
 # a '#' comment) via the shared 'plain_text_pass' prefix.
@@ -48,13 +48,14 @@ else
   printf '  \033[32mok\033[0m   password mode requires sudo password\n'; pass=$((pass + 1))
 fi
 
-echo "== write-user-data.sh (password YAML escaping) =="
+echo "== write-user-data.sh (password preserved verbatim in list block) =="
 bootfs="${tmp}/boot-pw2"; mkdir -p "${bootfs}"; : > "${bootfs}/user-data"
-# Password containing a double-quote and a backslash must be YAML-escaped.
+# A password with a double-quote and a backslash is preserved verbatim in the
+# chpasswd list literal block (no escaping needed).
 BOOTFS="${bootfs}" PI_HOSTNAME="t" PI_USER="u" \
   PI_PASSWORD='a"b\c' PI_TIMEZONE="UTC" \
   "${ROOT}/scripts/host/write-user-data.sh" >/dev/null
-check "yaml-escaped password" 'password: "a\"b\\c"' "${bootfs}/user-data"
+check "verbatim password" 'u:a"b\c' "${bootfs}/user-data"
 
 echo "== write-user-data.sh (rejects newline in password) =="
 bootfs="${tmp}/boot-pw3"; mkdir -p "${bootfs}"; : > "${bootfs}/user-data"
