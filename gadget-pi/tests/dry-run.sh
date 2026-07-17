@@ -48,6 +48,14 @@ else
   printf '  \033[32mok\033[0m   password mode requires sudo password\n'; pass=$((pass + 1))
 fi
 
+echo "== write-user-data.sh (password YAML escaping) =="
+bootfs="${tmp}/boot-pw2"; mkdir -p "${bootfs}"; : > "${bootfs}/user-data"
+# Password containing a double-quote and a backslash must be YAML-escaped.
+BOOTFS="${bootfs}" PI_HOSTNAME="t" PI_USER="u" \
+  PI_PASSWORD='a"b\c' PI_TIMEZONE="UTC" \
+  "${ROOT}/scripts/host/write-user-data.sh" >/dev/null
+check "yaml-escaped password" 'password: "a\"b\\c"' "${bootfs}/user-data"
+
 echo "== write-user-data.sh (ssh key) =="
 bootfs="${tmp}/boot-key"; mkdir -p "${bootfs}"; : > "${bootfs}/user-data"
 key="${tmp}/id.pub"; echo "ssh-ed25519 AAAATESTKEY tester@host" > "${key}"

@@ -20,6 +20,10 @@ LUN_IMG="${LUN_IMG:-/pi-share.img}"
 LUN_SIZE_MB="${LUN_SIZE_MB:-256}"
 GADGET_MANUFACTURER="${GADGET_MANUFACTURER:-Gadget-Pi}"
 GADGET_PRODUCT="${GADGET_PRODUCT:-Pi USB Multi}"
+# ECM MAC addresses. Override these if you connect multiple Gadget-Pi devices to
+# the same host (or bridge them) to avoid address collisions.
+GADGET_DEV_MAC="${GADGET_DEV_MAC:-02:12:34:56:78:9a}"
+GADGET_HOST_MAC="${GADGET_HOST_MAC:-06:12:34:56:78:9a}"
 
 start() {
   modprobe libcomposite
@@ -48,8 +52,8 @@ start() {
   mkdir -p "$G/functions/acm.gs0"
   mkdir -p "$G/functions/mass_storage.0"
 
-  echo 02:12:34:56:78:9a > "$G/functions/ecm.usb0/dev_addr"
-  echo 06:12:34:56:78:9a > "$G/functions/ecm.usb0/host_addr"
+  echo "$GADGET_DEV_MAC"  > "$G/functions/ecm.usb0/dev_addr"
+  echo "$GADGET_HOST_MAC" > "$G/functions/ecm.usb0/host_addr"
 
   # Create + format the backing image the first time so the host sees a mountable
   # filesystem (FAT32 for broad iPad/macOS/Windows compatibility) rather than a

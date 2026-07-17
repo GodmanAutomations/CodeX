@@ -87,6 +87,10 @@ else
   require PI_PASSWORD
   [ "${PI_PASSWORD}" = "CHANGE-ME-NOW" ] && warn "PI_PASSWORD is still the placeholder — change it in config/gadget.env."
   log "Writing password-authenticated user-data (consider --ssh-key instead)"
+  # Escape for a YAML double-quoted scalar so a password containing " or \\ can't
+  # produce invalid user-data: backslashes first, then double-quotes.
+  pw_yaml="${PI_PASSWORD//\\/\\\\}"
+  pw_yaml="${pw_yaml//\"/\\\"}"
   cat > "${TARGET}" <<EOF
 #cloud-config
 hostname: ${PI_HOSTNAME}
@@ -109,7 +113,7 @@ chpasswd:
   expire: false
   users:
     - name: ${PI_USER}
-      password: "${PI_PASSWORD}"
+      password: "${pw_yaml}"
       type: text
 
 rpi:
