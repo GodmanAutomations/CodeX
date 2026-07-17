@@ -56,6 +56,9 @@ The USB descriptor strings default to a generic `Gadget-Pi` / `Pi USB Multi` and
 can be overridden per run: `GADGET_MANUFACTURER=... GADGET_PRODUCT=... sudo
 ./scripts/pi/usb-gmulti.sh start`. The backing image is FAT32-formatted on first
 creation so the host sees a mountable (read-only) volume rather than a blank disk.
+This needs `mkfs.vfat` (`sudo apt install -y dosfstools`); if it's missing the
+script fails with that hint rather than falling back to a filesystem an
+iPad/macOS/Windows host can't read.
 
 The configfs flow the script follows: create the gadget dir → set vendor/product
 IDs and strings → create functions → set the ECM MAC addresses and the mass-storage

@@ -25,7 +25,13 @@ fi
 
 section "USB gadget / kernel"
 printf 'UDC (USB device controllers):\n'
-ls /sys/class/udc 2>/dev/null || echo "  (none — no device-mode controller bound)"
+# ls exits 0 on an empty-but-existing dir, so capture and test contents instead.
+udc_list="$(ls -A /sys/class/udc 2>/dev/null)"
+if [ -n "${udc_list}" ]; then
+  printf '%s\n' "${udc_list}"
+else
+  echo "  (none — no device-mode controller bound)"
+fi
 printf '\nGadget modules:\n'
 lsmod | grep -E 'dwc2|g_ether|g_serial|g_multi|libcomposite' || echo "  (none loaded)"
 printf '\nRecent gadget kernel messages:\n'

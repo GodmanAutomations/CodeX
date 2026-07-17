@@ -55,12 +55,12 @@ start() {
   # filesystem (FAT32 for broad iPad/macOS/Windows compatibility) rather than a
   # blank, unformatted, write-protected volume.
   if [ ! -f "$LUN_IMG" ]; then
+    # FAT32 specifically, for iPad/macOS/Windows compatibility. No ext4 fallback:
+    # an ext4 image wouldn't mount on any of those hosts, defeating the purpose.
+    command -v mkfs.vfat >/dev/null 2>&1 \
+      || { echo "mkfs.vfat not found — install it: sudo apt install -y dosfstools" >&2; exit 1; }
     dd if=/dev/zero of="$LUN_IMG" bs=1M count="$LUN_SIZE_MB" status=none
-    if command -v mkfs.vfat >/dev/null 2>&1; then
-      mkfs.vfat -F 32 "$LUN_IMG" >/dev/null
-    elif command -v mkfs.ext4 >/dev/null 2>&1; then
-      mkfs.ext4 -F "$LUN_IMG" >/dev/null
-    fi
+    mkfs.vfat -F 32 "$LUN_IMG" >/dev/null
   fi
   echo 1          > "$G/functions/mass_storage.0/stall"
   echo 1          > "$G/functions/mass_storage.0/lun.0/ro"
