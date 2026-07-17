@@ -30,6 +30,10 @@ for _c in parted mkfs.ext4 blkid lsblk mountpoint getent df head cut \
 done
 
 [ -b "${SSD_DEV}" ] || die "${SSD_DEV} is not a block device."
+# Require a whole disk (not a partition like /dev/sda1) — parted mklabel on a
+# partition node is wrong and risks data loss on a misconfigured SSD_DEV.
+[ "$(lsblk -dno TYPE "${SSD_DEV}" 2>/dev/null)" = "disk" ] \
+  || die "${SSD_DEV} is not a whole disk (expected TYPE=disk). Set SSD_DEV to the whole device, e.g. /dev/sda, not /dev/sda1."
 
 # Fail before touching the disk if PI_USER doesn't exist (it's needed for the
 # chown/home-symlink steps after formatting).

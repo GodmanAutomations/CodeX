@@ -42,6 +42,8 @@ if [ "${os}" = "Darwin" ]; then
   # already-raw /dev/rdiskN, and reject anything unexpected so we never build a
   # bogus path like /dev/rrdisk4.
   case "${dev}" in
+    /dev/rdisk[0-9]*s[0-9]* | /dev/disk[0-9]*s[0-9]*)
+      die "${dev} is a partition/slice. Pass the whole disk (e.g. /dev/disk4), not /dev/disk4s1." ;;
     /dev/rdisk*) raw="${dev}" ;;
     /dev/disk*)  raw="/dev/r${dev#/dev/}" ;;
     *) die "Expected /dev/diskN or /dev/rdiskN on macOS, got: ${dev}" ;;
@@ -62,6 +64,10 @@ else
   fi
   [ -n "${dev}" ] || die "No device given."
   [ -b "${dev}" ] || die "${dev} is not a block device."
+  # Require a whole disk, not a partition — a partition would back up only part
+  # of the card despite the whole-disk intent.
+  [ "$(lsblk -dno TYPE "${dev}" 2>/dev/null)" = "disk" ] \
+    || die "${dev} is not a whole disk (expected TYPE=disk). Pass the whole device, e.g. /dev/sdb, not /dev/sdb1."
   confirm "About to READ ${dev} into a backup image. Correct device?"
   # Unmount any mounted partitions of the device (ignore failures).
   sudo umount "${dev}"* 2>/dev/null || true
