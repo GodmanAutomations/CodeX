@@ -36,7 +36,7 @@ esac
 # missing tool fails fast before we repartition/format rather than mid-flight.
 # (partprobe/udevadm are best-effort and guarded with `|| true` below.)
 for _c in parted mkfs.ext4 blkid lsblk mountpoint getent df head cut \
-          mount umount mkdir chown ln grep sync; do
+          mount umount mkdir chown ln grep sync awk; do
   need_cmd "${_c}"
 done
 
