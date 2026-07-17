@@ -45,13 +45,19 @@ require PI_HOSTNAME
 require PI_USER
 : "${PI_TIMEZONE:=America/Chicago}"
 
-# A newline/CR in any of these would break (or change the meaning of) the
-# generated YAML. Reject them up front. (PI_PASSWORD is checked in its branch.)
-for _v in PI_HOSTNAME PI_USER PI_TIMEZONE; do
-  case "${!_v}" in
-    *$'\n'* | *$'\r'*) die "${_v} must not contain newlines or carriage returns." ;;
-  esac
-done
+# These values are emitted as unquoted YAML scalars, so validate them against
+# safe character sets. This rejects not just newlines/CR but also YAML-significant
+# characters (# : { } [ ], whitespace, …) that could break or change the meaning
+# of the generated user-data. (PI_PASSWORD is quoted+escaped in its branch.)
+case "${PI_HOSTNAME}" in
+  "" | *[!A-Za-z0-9.-]*) die "PI_HOSTNAME must be [A-Za-z0-9.-]; got: '${PI_HOSTNAME}'" ;;
+esac
+case "${PI_USER}" in
+  "" | *[!A-Za-z0-9._-]*) die "PI_USER must be [A-Za-z0-9._-]; got: '${PI_USER}'" ;;
+esac
+case "${PI_TIMEZONE}" in
+  "" | *[!A-Za-z0-9_/+-]*) die "PI_TIMEZONE must be [A-Za-z0-9_/+-]; got: '${PI_TIMEZONE}'" ;;
+esac
 
 [ -d "${BOOTFS}" ] || die "BOOTFS is not a directory: ${BOOTFS}"
 # On genuine Trixie boot partitions cloud-init ships a user-data stub. We warn

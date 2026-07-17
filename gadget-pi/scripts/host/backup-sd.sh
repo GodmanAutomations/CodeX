@@ -18,7 +18,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 OUTDIR="${HOME}/pi-backups"
 mkdir -p "${OUTDIR}"
-STAMP="$(date +%F)"
+# Include the time so multiple runs in one day don't silently overwrite an
+# earlier backup image/checksum.
+STAMP="$(date +%Y-%m-%d-%H%M%S)"
 
 os="$(uname -s)"
 dev="${1:-}"

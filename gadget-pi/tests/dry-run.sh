@@ -72,6 +72,13 @@ if BOOTFS="${tmp}/boot-pw3" PI_HOSTNAME="$(printf 'a\nb')" PI_USER="u" \
 else
   printf '  \033[32mok\033[0m   rejected hostname containing a newline\n'; pass=$((pass + 1))
 fi
+if BOOTFS="${tmp}/boot-pw3" PI_HOSTNAME="a:b # c" PI_USER="u" \
+     PI_PASSWORD="x" PI_TIMEZONE="UTC" \
+     "${ROOT}/scripts/host/write-user-data.sh" >/dev/null 2>&1; then
+  printf '  \033[31mFAIL\033[0m accepted a hostname with YAML-significant chars\n'; fail=$((fail + 1))
+else
+  printf '  \033[32mok\033[0m   rejected hostname with YAML-significant chars\n'; pass=$((pass + 1))
+fi
 
 echo "== write-user-data.sh (ssh key) =="
 bootfs="${tmp}/boot-key"; mkdir -p "${bootfs}"; : > "${bootfs}/user-data"
