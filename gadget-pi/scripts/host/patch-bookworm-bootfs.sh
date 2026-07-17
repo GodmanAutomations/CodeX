@@ -49,8 +49,12 @@ fi
 #    file). Append the token at end-of-line rather than depending on a specific
 #    neighbour like `rootwait` (which may be the last token or absent), then
 #    verify it landed so we never log success on a silent no-op.
-if grep -q 'modules-load=dwc2,g_ether' "${CMDLINE_TXT}"; then
-  log "cmdline.txt already loads dwc2,g_ether"
+# Consider it already handled if an existing modules-load= token contains BOTH
+# dwc2 and g_ether (any order, extra modules OK) — not just the exact literal —
+# so we don't append a duplicate token.
+_ml="$(grep -oE 'modules-load=[^[:space:]]+' "${CMDLINE_TXT}" | head -n1 || true)"
+if printf '%s' "${_ml}" | grep -q 'dwc2' && printf '%s' "${_ml}" | grep -q 'g_ether'; then
+  log "cmdline.txt already loads dwc2 and g_ether"
 else
   # Use a temp file instead of `sed -i` — GNU and BSD/macOS sed disagree on the
   # `-i` syntax, and this script runs host-side on both. (The original was

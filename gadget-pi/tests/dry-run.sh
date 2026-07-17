@@ -143,6 +143,19 @@ else
   printf '  \033[31mFAIL\033[0m dwc2 applied %s times\n' "${n}"; fail=$((fail + 1))
 fi
 
+echo "== cmdline idempotency (existing modules-load, reverse order + extra) =="
+bootfs="${tmp}/boot-ml"; mkdir -p "${bootfs}"
+echo "console=serial0,115200 modules-load=g_ether,dwc2,foo rootwait" > "${bootfs}/cmdline.txt"
+echo "# base config" > "${bootfs}/config.txt"
+printf '#!/bin/bash\nrm -f /boot/firstrun.sh\n' > "${bootfs}/firstrun.sh"
+BOOTFS="${bootfs}" "${ROOT}/scripts/host/patch-bookworm-bootfs.sh" >/dev/null
+m="$(grep -oE 'modules-load=' "${bootfs}/cmdline.txt" | wc -l | tr -d ' ')"
+if [ "${m}" -eq 1 ]; then
+  printf '  \033[32mok\033[0m   no duplicate modules-load token appended\n'; pass=$((pass + 1))
+else
+  printf '  \033[31mFAIL\033[0m modules-load tokens: %s (expected 1)\n' "${m}"; fail=$((fail + 1))
+fi
+
 echo "== patch-bookworm-bootfs.sh (missing firstrun anchor fails loudly) =="
 bootfs="${tmp}/boot-noanchor"; mkdir -p "${bootfs}"
 echo "console=serial0,115200 rootwait" > "${bootfs}/cmdline.txt"

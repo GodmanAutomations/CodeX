@@ -48,7 +48,8 @@ require PI_USER
 # These values are emitted as unquoted YAML scalars, so validate them against
 # safe character sets. This rejects not just newlines/CR but also YAML-significant
 # characters (# : { } [ ], whitespace, …) that could break or change the meaning
-# of the generated user-data. (PI_PASSWORD is quoted+escaped in its branch.)
+# of the generated user-data. (PI_PASSWORD goes into a chpasswd list literal
+# block verbatim, so only newline/CR is rejected there.)
 case "${PI_HOSTNAME}" in
   "" | *[!A-Za-z0-9.-]*) die "PI_HOSTNAME must be [A-Za-z0-9.-]; got: '${PI_HOSTNAME}'" ;;
 esac
