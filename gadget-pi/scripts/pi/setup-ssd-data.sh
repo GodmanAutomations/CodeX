@@ -24,7 +24,7 @@ require SSD_PART
 # Declare every external command used after the destructive step up-front, so a
 # missing tool fails fast before we repartition/format rather than mid-flight.
 # (partprobe/udevadm/umount are best-effort and guarded with `|| true` below.)
-for _c in parted mkfs.ext4 blkid lsblk mountpoint getent df; do
+for _c in parted mkfs.ext4 blkid lsblk mountpoint getent df head cut; do
   need_cmd "${_c}"
 done
 

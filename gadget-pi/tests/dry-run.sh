@@ -83,7 +83,9 @@ fi
 
 echo "== write-user-data.sh (ssh key) =="
 bootfs="${tmp}/boot-key"; mkdir -p "${bootfs}"; : > "${bootfs}/user-data"
-key="${tmp}/id.pub"; echo "ssh-ed25519 AAAATESTKEY tester@host" > "${key}"
+# Include a comment line and a blank line, as an authorized_keys file might have.
+key="${tmp}/id.pub"
+printf '# my keys\n\nssh-ed25519 AAAATESTKEY tester@host\n' > "${key}"
 BOOTFS="${bootfs}" PI_HOSTNAME="test-pi" PI_USER="tester" \
   "${ROOT}/scripts/host/write-user-data.sh" --ssh-key "${key}" >/dev/null
 check "authorized key"   "ssh-ed25519 AAAATESTKEY" "${bootfs}/user-data"
@@ -91,6 +93,11 @@ check "pwauth disabled"  "ssh_pwauth: false"        "${bootfs}/user-data"
 check "passwd locked"    "lock_passwd: true"        "${bootfs}/user-data"
 check "key mode NOPASSWD" "sudo: ALL=(ALL) NOPASSWD:ALL" "${bootfs}/user-data"
 check "gadget enabled"   "enable_usb_gadget: true"  "${bootfs}/user-data"
+if grep -qE '^[[:space:]]*-[[:space:]]*#' "${bootfs}/user-data"; then
+  printf '  \033[31mFAIL\033[0m comment line emitted as a null YAML list item\n'; fail=$((fail + 1))
+else
+  printf '  \033[32mok\033[0m   comment/blank key lines skipped\n'; pass=$((pass + 1))
+fi
 
 echo "== patch-bookworm-bootfs.sh =="
 bootfs="${tmp}/boot-bw"; mkdir -p "${bootfs}"
