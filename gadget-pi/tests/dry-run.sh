@@ -150,7 +150,7 @@ echo "console=serial0,115200 modules-load=g_ether,dwc2,foo rootwait" > "${bootfs
 echo "# base config" > "${bootfs}/config.txt"
 printf '#!/bin/bash\nrm -f /boot/firstrun.sh\n' > "${bootfs}/firstrun.sh"
 BOOTFS="${bootfs}" "${ROOT}/scripts/host/patch-bookworm-bootfs.sh" >/dev/null
-m="$(grep -oE 'modules-load=' "${bootfs}/cmdline.txt" | wc -l | tr -d ' ')"
+m="$({ grep -oE 'modules-load=' "${bootfs}/cmdline.txt" || true; } | wc -l | tr -d ' ')"
 if [ "${m}" -eq 1 ]; then
   printf '  \033[32mok\033[0m   no duplicate modules-load token appended\n'; pass=$((pass + 1))
 else
@@ -163,7 +163,7 @@ echo "modules-load=foo rootwait modules-load=dwc2,g_ether" > "${bootfs}/cmdline.
 echo "# base config" > "${bootfs}/config.txt"
 printf '#!/bin/bash\nrm -f /boot/firstrun.sh\n' > "${bootfs}/firstrun.sh"
 BOOTFS="${bootfs}" "${ROOT}/scripts/host/patch-bookworm-bootfs.sh" >/dev/null
-m="$(grep -oE 'modules-load=' "${bootfs}/cmdline.txt" | wc -l | tr -d ' ')"
+m="$({ grep -oE 'modules-load=' "${bootfs}/cmdline.txt" || true; } | wc -l | tr -d ' ')"
 if [ "${m}" -eq 2 ]; then
   printf '  \033[32mok\033[0m   later modules-load token detected (no append)\n'; pass=$((pass + 1))
 else
