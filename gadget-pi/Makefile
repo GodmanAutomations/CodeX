@@ -1,7 +1,7 @@
 # Gadget-Pi convenience targets.
 
 SHELL := /bin/bash
-SCRIPTS := $(shell find scripts -name '*.sh' -type f 2>/dev/null | sort)
+SCRIPTS := $(shell find scripts tests -name '*.sh' -type f 2>/dev/null | sort)
 
 .DEFAULT_GOAL := help
 
