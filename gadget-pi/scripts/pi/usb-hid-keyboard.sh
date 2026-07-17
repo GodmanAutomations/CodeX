@@ -14,7 +14,14 @@ G=/sys/kernel/config/usb_gadget/hidkbd
 GADGET_MANUFACTURER="${GADGET_MANUFACTURER:-Gadget-Pi}"
 GADGET_PRODUCT="${GADGET_PRODUCT:-Pi HID Keyboard}"
 modprobe libcomposite
+mkdir -p /sys/kernel/config
 mount -t configfs none /sys/kernel/config 2>/dev/null || true
+# The mount is best-effort (it may already be mounted); confirm the gadget
+# subsystem is actually present so later writes don't fail with a cryptic error.
+[ -d /sys/kernel/config/usb_gadget ] || {
+  echo "configfs usb_gadget not available — need root, a gadget-capable kernel, and libcomposite. Aborting." >&2
+  exit 1
+}
 
 mkdir -p "$G"
 echo 0x1d6b > "$G/idVendor"
