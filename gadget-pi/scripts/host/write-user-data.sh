@@ -98,7 +98,10 @@ users:
     groups: ${GROUPS_LINE}
     shell: /bin/bash
     lock_passwd: false
-    sudo: ALL=(ALL) NOPASSWD:ALL
+    # Password login is enabled, so require the password for sudo (defense in
+    # depth vs a compromised account). The key-only variant uses NOPASSWD
+    # because it locks the password and has nothing to authenticate sudo with.
+    sudo: ALL=(ALL) ALL
 
 # Set the login password via the chpasswd module (the supported cloud-init
 # mechanism; the per-user 'plain_text_passwd' key is unreliable across versions).

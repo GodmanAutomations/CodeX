@@ -67,8 +67,9 @@ if grep -q 'usb0-dhcp' "${FIRSTRUN_SH}"; then
 else
   awk '
     /rm -f \/boot\/firstrun\.sh/ && !done {
+      print "mkdir -p /etc/udev/rules.d"
       print "cp /usr/lib/udev/rules.d/85-nm-unmanaged.rules /etc/udev/rules.d/85-nm-unmanaged.rules"
-      print "sed '\''s/^[^#]*gadget/# &/'\'' -i /etc/udev/rules.d/85-nm-unmanaged.rules"
+      print "sed -i '\''s/^[^#]*gadget/# &/'\'' /etc/udev/rules.d/85-nm-unmanaged.rules"
       print "mkdir -p /etc/NetworkManager/system-connections"
       print "CONNFILE1=/etc/NetworkManager/system-connections/usb0-dhcp.nmconnection"
       print "UUID1=$(cat /proc/sys/kernel/random/uuid)"

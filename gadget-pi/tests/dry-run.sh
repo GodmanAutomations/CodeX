@@ -41,6 +41,12 @@ if grep -qE '^[[:space:]]*plain_text_pass' "${bootfs}/user-data"; then
 else
   printf '  \033[32mok\033[0m   no plain_text_pass* key\n'; pass=$((pass + 1))
 fi
+check "sudo requires pw"    "sudo: ALL=(ALL) ALL"       "${bootfs}/user-data"
+if grep -q 'NOPASSWD:ALL' "${bootfs}/user-data"; then
+  printf '  \033[31mFAIL\033[0m password mode still grants NOPASSWD sudo\n'; fail=$((fail + 1))
+else
+  printf '  \033[32mok\033[0m   password mode requires sudo password\n'; pass=$((pass + 1))
+fi
 
 echo "== write-user-data.sh (ssh key) =="
 bootfs="${tmp}/boot-key"; mkdir -p "${bootfs}"; : > "${bootfs}/user-data"
@@ -50,6 +56,7 @@ BOOTFS="${bootfs}" PI_HOSTNAME="test-pi" PI_USER="tester" \
 check "authorized key"   "ssh-ed25519 AAAATESTKEY" "${bootfs}/user-data"
 check "pwauth disabled"  "ssh_pwauth: false"        "${bootfs}/user-data"
 check "passwd locked"    "lock_passwd: true"        "${bootfs}/user-data"
+check "key mode NOPASSWD" "sudo: ALL=(ALL) NOPASSWD:ALL" "${bootfs}/user-data"
 check "gadget enabled"   "enable_usb_gadget: true"  "${bootfs}/user-data"
 
 echo "== patch-bookworm-bootfs.sh =="
@@ -62,6 +69,8 @@ check "dwc2 overlay"     "dtoverlay=dwc2"              "${bootfs}/config.txt"
 check "modules-load"     "modules-load=dwc2,g_ether"   "${bootfs}/cmdline.txt"
 check "usb0-dhcp conn"   "usb0-dhcp"                    "${bootfs}/firstrun.sh"
 check "nm-unmanaged fix" "85-nm-unmanaged.rules"        "${bootfs}/firstrun.sh"
+check "udev dir mkdir"   "mkdir -p /etc/udev/rules.d"   "${bootfs}/firstrun.sh"
+check "sed -i ordering"  "sed -i "                      "${bootfs}/firstrun.sh"
 check "nm dir mkdir"     "mkdir -p /etc/NetworkManager/system-connections" "${bootfs}/firstrun.sh"
 check "portable uuid"    "/proc/sys/kernel/random/uuid" "${bootfs}/firstrun.sh"
 check "config.txt bak"   ""                             "${bootfs}/config.txt.bak"

@@ -13,7 +13,9 @@ users:
     groups: users,adm,dialout,audio,netdev,video,plugdev,cdrom,games,input,gpio,spi,i2c,render,sudo
     shell: /bin/bash
     lock_passwd: false
-    sudo: ALL=(ALL) NOPASSWD:ALL
+    # Password login is enabled, so require the password for sudo. (The SSH-key
+    # template locks the password and uses NOPASSWD instead.)
+    sudo: ALL=(ALL) ALL
 
 # Set the login password via the chpasswd module (the supported cloud-init
 # mechanism; the per-user 'plain_text_passwd' key is unreliable across versions).
