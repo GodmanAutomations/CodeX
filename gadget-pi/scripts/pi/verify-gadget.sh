@@ -26,7 +26,7 @@ fi
 section "USB gadget / kernel"
 printf 'UDC (USB device controllers):\n'
 # ls exits 0 on an empty-but-existing dir, so capture and test contents instead.
-udc_list="$(ls -A /sys/class/udc 2>/dev/null)"
+udc_list="$(ls -A /sys/class/udc 2>/dev/null || true)"
 if [ -n "${udc_list}" ]; then
   printf '%s\n' "${udc_list}"
 else

@@ -56,6 +56,16 @@ BOOTFS="${bootfs}" PI_HOSTNAME="t" PI_USER="u" \
   "${ROOT}/scripts/host/write-user-data.sh" >/dev/null
 check "yaml-escaped password" 'password: "a\"b\\c"' "${bootfs}/user-data"
 
+echo "== write-user-data.sh (rejects newline in password) =="
+bootfs="${tmp}/boot-pw3"; mkdir -p "${bootfs}"; : > "${bootfs}/user-data"
+if BOOTFS="${bootfs}" PI_HOSTNAME="t" PI_USER="u" \
+     PI_PASSWORD="$(printf 'a\nb')" PI_TIMEZONE="UTC" \
+     "${ROOT}/scripts/host/write-user-data.sh" >/dev/null 2>&1; then
+  printf '  \033[31mFAIL\033[0m accepted a password containing a newline\n'; fail=$((fail + 1))
+else
+  printf '  \033[32mok\033[0m   rejected password containing a newline\n'; pass=$((pass + 1))
+fi
+
 echo "== write-user-data.sh (ssh key) =="
 bootfs="${tmp}/boot-key"; mkdir -p "${bootfs}"; : > "${bootfs}/user-data"
 key="${tmp}/id.pub"; echo "ssh-ed25519 AAAATESTKEY tester@host" > "${key}"
@@ -81,8 +91,8 @@ check "udev dir mkdir"   "mkdir -p /etc/udev/rules.d"   "${bootfs}/firstrun.sh"
 check "sed -i ordering"  "sed -i "                      "${bootfs}/firstrun.sh"
 check "nm dir mkdir"     "mkdir -p /etc/NetworkManager/system-connections" "${bootfs}/firstrun.sh"
 check "portable uuid"    "/proc/sys/kernel/random/uuid" "${bootfs}/firstrun.sh"
-check "config.txt bak"   ""                             "${bootfs}/config.txt.bak"
-check "firstrun bak"     ""                             "${bootfs}/firstrun.sh.bak"
+check "config.txt bak"   "# base config"                "${bootfs}/config.txt.bak"
+check "firstrun bak"     "rm -f /boot/firstrun.sh"      "${bootfs}/firstrun.sh.bak"
 
 echo "== patch-bookworm-bootfs.sh (rootwait as last token) =="
 bootfs="${tmp}/boot-bw2"; mkdir -p "${bootfs}"

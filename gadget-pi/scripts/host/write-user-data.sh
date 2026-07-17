@@ -87,6 +87,11 @@ else
   require PI_PASSWORD
   [ "${PI_PASSWORD}" = "CHANGE-ME-NOW" ] && warn "PI_PASSWORD is still the placeholder — change it in config/gadget.env."
   log "Writing password-authenticated user-data (consider --ssh-key instead)"
+  # A newline/CR can't be represented in a single-line YAML scalar; reject it
+  # rather than emit invalid user-data that breaks first-boot provisioning.
+  case "${PI_PASSWORD}" in
+    *$'\n'* | *$'\r'*) die "PI_PASSWORD must not contain newlines or carriage returns." ;;
+  esac
   # Escape for a YAML double-quoted scalar so a password containing " or \\ can't
   # produce invalid user-data: backslashes first, then double-quotes.
   pw_yaml="${PI_PASSWORD//\\/\\\\}"
