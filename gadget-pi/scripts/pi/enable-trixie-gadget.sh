@@ -21,8 +21,8 @@ if [ "${codename}" != "trixie" ]; then
 fi
 
 log "Installing rpi-usb-gadget ..."
-apt update
-apt install -y rpi-usb-gadget
+apt-get update
+apt-get install -y rpi-usb-gadget
 
 log "Enabling gadget mode ..."
 rpi-usb-gadget on

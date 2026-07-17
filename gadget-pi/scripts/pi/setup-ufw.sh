@@ -20,8 +20,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 : "${TRUSTED_LAN:=}"
 
 log "Installing ufw ..."
-apt update
-apt install -y ufw
+apt-get update
+apt-get install -y ufw
 
 ufw default deny incoming
 ufw default allow outgoing
