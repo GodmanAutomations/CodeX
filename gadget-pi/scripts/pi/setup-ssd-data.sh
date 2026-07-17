@@ -64,6 +64,12 @@ else
 fi
 
 mount -a
+# The fstab entry uses `nofail`, so `mount -a` can silently skip a failed mount.
+# Verify something is actually mounted at SSD_MOUNT before chowning/mkdir'ing —
+# otherwise we'd modify the underlying directory on the root filesystem.
+mountpoint -q "${SSD_MOUNT}" \
+  || die "${SSD_MOUNT} is not mounted after 'mount -a' (nofail may have skipped it). Refusing to write to the underlying root filesystem."
+
 chown "${PI_USER}:${PI_USER}" "${SSD_MOUNT}"
 mkdir -p "${SSD_MOUNT}/projects" "${SSD_MOUNT}/transfers"
 chown -R "${PI_USER}:${PI_USER}" "${SSD_MOUNT}/projects" "${SSD_MOUNT}/transfers"

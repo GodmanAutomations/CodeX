@@ -34,8 +34,14 @@ if [ "${os}" = "Darwin" ]; then
   [ -n "${dev}" ] || die "No device given."
   confirm "About to READ ${dev} into a backup image. Correct disk?"
   diskutil unmountDisk "${dev}"
-  # /dev/rdiskN is the raw (fast) node on macOS: /dev/disk4 -> /dev/rdisk4.
-  raw="${dev/disk/rdisk}"
+  # Use the raw (fast) node on macOS. Accept both /dev/diskN and an
+  # already-raw /dev/rdiskN, and reject anything unexpected so we never build a
+  # bogus path like /dev/rrdisk4.
+  case "${dev}" in
+    /dev/rdisk*) raw="${dev}" ;;
+    /dev/disk*)  raw="/dev/r${dev#/dev/}" ;;
+    *) die "Expected /dev/diskN or /dev/rdiskN on macOS, got: ${dev}" ;;
+  esac
   out="${OUTDIR}/${STAMP}-pi-sd.img"
   log "Reading ${raw} -> ${out}"
   sudo dd if="${raw}" of="${out}" bs=4m status=progress

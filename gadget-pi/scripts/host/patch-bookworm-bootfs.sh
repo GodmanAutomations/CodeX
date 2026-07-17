@@ -35,8 +35,10 @@ for _f in "${CONFIG_TXT}" "${CMDLINE_TXT}" "${FIRSTRUN_SH}"; do
   [ -f "${_f}.bak" ] || cp "${_f}" "${_f}.bak"
 done
 
-# 1. Enable the dwc2 overlay.
-if grep -q '^dtoverlay=dwc2$' "${CONFIG_TXT}"; then
+# 1. Enable the dwc2 overlay. Match dwc2 with or without parameters
+#    (e.g. dtoverlay=dwc2,dr_mode=peripheral) or trailing space so a real-world
+#    config.txt doesn't get a duplicate appended.
+if grep -qE '^dtoverlay=dwc2([,[:space:]].*)?$' "${CONFIG_TXT}"; then
   log "dwc2 overlay already present in config.txt"
 else
   printf '\n[all]\ndtoverlay=dwc2\n' >> "${CONFIG_TXT}"

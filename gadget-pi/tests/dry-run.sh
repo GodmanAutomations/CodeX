@@ -121,6 +121,19 @@ else
   printf '  \033[31mFAIL\033[0m dwc2 applied %s times\n' "${n}"; fail=$((fail + 1))
 fi
 
+echo "== patch idempotency (dwc2 with existing parameters) =="
+bootfs="${tmp}/boot-bw3"; mkdir -p "${bootfs}"
+echo "console=serial0,115200 rootwait" > "${bootfs}/cmdline.txt"
+printf '# base config\ndtoverlay=dwc2,dr_mode=peripheral\n' > "${bootfs}/config.txt"
+printf '#!/bin/bash\nrm -f /boot/firstrun.sh\n' > "${bootfs}/firstrun.sh"
+BOOTFS="${bootfs}" "${ROOT}/scripts/host/patch-bookworm-bootfs.sh" >/dev/null
+n="$(grep -c '^dtoverlay=dwc2' "${bootfs}/config.txt")"
+if [ "${n}" -eq 1 ]; then
+  printf '  \033[32mok\033[0m   dwc2-with-params not duplicated\n'; pass=$((pass + 1))
+else
+  printf '  \033[31mFAIL\033[0m dwc2 lines: %s (expected 1)\n' "${n}"; fail=$((fail + 1))
+fi
+
 echo "== verify-image.sh =="
 dummy="${tmp}/dummy.img"; echo "hello gadget-pi" > "${dummy}"
 if command -v sha256sum >/dev/null 2>&1; then
