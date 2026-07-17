@@ -27,6 +27,8 @@ dev="${1:-}"
 
 if [ "${os}" = "Darwin" ]; then
   need_cmd diskutil
+  need_cmd dd
+  need_cmd shasum
   if [ -z "${dev}" ]; then
     log "Available disks:"
     diskutil list
@@ -50,6 +52,8 @@ if [ "${os}" = "Darwin" ]; then
   shasum -a 256 "${out}" > "${out}.sha256"
 else
   need_cmd lsblk
+  need_cmd dd
+  need_cmd sha256sum
   if [ -z "${dev}" ]; then
     log "Available block devices:"
     lsblk -o NAME,SIZE,MODEL,TRAN

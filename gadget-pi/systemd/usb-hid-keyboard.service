@@ -12,7 +12,8 @@ Type=oneshot
 RemainAfterExit=yes
 # Install usb-hid-keyboard.sh to a stable path first:
 #   sudo install -m 0755 scripts/pi/usb-hid-keyboard.sh /usr/local/sbin/usb-hid-keyboard.sh
-ExecStart=/usr/local/sbin/usb-hid-keyboard.sh
+ExecStart=/usr/local/sbin/usb-hid-keyboard.sh start
+ExecStop=/usr/local/sbin/usb-hid-keyboard.sh stop
 
 [Install]
 WantedBy=sysinit.target

@@ -21,9 +21,12 @@ require SSD_PART
 : "${SSD_MOUNT:=/srv/data}"
 : "${PI_USER:=${SUDO_USER:-pi}}"
 
-need_cmd parted
-need_cmd mkfs.ext4
-need_cmd blkid
+# Declare every external command used after the destructive step up-front, so a
+# missing tool fails fast before we repartition/format rather than mid-flight.
+# (partprobe/udevadm/umount are best-effort and guarded with `|| true` below.)
+for _c in parted mkfs.ext4 blkid lsblk mountpoint getent df; do
+  need_cmd "${_c}"
+done
 
 [ -b "${SSD_DEV}" ] || die "${SSD_DEV} is not a block device."
 

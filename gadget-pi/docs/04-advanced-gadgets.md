@@ -72,7 +72,8 @@ Included only for completeness. This makes the **Pi type into the host** — it 
 *not* help you control the Pi from an iPad.
 
 ```bash
-sudo ./scripts/pi/usb-hid-keyboard.sh       # creates /dev/hidg0
+sudo ./scripts/pi/usb-hid-keyboard.sh start   # creates /dev/hidg0
+sudo ./scripts/pi/usb-hid-keyboard.sh stop    # unbind + tear down the gadget
 ```
 
 Writing 8-byte HID boot-keyboard reports to `/dev/hidg0` injects keystrokes into
