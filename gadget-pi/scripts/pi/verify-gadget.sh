@@ -41,7 +41,7 @@ section "Services / listening ports"
 systemctl is-active ssh 2>/dev/null && echo "ssh: active" || echo "ssh: not active"
 systemctl is-active wayvnc.service 2>/dev/null && echo "wayvnc: active" || echo "wayvnc: not active"
 printf '\nListening on 22 / 5900:\n'
-ss -ltnp 2>/dev/null | grep -E ':(22|5900)\s' || echo "  (nothing listening on 22/5900)"
+ss -ltnp 2>/dev/null | grep -E ':(22|5900)[[:space:]]' || echo "  (nothing listening on 22/5900)"
 
 printf '\n'
 log "If usb0 has no address and there is no UDC, re-check the USB PORT and CABLE first."

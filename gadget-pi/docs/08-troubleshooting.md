@@ -39,7 +39,7 @@ journalctl -k -b --no-pager | grep -iE 'dwc2|g_ether|usb0|configfs'
 # SSH and VNC
 systemctl status ssh --no-pager
 systemctl status wayvnc.service --no-pager || true
-ss -ltnp | grep -E ':(22|5900)\s' || true
+ss -ltnp | grep -E ':(22|5900)[[:space:]]' || true
 
 # Hostname discovery
 hostnamectl
