@@ -21,14 +21,20 @@ require SSD_PART
 : "${SSD_MOUNT:=/srv/data}"
 : "${PI_USER:=${SUDO_USER:-pi}}"
 
-# Declare every external command used after the destructive step up-front, so a
+# Declare the external commands used after the destructive step up-front, so a
 # missing tool fails fast before we repartition/format rather than mid-flight.
-# (partprobe/udevadm/umount are best-effort and guarded with `|| true` below.)
-for _c in parted mkfs.ext4 blkid lsblk mountpoint getent df head cut; do
+# (partprobe/udevadm are best-effort and guarded with `|| true` below.)
+for _c in parted mkfs.ext4 blkid lsblk mountpoint getent df head cut \
+          mount umount mkdir chown ln grep sync; do
   need_cmd "${_c}"
 done
 
 [ -b "${SSD_DEV}" ] || die "${SSD_DEV} is not a block device."
+
+# Fail before touching the disk if PI_USER doesn't exist (it's needed for the
+# chown/home-symlink steps after formatting).
+getent passwd "${PI_USER}" >/dev/null \
+  || die "User '${PI_USER}' does not exist. Set PI_USER in gadget.env to a real account before running (this script formats a disk)."
 
 log "Target disk layout:"
 lsblk -o NAME,SIZE,FSTYPE,LABEL,MOUNTPOINT,MODEL "${SSD_DEV}" || true
