@@ -3,9 +3,10 @@ Description=USB HID keyboard gadget (Pi types into the host)
 DefaultDependencies=no
 After=local-fs.target
 Before=network-pre.target
-# The script is installed manually (see below); skip cleanly if it's absent
-# instead of hard-failing at boot when the unit is enabled before install.
-ConditionPathExists=/usr/local/sbin/usb-hid-keyboard.sh
+# The script is installed manually (see below); skip cleanly unless it's present
+# AND executable, instead of hard-failing at boot when the unit is enabled before
+# a proper install.
+ConditionPathIsExecutable=/usr/local/sbin/usb-hid-keyboard.sh
 
 [Service]
 Type=oneshot

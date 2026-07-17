@@ -10,7 +10,8 @@ export GADGET_PI_ASSUME_YES=1
 pass=0
 fail=0
 check() { # check "desc" "expected-substring" file
-  if grep -qF "$2" "$3"; then
+  # `--` so an expected substring beginning with `-` isn't parsed as an option.
+  if grep -qF -- "$2" "$3"; then
     printf '  \033[32mok\033[0m   %s\n' "$1"; pass=$((pass + 1))
   else
     printf '  \033[31mFAIL\033[0m %s (missing: %s)\n' "$1" "$2"; fail=$((fail + 1))
