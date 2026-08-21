@@ -172,7 +172,7 @@ sleep_disabled() {
 }
 
 codex_app_running() {
-  pgrep -f '/Applications/Codex.app/Contents/MacOS/Codex|/Applications/Codex.app/Contents/Resources/codex app-server|Application Support/Codex' >/dev/null 2>&1
+  pgrep -f '/Applications/Codex.app/Contents/MacOS/(ChatGPT|Codex)|/Applications/Codex.app/Contents/Resources/codex app-server|Application Support/Codex' >/dev/null 2>&1
 }
 
 managed_caffeinate_running() {
