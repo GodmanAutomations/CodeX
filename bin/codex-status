@@ -140,6 +140,7 @@ def build_status(include_pi: bool = True) -> dict[str, Any]:
         "app_only": True,
         "codex_app_running": any_process_running(
             [
+                "/Applications/Codex.app/Contents/MacOS/ChatGPT",
                 "/Applications/Codex.app/Contents/MacOS/Codex",
                 "/Applications/Codex.app/Contents/Resources/codex app-server",
                 "Application Support/Codex",

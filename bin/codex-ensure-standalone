@@ -358,7 +358,7 @@ if [[ "${CODEX_ALLOW_CLI_PREFLIGHT:-0}" == "1" ]]; then
 else
   pass "codex app-only mode active; CLI executable check skipped"
 fi
-check_executable "Codex desktop app" "/Applications/Codex.app/Contents/MacOS/Codex"
+check_executable "Codex desktop app bundle" "/Applications/Codex.app/Contents/MacOS/ChatGPT"
 check_executable "Codex app env launcher" "/Users/stephengodman/bin/codex-app-op"
 check_executable "room browser wrapper" "$ROOT/bin/codex-browser"
 check_executable "room Brave dev wrapper" "$ROOT/bin/codex-brave-dev"
