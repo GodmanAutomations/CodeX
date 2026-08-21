@@ -11,6 +11,7 @@
 .claude/
 .codex/
 .mcp.json
+.playwright-cli/
 .playwright-mcp/
 .pytest_cache/
 .remember/

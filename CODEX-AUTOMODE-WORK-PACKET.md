@@ -9,8 +9,8 @@ one next action, clear blockers, and receipts that make resume possible.
 
 Current goal:
 
-- Build Executable Regression Harness v1 for Codex identity and personal voice
-  startup drift.
+- Clean and fully close the Git lifecycle for `/Users/stephengodman/CodeX`,
+  preserving ambiguous work and completing every safe coherent slice.
 
 Mode:
 
@@ -18,90 +18,74 @@ Mode:
 
 Started:
 
-- 2026-06-27 02:03 CDT
+- 2026-08-21 11:41 CDT
 
 Last update:
 
-- 2026-06-27 02:04 CDT
+- 2026-08-21 11:57 CDT
 
 Active plan:
 
-- Use `codex-build-resources` before creating the workflow.
-- Add `bin/codex-identity-regression`.
-- Add `CODEX-REGRESSION-HARNESS.md`.
-- Wire the harness into startup, room brief/handoff, Best Lane, README,
-  START-HERE, Routing Card, and Current.
-- Run the harness plus startup, room, doctor, bridge preflight, diff, and
-  changed-file secret checks.
-- Commit, push, and open/merge a PR if verification passes.
+- Completed live Git topology and dirty-path classification.
+- Completed owner-only preservation of history, tracked changes, and all 74
+  untracked files.
+- Kept 69 private or operational files local-only; removed five exact archived
+  runtime/junk artifacts.
+- Completed targeted validation, secret scanning, and serial self-review.
+- Merged the upload, app-detector, and governance slices through PRs 23, 26,
+  and 27.
+- Carry this packet and the generated-browser ignore rule in the final closeout
+  slice, then verify synchronized clean main.
 
 Last completed step:
 
-- Executable Regression Harness v1 is added, wired into startup and room
-  surfaces, and verified.
+- Three coherent implementation/governance PRs merged; the sensitive ignored
+  work-note pointer was removed without changing its local source note.
 
 Next action:
 
-- Use `/Users/stephengodman/CodeX/bin/codex-identity-regression` after changing
-  identity, personal voice, startup, routing, thread profile, room brief, or
-  auto-mode surfaces.
+- Idle after the final closeout slice reaches `main` and the live clean-tree
+  check passes.
 
 Blockers:
 
-- None.
+- None for Git lifecycle cleanup.
+- Residual verification only: live Tailscale address lookup is unavailable, and
+  the room regression suite still sees one pre-existing external system-tree
+  shard missing outside this repository.
 
 Files/services touched:
 
+- `/Users/stephengodman/CodeX/.gitignore`
 - `/Users/stephengodman/CodeX/CODEX-AUTOMODE-WORK-PACKET.md`
-- `/Users/stephengodman/CodeX/bin/codex-identity-regression`
-- `/Users/stephengodman/CodeX/CODEX-REGRESSION-HARNESS.md`
-- `/Users/stephengodman/CodeX/CODEX-BEST-LANE.md`
-- `/Users/stephengodman/CodeX/ROUTING-CARD.md`
-- `/Users/stephengodman/CodeX/START-HERE.md`
-- `/Users/stephengodman/CodeX/README.md`
-- `/Users/stephengodman/CodeX/CURRENT.md`
-- `/Users/stephengodman/CodeX/bin/codex-startup`
-- `/Users/stephengodman/CodeX/bin/codex-room`
+- `/Users/stephengodman/CodeX/.git/info/exclude` (local-only preservation rules)
+- `/Users/stephengodman/CodeX/receipts/git-preservation/20260821T163944Z/`
 
 Verification needed:
 
-- `/Users/stephengodman/CodeX/bin/codex-identity-regression`
-- `bash -n /Users/stephengodman/CodeX/bin/codex-identity-regression /Users/stephengodman/CodeX/bin/codex-startup /Users/stephengodman/CodeX/bin/codex-room`
-- `/Users/stephengodman/CodeX/bin/codex-startup`
-- `/Users/stephengodman/CodeX/bin/codex-room brief`
-- `/Users/stephengodman/CodeX/bin/codex-room handoff`
-- `/Users/stephengodman/CodeX/Coding Anchor Files/codex-coding-anchor/bin/coding-anchor-doctor`
-- `/Users/stephengodman/bin/codex-thread --preflight`
-- `git diff --check`
-- secret scan
+- None after the final main/worktree/status verification completes.
 
 Receipts:
 
-- `/Users/stephengodman/CodeX/bin/codex-identity-regression` passed
-  `pass=76 fail=0`; receipt:
-  `/Users/stephengodman/CodeX/receipts/regression/20260627-020830-identity-regression.txt`.
-- `bash -n /Users/stephengodman/CodeX/bin/codex-identity-regression /Users/stephengodman/CodeX/bin/codex-startup /Users/stephengodman/CodeX/bin/codex-room` passed.
-- `/Users/stephengodman/CodeX/bin/codex-startup` surfaced owned boot,
-  identity regression, regression harness docs, and the
-  `bin/codex-identity-regression` command.
-- `/Users/stephengodman/CodeX/bin/codex-room brief` and
-  `/Users/stephengodman/CodeX/bin/codex-room handoff` surfaced the Identity
-  Regression Harness section and command.
-- Independent reviewer flagged false-negative risks; fixed by adding runtime
-  output checks for startup, room brief, and room handoff, plus missing-file
-  failures for negative checks.
-- `/Users/stephengodman/CodeX/Coding Anchor Files/codex-coding-anchor/bin/coding-anchor-doctor` passed.
-- `/Users/stephengodman/bin/codex-thread --preflight` passed with auto mode ON
-  and active work showing this harness goal.
-- `git diff --check` passed.
-- Changed-file secret scan found only guardrail words and a placeholder example,
-  no raw secret values.
+- Agent House 2026-08-21.2 check passed.
+- CodeX startup completed with healthy continuity and 14 SQLite memory items,
+  0 open loops.
+- Preservation directory mode is owner-only; all four artifacts are mode 600.
+- Verified complete history bundle plus SHA-256 hashes for the bundle, tracked
+  patch, staged patch, and 74-file untracked archive.
+- PR 23 merged as `0efba79`; 90 pure upload-policy cases, loopback HTTP probes,
+  atomic collision handling, path containment, and private file modes passed.
+- PR 26 merged as `ef2cd74`; syntax/compile checks passed and live status found
+  the current Codex desktop bundle executable.
+- PR 27 merged as `b0bf13e`; Agent House adoption passed and changed governance
+  assertions passed.
+- High-confidence secret scans found no candidates in any published slice.
 
 Resume instruction:
 
-- If Stephen says "keep rolling", "where were we", "you decide", "auto mode",
-  or similar, read this packet first, then continue from `Next action` unless a
-  blocker is listed.
+- This cleanup is closed. If live Git state later disagrees, start from current
+  status and the owner-only preservation receipt; do not publish locally
+  excluded material.
 
 ## Packet Fields
 
