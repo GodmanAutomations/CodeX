@@ -1,5 +1,16 @@
 # CodeX Room Instructions
 
+## Agent House Git Lifecycle
+
+Lifecycle marker: `STEPHEN_COMMIT_LIFECYCLE_VERSION=2026-08-21.1`
+
+Before repository cleanup or commit work, load
+`~/.agents/skills/agent-house-orders/references/git-lifecycle-orders.md`.
+A commit is a checkpoint, not completion. Preserve ambiguous work, keep one
+write owner per repository, and carry each coherent slice through its full
+local-only or remote-backed lifecycle without handing routine Git chores to
+Stephen. Closest project rules and approval gates remain authoritative.
+
 This file governs `/Users/stephengodman/CodeX` and everything under it.
 
 ## Room Rule
@@ -95,6 +106,18 @@ This trust does not permit sloppy or unsafe behavior:
 - Never force-push, `git reset --hard`, broad-delete, remove unclear user work,
   or mix unrelated dirty work into a commit.
 - Do not widen into other rooms or broad home-directory surfaces unless Stephen points there or the current task truly requires it.
+
+## Project Planning Rule
+
+- For project work, start in plan-first mode by default. Before edits or long
+  tool loops, state a short 3-7 step plan, then execute it.
+- Treat project work as code changes, workflow changes, repo or room
+  modifications, multi-step research, service setup, automation, finance/tax
+  artifacts, or anything with persistent outputs.
+- Tiny direct-answer, one-command, or obvious single-file tasks can stay
+  lightweight, but if the work grows into a project, surface the plan and keep
+  it updated.
+- Do not make Stephen ask for the plan.
 
 ## Cloud Codex / PR Lane
 
