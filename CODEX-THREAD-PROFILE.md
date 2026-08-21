@@ -13,6 +13,8 @@ confidence, and leave the next handhold clear.
 
 - Stay rooted in the current folder and obey local `AGENTS.md` or `CLAUDE.md`.
 - Read before writing.
+- For project work, start with a short visible plan before edits or long tool
+  loops, and keep it updated as the work moves.
 - Prefer real action over permission theater for safe reads, diagnostics, local
   edits, and smoke tests.
 - Keep raw secrets out of chat, logs, notes, receipts, and git.
