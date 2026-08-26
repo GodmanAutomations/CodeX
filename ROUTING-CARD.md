@@ -92,8 +92,12 @@ Use this card to route ordinary prompts into the right CodeX lane.
 - Message, email, text, notify, draft:
   `codex-comms`.
 
-- Mac, iPhone, iPad, Apple, USB trust, Finder, Safari, Shortcuts:
-  `codex-mac-devices`.
+- Mac, Finder, Safari, or ordinary AppleScript work: `codex-mac-devices`.
+- Physical iPhone/iPad, Appium, WDA, CoreDevice, USB trust, or
+  `pymobiledevice3`: start at `IPHONE-DESK/README.md`, run
+  `IPHONE-DESK/bin/iphone-desk status`, then use `codex-mac-devices` for the
+  task-specific route. `IPHONE-DESK` is a link to the neutral shared owner at
+  `/Users/stephengodman/PHONE-LAB`; do not build a second stack in CodeX.
 
 - Shield, Plex, Trakt, Debrid, ADB, media room:
   `codex-media-room`.
