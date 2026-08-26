@@ -13,7 +13,9 @@ They live in:
 - `codex-pool-ops` - Artesian Pools, Memphis Pool, liner jobs, field ops routing.
 - `codex-money-records` - taxes, invoices, Plaid, Square, Stripe, books, ACA-sensitive money work.
 - `codex-comms` - messages, email, drafts, notifications, channel handoff routing.
-- `codex-mac-devices` - Mac, AppleScript, Finder, iPhone/iPad, Apple device automation routing.
+- `codex-mac-devices` - Mac, AppleScript, Finder, and Apple-device routing;
+  physical iPhone/iPad work starts at the shared `IPHONE-DESK/` doorway before
+  any new tooling is built.
 - `codex-infra-ops` - Pi5, Tailscale, Cloudflare, tunnels, Docker, deploy checks.
 - `codex-media-room` - NVIDIA Shield, Plex, Trakt, Debrid, ADB, media workflows.
 - `codex-notebooklm-rag` - NotebookLM, system tree notebook, local RAG, notebook-mesh, Firecrawl routing.
