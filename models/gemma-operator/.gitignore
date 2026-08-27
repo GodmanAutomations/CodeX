@@ -1,0 +1,8 @@
+memory/*.sqlite
+memory/*.sqlite3
+memory/*.db
+memory/*.db-*
+memory/session.jsonl
+.env
+__pycache__/
+*.pyc
