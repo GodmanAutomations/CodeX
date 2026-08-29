@@ -1,0 +1,20 @@
+[Unit]
+Description=USB HID keyboard gadget (Pi types into the host)
+DefaultDependencies=no
+After=local-fs.target
+Before=network-pre.target
+# The script is installed manually (see below); skip cleanly unless it's present
+# AND executable, instead of hard-failing at boot when the unit is enabled before
+# a proper install.
+ConditionPathIsExecutable=/usr/local/sbin/usb-hid-keyboard.sh
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Install usb-hid-keyboard.sh to a stable path first:
+#   sudo install -m 0755 scripts/pi/usb-hid-keyboard.sh /usr/local/sbin/usb-hid-keyboard.sh
+ExecStart=/usr/local/sbin/usb-hid-keyboard.sh start
+ExecStop=/usr/local/sbin/usb-hid-keyboard.sh stop
+
+[Install]
+WantedBy=sysinit.target
