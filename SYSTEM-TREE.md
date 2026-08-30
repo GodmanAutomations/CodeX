@@ -16,8 +16,10 @@ Notebook name:
 
 What it is:
 
-- 5 NotebookLM source files.
-- Current local count after `refresh-systree`: 714,625 scrubbed absolute paths.
+- Generated NotebookLM source shards; the count varies with the current
+  scrubbed manifest size.
+- Query `systree stats` for the current local path count after
+  `refresh-systree`.
 - Built from `/Users/stephengodman/system_tree/paths_scrubbed.txt`.
 - Secrets are scrubbed before upload.
 
@@ -31,7 +33,8 @@ Root:
 
 Important files:
 
-- `system_tree_part_01.md` through `system_tree_part_05.md` - upload sources for NotebookLM.
+- `system_tree_part_*.md` - generated upload sources for NotebookLM; use every
+  current shard rather than assuming a fixed count.
 - `paths_scrubbed.txt` - source-of-truth flat manifest after secret path scrubbing.
 - `_full_tree.txt` - local-only decorated tree output, about 126 MB.
 - `exclusions.sh` - source it for `sgfind`, `sgfd`, and shared exclusion strings.

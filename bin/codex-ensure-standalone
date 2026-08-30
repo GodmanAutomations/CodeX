@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="/Users/stephengodman/CodeX"
 CODEX_HOME="/Users/stephengodman/.codex"
 CONFIG="$CODEX_HOME/config.toml"
-RECEIPT_DIR="$ROOT/receipts/startup"
+RECEIPT_DIR="${CODEX_STARTUP_RECEIPT_DIR:-$ROOT/receipts/startup}"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 RECEIPT="$RECEIPT_DIR/${STAMP}-standalone-preflight.txt"
 JSON_OUTPUT=""
@@ -201,6 +201,78 @@ check_command() {
   fi
 }
 
+check_first_existing() {
+  local label="$1"
+  shift
+  local file
+
+  for file in "$@"; do
+    if [[ -e "$file" ]]; then
+      pass "$label exists: $file"
+      return
+    fi
+  done
+
+  fail "$label missing; checked: $*"
+}
+
+check_system_tree_parts() {
+  local parts_dir="${CODEX_SYSTEM_TREE_DIR:-/Users/stephengodman/system_tree}"
+  local file
+  local name
+  local header
+  local file_index
+  local header_index
+  local count=0
+  local empty_count=0
+  local invalid_count=0
+  local declared_total=0
+
+  while IFS= read -r file; do
+    count=$((count + 1))
+    if [[ ! -s "$file" ]]; then
+      empty_count=$((empty_count + 1))
+    fi
+
+    name="$(basename "$file")"
+    if [[ "$name" =~ ^system_tree_part_([0-9][0-9])\.md$ ]]; then
+      file_index=$((10#${BASH_REMATCH[1]}))
+      if [[ "$file_index" -ne "$count" ]]; then
+        invalid_count=$((invalid_count + 1))
+      fi
+    else
+      invalid_count=$((invalid_count + 1))
+    fi
+
+    header="$(sed -n '1p' "$file")"
+    if [[ "$header" =~ Part[[:space:]]+([0-9]+)[[:space:]]+of[[:space:]]+([0-9]+)$ ]]; then
+      header_index="${BASH_REMATCH[1]}"
+      if [[ "$header_index" -ne "$count" ]]; then
+        invalid_count=$((invalid_count + 1))
+      fi
+      if [[ "$declared_total" -eq 0 ]]; then
+        declared_total="${BASH_REMATCH[2]}"
+      elif [[ "${BASH_REMATCH[2]}" -ne "$declared_total" ]]; then
+        invalid_count=$((invalid_count + 1))
+      fi
+    else
+      invalid_count=$((invalid_count + 1))
+    fi
+  done < <(find "$parts_dir" -maxdepth 1 -type f -name 'system_tree_part_*.md' -print 2>/dev/null | sort)
+
+  if [[ "$count" -eq 0 ]]; then
+    fail "system tree upload shards missing: $parts_dir/system_tree_part_*.md"
+  elif [[ "$empty_count" -ne 0 ]]; then
+    fail "system tree upload shards include empty files: count=$count empty=$empty_count"
+  elif [[ "$invalid_count" -ne 0 ]]; then
+    fail "system tree upload shard names or headers are inconsistent: count=$count invalid=$invalid_count"
+  elif [[ "$count" -ne "$declared_total" ]]; then
+    fail "system tree upload shard set is incomplete: count=$count declared_total=$declared_total"
+  else
+    pass "system tree upload shard set is complete and non-empty: count=$count"
+  fi
+}
+
 ensure_npx_link() {
   local link="/Users/stephengodman/bin/npx"
   local target
@@ -309,8 +381,6 @@ check_room_files() {
     "$ROOT/memory/codex-memory.sqlite3"
     "/Users/stephengodman/system_tree/paths_scrubbed.txt"
     "/Users/stephengodman/system_tree/system_tree.db"
-    "/Users/stephengodman/system_tree/system_tree_part_01.md"
-    "/Users/stephengodman/system_tree/system_tree_part_05.md"
     "/Users/stephengodman/.codex/skills/codex-system-tree/SKILL.md"
     "/Users/stephengodman/.codex/skills/codex-claude-router/SKILL.md"
     "/Users/stephengodman/.codex/skills/codex-pool-ops/SKILL.md"
@@ -329,8 +399,6 @@ check_room_files() {
     "/Users/stephengodman/000_AI/bin/rag"
     "/Users/stephengodman/notebook-mesh/packets/vinyl-liner-pipeline/README.md"
     "/Users/stephengodman/notebook-mesh/packets/vinyl-liner-pipeline/CLAUDE-CODEX-WORKFLOW.md"
-    "/Users/stephengodman/vinyl-liner-measurement-pipeline/AGENTS.md"
-    "/Users/stephengodman/vinyl-liner-measurement-pipeline/CLAUDE.md"
     "/Users/stephengodman/vinyl-liner-measurement-pipeline/SESSION_HANDOFF.md"
   )
 
@@ -341,6 +409,12 @@ check_room_files() {
       fail "room surface missing: $file"
     fi
   done
+
+  check_system_tree_parts
+  check_first_existing \
+    "vinyl liner project instruction surface" \
+    "/Users/stephengodman/vinyl-liner-measurement-pipeline/AGENTS.md" \
+    "/Users/stephengodman/vinyl-liner-measurement-pipeline/CLAUDE.md"
 }
 
 say 'CODEX STANDALONE PREFLIGHT'
