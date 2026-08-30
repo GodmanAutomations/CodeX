@@ -238,6 +238,7 @@ codex_check_bad_profile_output="$TMP_DIR/codex-check-bad-profile.json"
 claude_team_template_output="$TMP_DIR/codex-claude-team-template.txt"
 ensure_standalone_json_output="$TMP_DIR/codex-ensure-standalone.json"
 ensure_standalone_text_output="$TMP_DIR/codex-ensure-standalone.txt"
+ensure_standalone_incomplete_output="$TMP_DIR/codex-ensure-standalone-incomplete.txt"
 advisor_ignore_output="$TMP_DIR/advisor-receipts-ignore.txt"
 tool_route_output="$TMP_DIR/codex-tool-route-pi.txt"
 tool_route_pi5_output="$TMP_DIR/codex-tool-route-pi5.txt"
@@ -451,6 +452,22 @@ run_capture "ensure standalone text runtime" "$ensure_standalone_text_output" "$
 require_command_output_contains "ensure standalone text runtime keeps human header" "$ensure_standalone_text_output" "CODEX STANDALONE PREFLIGHT"
 require_command_output_contains "ensure standalone text runtime keeps summary" "$ensure_standalone_text_output" "summary: pass="
 require_command_output_contains "ensure standalone text runtime keeps receipt" "$ensure_standalone_text_output" "receipt saved:"
+
+incomplete_system_tree="$TMP_DIR/incomplete-system-tree"
+mkdir -p "$incomplete_system_tree"
+printf '%s\n' '# Test System Tree - Part 1 of 2' >"$incomplete_system_tree/system_tree_part_01.md"
+if env \
+  CODEX_SYSTEM_TREE_DIR="$incomplete_system_tree" \
+  CODEX_STARTUP_RECEIPT_DIR="$TMP_DIR/fixture-receipts" \
+  "$ROOT/bin/codex-ensure-standalone" --check >"$ensure_standalone_incomplete_output" 2>&1; then
+  fail "ensure standalone rejects an incomplete system tree shard set"
+else
+  pass "ensure standalone rejects an incomplete system tree shard set"
+fi
+require_command_output_contains \
+  "ensure standalone explains incomplete system tree shard failure" \
+  "$ensure_standalone_incomplete_output" \
+  "system tree upload shard set is incomplete: count=1 declared_total=2"
 set +e
 "$ROOT/bin/codex-check" --json --only "" >"$codex_check_empty_only_output" 2>&1
 codex_check_empty_only_rc=$?
@@ -564,6 +581,9 @@ require_contains "bin/codex-check" "codex-phone-mode" "codex-check phone profile
 require_contains "bin/codex-check" '"git_writes": False' "codex-check declares no git writes"
 require_contains "bin/codex-ensure-standalone" "--json" "ensure standalone exposes JSON mode"
 require_contains "bin/codex-ensure-standalone" "print_json" "ensure standalone renders JSON payload"
+require_contains "bin/codex-ensure-standalone" "system_tree_part_*.md" "ensure standalone accepts generated system tree shard counts"
+require_not_contains "bin/codex-ensure-standalone" "system_tree_part_05.md" "ensure standalone avoids a fixed system tree shard count"
+require_contains "bin/codex-ensure-standalone" "check_first_existing" "ensure standalone accepts the active project instruction surface"
 require_contains "bin/lib/codex-common.sh" "codex_init_paths" "codex-common has path init helper"
 require_contains "bin/lib/codex-common.sh" "codex_require_cmd" "codex-common has command helper"
 require_contains "bin/lib/codex-common.sh" "codex_cleanup_add" "codex-common has cleanup registration helper"
