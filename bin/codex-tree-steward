@@ -509,15 +509,20 @@ def run_doctor(json_mode: bool) -> int:
         # the same repo-wide detector that these runtime probes exercise.
         false_positive_probes = [
             "boundary_" + "tok" + "en = parse_multipart_boundary(content_type)",
+            "tok" + "en = parse_multipart_boundary(content_type)",
         ]
-        call_assignment_probe = "tok" + "en = parse_multipart_boundary(content_type)"
+        prefixed_secret_assignment_probes = [
+            "access_" + "tok" + "en = '" + "notarealsecretvalueusedforpolicydoctor000000'",
+            "client_" + "sec" + "ret = '" + "notarealsecretvalueusedforpolicydoctor000000'",
+            "db_" + "pass" + "word = '" + "notarealsecretvalueusedforpolicydoctor000000'",
+        ]
         probe_rows = [
             ("doctor probe", "control"),
             (label_only_probe, "label"),
             (f"legacy_path = '{stale_path_probe}'", "stale_path"),
             (secret_assignment_probe, "secret_assignment"),
             (colon_secret_probe, "secret_assignment"),
-            (call_assignment_probe, "secret_assignment"),
+            *((value, "secret_assignment") for value in prefixed_secret_assignment_probes),
             (auth_header_probe, "auth_header"),
             *((value, "false_positive") for value in false_positive_probes),
         ]
