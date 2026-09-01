@@ -34,6 +34,23 @@ def timeout_text(value: str | bytes | None) -> str:
     return value or ""
 
 
+def summarize_json_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Retain health signals without forwarding arbitrary child output."""
+    summary: dict[str, Any] = {"ok": payload.get("ok") is True}
+    for key in ("status", "error", "note"):
+        if key in payload:
+            summary[f"{key}_present"] = True
+
+    safety = payload.get("safety")
+    if isinstance(safety, dict):
+        summary["safety"] = {
+            str(key): value
+            for key, value in sorted(safety.items(), key=lambda item: str(item[0]))
+            if isinstance(value, bool)
+        }
+    return summary
+
+
 def run_check(name: str, command: list[str], *, kind: str, timeout: int) -> dict[str, Any]:
     started = time.monotonic()
     try:
@@ -88,8 +105,11 @@ def run_check(name: str, command: list[str], *, kind: str, timeout: int) -> dict
             item["error"] = "command did not return valid JSON"
             item["stdout_tail"] = tail(result.stdout)
             item["stderr_tail"] = tail(result.stderr)
+        except (AttributeError, TypeError):
+            item["ok"] = False
+            item["error"] = "command did not return a JSON object"
         else:
-            item["payload"] = payload
+            item["payload"] = summarize_json_payload(payload)
             if payload.get("ok") is not True:
                 item["ok"] = False
     else:
@@ -244,7 +264,7 @@ def format_text(payload: dict[str, Any]) -> str:
         check_payload = check.get("payload")
         if not check.get("ok") and isinstance(check_payload, dict):
             payload_bits = []
-            for key in ("ok", "status", "error", "note"):
+            for key in ("ok", "status_present", "error_present", "note_present"):
                 if key in check_payload:
                     payload_bits.append(f"{key}={check_payload[key]}")
             if payload_bits:
