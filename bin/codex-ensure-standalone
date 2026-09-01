@@ -309,6 +309,11 @@ ensure_npx_link() {
 }
 
 check_mcp_config_commands() {
+  local command_cwd
+  local command_path
+  local name
+  local resolved
+
   if [[ ! -f "$CONFIG" ]]; then
     fail "Codex config missing: $CONFIG"
     return
@@ -316,7 +321,7 @@ check_mcp_config_commands() {
 
   pass "Codex config exists: $CONFIG"
 
-  while IFS=$'\t' read -r name command_path; do
+  while IFS=$'\t' read -r name command_path command_cwd; do
     if [[ "$command_path" = /* ]]; then
       if [[ -x "$command_path" ]]; then
         pass "MCP command path works for $name: $command_path"
@@ -325,26 +330,63 @@ check_mcp_config_commands() {
       else
         fail "MCP command path missing for $name: $command_path"
       fi
+    elif [[ "$command_path" != */* ]]; then
+      resolved="$(command -v "$command_path" 2>/dev/null || true)"
+      if [[ -n "$resolved" && -x "$resolved" ]]; then
+        pass "MCP command resolves on PATH for $name: $resolved"
+      else
+        fail "MCP command not found on PATH for $name: $command_path"
+      fi
+    elif [[ "$command_cwd" = /* ]]; then
+      resolved="$command_cwd/$command_path"
+      if [[ -x "$resolved" ]]; then
+        pass "MCP command resolves from configured cwd for $name: $resolved"
+      elif [[ -e "$resolved" ]]; then
+        fail "MCP command exists but is not executable for $name: $resolved"
+      else
+        fail "MCP command missing from configured cwd for $name: $resolved"
+      fi
     else
-      warn "MCP command path for $name is relative; verify through codex mcp list: $command_path"
+      warn "MCP command path for $name is relative without an absolute cwd: $command_path"
     fi
   done < <(awk '
+    function emit_server() {
+      if (in_server && command != "") {
+        print name "\t" command "\t" cwd
+      }
+    }
     /^\[mcp_servers\./ {
+      emit_server()
       name = $0
       sub(/^\[mcp_servers\./, "", name)
       sub(/\]$/, "", name)
       in_server = 1
+      command = ""
+      cwd = ""
       next
     }
     /^\[/ {
+      emit_server()
       in_server = 0
+      name = ""
+      command = ""
+      cwd = ""
       next
     }
     in_server && /^[[:space:]]*command[[:space:]]*=/ {
       command = $0
       sub(/^[^=]+=[[:space:]]*"/, "", command)
       sub(/".*$/, "", command)
-      print name "\t" command
+      next
+    }
+    in_server && /^[[:space:]]*cwd[[:space:]]*=/ {
+      cwd = $0
+      sub(/^[^=]+=[[:space:]]*"/, "", cwd)
+      sub(/".*$/, "", cwd)
+      next
+    }
+    END {
+      emit_server()
     }
   ' "$CONFIG")
 }
