@@ -113,7 +113,7 @@
     },
     {
       "name": "raw_secret_assignment",
-      "pattern": "(?<![A-Za-z0-9_])_*(?:(?i:(?:[A-Za-z][A-Za-z0-9]*[_-])*(?:api[_-]?key|token|secret|password))|[A-Za-z][A-Za-z0-9]*(?:ApiKey|Token|Secret|Password))['\\\"]?\\s*[:=]\\s*(?![A-Za-z_][A-Za-z0-9_.:]*\\s*(?:<[^()\\n]*>\\s*)?\\()['\\\"]?[A-Za-z0-9_./+=-]{24,}",
+      "pattern": "(?<![A-Za-z0-9_])_*(?:(?i:(?:[A-Za-z][A-Za-z0-9]*[_-])*(?:api[_-]?key|token|secret|password))|(?:[A-Za-z][A-Za-z0-9]*[_-])*[A-Za-z][A-Za-z0-9]*(?:ApiKey|Token|Secret|Password))['\\\"]?\\s*[:=]\\s*(?![A-Za-z_][A-Za-z0-9_.:]*\\s*(?:<[^()\\n]*>\\s*)?\\()['\\\"]?[A-Za-z0-9_./+=-]{24,}",
       "severity": "block",
       "message": "Possible raw secret value assignment; inspect without printing values"
     },
