@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "description": "CodeX worktree hygiene policy for autonomous Trello MCP and room-control work. Content scans protect values, not labels.",
   "content_scan_max_bytes": 1000000,
   "strict_block_categories": [
@@ -113,7 +113,7 @@
     },
     {
       "name": "raw_secret_assignment",
-      "pattern": "(?i)(api[_-]?key|token|secret|password)['\\\"]?\\s*[:=]\\s*['\\\"]?[A-Za-z0-9_./+=-]{24,}",
+      "pattern": "(?<![A-Za-z0-9_])_*(?:(?i:(?:[A-Za-z][A-Za-z0-9]*[_-])*(?:api[_-]?key|token|secret|password))|(?:[A-Za-z][A-Za-z0-9]*[_-])*[A-Za-z][A-Za-z0-9]*(?:ApiKey|Token|Secret|Password))['\\\"]?\\s*[:=]\\s*(?![A-Za-z_][A-Za-z0-9_.:]*\\s*(?:<[^()\\n]*>\\s*)?\\()['\\\"]?[A-Za-z0-9_./+=-]{24,}",
       "severity": "block",
       "message": "Possible raw secret value assignment; inspect without printing values"
     },
