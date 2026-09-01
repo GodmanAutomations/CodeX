@@ -510,11 +510,15 @@ def run_doctor(json_mode: bool) -> int:
         false_positive_probes = [
             "boundary_" + "tok" + "en = parse_multipart_boundary(content_type)",
             "tok" + "en = parse_multipart_boundary(content_type)",
+            "access" + "Tok" + "en = parse_multipart_boundary(content_type)",
         ]
         prefixed_secret_assignment_probes = [
             "access_" + "tok" + "en = '" + "notarealsecretvalueusedforpolicydoctor000000'",
             "client_" + "sec" + "ret = '" + "notarealsecretvalueusedforpolicydoctor000000'",
             "db_" + "pass" + "word = '" + "notarealsecretvalueusedforpolicydoctor000000'",
+            "access" + "Tok" + "en = '" + "notarealsecretvalueusedforpolicydoctor000000'",
+            "client" + "Sec" + "ret = '" + "notarealsecretvalueusedforpolicydoctor000000'",
+            "api" + "Key = '" + "notarealsecretvalueusedforpolicydoctor000000'",
         ]
         probe_rows = [
             ("doctor probe", "control"),
