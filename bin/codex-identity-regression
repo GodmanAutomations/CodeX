@@ -428,6 +428,8 @@ if payload.get("mode") != "check":
     errors.append("mode is not check")
 if payload.get("summary", {}).get("fail") != 0:
     errors.append("summary.fail is not zero")
+if payload.get("summary", {}).get("warn") != 0:
+    errors.append("summary.warn is not zero")
 if not isinstance(payload.get("checks"), list) or not payload["checks"]:
     errors.append("checks is missing or empty")
 if "generated_at" not in payload:
@@ -451,6 +453,9 @@ fi
 run_capture "ensure standalone text runtime" "$ensure_standalone_text_output" "$ROOT/bin/codex-ensure-standalone" --check
 require_command_output_contains "ensure standalone text runtime keeps human header" "$ensure_standalone_text_output" "CODEX STANDALONE PREFLIGHT"
 require_command_output_contains "ensure standalone text runtime keeps summary" "$ensure_standalone_text_output" "summary: pass="
+require_command_output_contains "ensure standalone resolves bare MCP commands through PATH" "$ensure_standalone_text_output" "MCP command resolves on PATH for upload_files_to_gradio"
+require_command_output_contains "ensure standalone resolves relative MCP commands from configured cwd" "$ensure_standalone_text_output" "MCP command resolves from configured cwd for computer-use"
+require_command_output_contains "ensure standalone runtime has no warnings or failures" "$ensure_standalone_text_output" "warn=0 fail=0"
 require_command_output_contains "ensure standalone text runtime keeps receipt" "$ensure_standalone_text_output" "receipt saved:"
 
 incomplete_system_tree="$TMP_DIR/incomplete-system-tree"
