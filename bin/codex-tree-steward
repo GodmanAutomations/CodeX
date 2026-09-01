@@ -511,6 +511,7 @@ def run_doctor(json_mode: bool) -> int:
             "boundary_" + "tok" + "en = parse_multipart_boundary(content_type)",
             "tok" + "en = parse_multipart_boundary(content_type)",
             "access" + "Tok" + "en = parse_multipart_boundary(content_type)",
+            "_access" + "Tok" + "en = parse_multipart_boundary<string>(content_type)",
         ]
         prefixed_secret_assignment_probes = [
             "access_" + "tok" + "en = '" + "notarealsecretvalueusedforpolicydoctor000000'",
@@ -519,6 +520,8 @@ def run_doctor(json_mode: bool) -> int:
             "access" + "Tok" + "en = '" + "notarealsecretvalueusedforpolicydoctor000000'",
             "client" + "Sec" + "ret = '" + "notarealsecretvalueusedforpolicydoctor000000'",
             "api" + "Key = '" + "notarealsecretvalueusedforpolicydoctor000000'",
+            "_access_" + "tok" + "en = '" + "notarealsecretvalueusedforpolicydoctor000000'",
+            "_client" + "Sec" + "ret = '" + "notarealsecretvalueusedforpolicydoctor000000'",
         ]
         probe_rows = [
             ("doctor probe", "control"),
