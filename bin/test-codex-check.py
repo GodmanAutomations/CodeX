@@ -70,6 +70,21 @@ class JsonCheckTests(unittest.TestCase):
         self.assertEqual(payload["summary"], {"passed": 0, "failed": 0})
         run.assert_not_called()
 
+    def test_empty_only_name_returns_usage_error_without_running_checks(self):
+        for raw in ("status,", ",status", "status,,mcp_doctor", "status, ,mcp_doctor"):
+            with self.subTest(raw=raw):
+                only, only_error = CHECK["parse_only"](raw)
+                self.assertEqual(only_error, "--only included an empty check name")
+                with patch.object(subprocess, "run") as run:
+                    payload, returncode = CHECK["build_payload"](
+                        "quick", False, only, only_error
+                    )
+                self.assertEqual(returncode, 2)
+                self.assertFalse(payload["ok"])
+                self.assertEqual(payload["checks"], [])
+                self.assertEqual(payload["summary"], {"passed": 0, "failed": 0})
+                run.assert_not_called()
+
     def test_missing_executable_returns_failed_check(self):
         with tempfile.TemporaryDirectory() as directory:
             command = [str(Path(directory) / "missing-check")]

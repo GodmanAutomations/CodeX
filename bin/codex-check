@@ -223,9 +223,12 @@ def profile_names(profile: str) -> list[str]:
 def parse_only(raw: str | None) -> tuple[list[str] | None, str | None]:
     if raw is None:
         return None, None
-    parsed = [item.strip() for item in raw.split(",") if item.strip()]
+    entries = [item.strip() for item in raw.split(",")]
+    parsed = [item for item in entries if item]
     if not parsed:
         return [], "--only did not include any check names"
+    if len(parsed) != len(entries):
+        return parsed, "--only included an empty check name"
     seen: set[str] = set()
     duplicates: list[str] = []
     for name in parsed:
