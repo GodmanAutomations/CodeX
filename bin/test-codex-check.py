@@ -67,6 +67,10 @@ class JsonCheckTests(unittest.TestCase):
                     self.assertEqual(result["command"], command)
                     self.assertTrue(result["error"])
                     self.assertNotIn("payload", result)
+                    if kind == "exit-only":
+                        self.assertEqual(result["stdout_tail"], "")
+                    else:
+                        self.assertNotIn("stdout_tail", result)
 
     def test_aggregation_continues_after_launch_failure(self):
         responses = [
@@ -114,7 +118,10 @@ class JsonCheckTests(unittest.TestCase):
                     self.assertFalse(result["ok"])
                     self.assertEqual(result["returncode"], 1)
                     self.assertEqual(result["error"], "command output could not be decoded")
-                    self.assertNotIn("stdout_tail", result)
+                    if kind == "exit-only":
+                        self.assertEqual(result["stdout_tail"], "")
+                    else:
+                        self.assertNotIn("stdout_tail", result)
                     self.assertNotIn("stderr_tail", result)
 
     def test_aggregation_continues_after_invalid_child_text(self):

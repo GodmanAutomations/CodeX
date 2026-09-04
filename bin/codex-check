@@ -79,7 +79,7 @@ def run_check(name: str, command: list[str], *, kind: str, timeout: int) -> dict
             item["stderr_tail"] = tail(timeout_text(exc.stderr))
         return item
     except UnicodeDecodeError:
-        return {
+        item = {
             "name": name,
             "ok": False,
             "returncode": 1,
@@ -88,8 +88,11 @@ def run_check(name: str, command: list[str], *, kind: str, timeout: int) -> dict
             "command": command,
             "error": "command output could not be decoded",
         }
+        if kind != "json":
+            item["stdout_tail"] = ""
+        return item
     except OSError as exc:
-        return {
+        item = {
             "name": name,
             "ok": False,
             "returncode": 127,
@@ -98,6 +101,9 @@ def run_check(name: str, command: list[str], *, kind: str, timeout: int) -> dict
             "command": command,
             "error": str(exc),
         }
+        if kind != "json":
+            item["stdout_tail"] = ""
+        return item
 
     item: dict[str, Any] = {
         "name": name,
