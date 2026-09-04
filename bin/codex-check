@@ -35,6 +35,16 @@ def timeout_text(value: str | bytes | None) -> str:
     return value or ""
 
 
+def unique_object_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Build a JSON object while rejecting ambiguous duplicate members."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON object member")
+        result[key] = value
+    return result
+
+
 def summarize_json_payload(payload: dict[str, Any]) -> dict[str, Any]:
     """Retain health signals without forwarding arbitrary child output."""
     summary: dict[str, Any] = {"ok": payload.get("ok") is True}
@@ -117,7 +127,7 @@ def run_check(name: str, command: list[str], *, kind: str, timeout: int) -> dict
     if kind == "json":
         output = result.stdout.strip() or result.stderr.strip()
         try:
-            payload = json.loads(output)
+            payload = json.loads(output, object_pairs_hook=unique_object_pairs)
         except ValueError:
             # Includes JSONDecodeError and Python's integer conversion limit.
             item["ok"] = False
@@ -130,7 +140,20 @@ def run_check(name: str, command: list[str], *, kind: str, timeout: int) -> dict
             item["payload"] = summarize_json_payload(payload)
             if payload.get("ok") is not True:
                 item["ok"] = False
-            if any(item["payload"].get("safety", {}).values()):
+            safety = payload.get("safety")
+            invalid_safety = "safety" in payload and not isinstance(safety, dict)
+            if isinstance(safety, dict):
+                invalid_safety = (
+                    any(key not in CHILD_SAFETY_KEYS for key in safety)
+                    or any(
+                        key in safety and not isinstance(safety[key], bool)
+                        for key in CHILD_SAFETY_KEYS
+                    )
+                )
+            if invalid_safety:
+                item["ok"] = False
+                item["error"] = "child returned invalid safety data"
+            elif any(item["payload"].get("safety", {}).values()):
                 item["ok"] = False
                 item["error"] = "child reported an unsafe operation"
     else:

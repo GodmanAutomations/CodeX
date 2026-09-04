@@ -97,6 +97,8 @@ class JsonCheckTests(unittest.TestCase):
         }
         marker = "synthetic-child-diagnostic"
         result = self.run_payload({"ok": True, "safety": {**known, marker: False}})
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "child returned invalid safety data")
         self.assertEqual(result["payload"]["safety"], known)
         self.assertNotIn(marker, json.dumps(result))
         for value in (0, 1, "false", None, [], {}):
@@ -136,6 +138,44 @@ class JsonCheckTests(unittest.TestCase):
         self.assertEqual(returncode, 1)
         self.assertFalse(payload["ok"])
         self.assertEqual(payload["summary"], {"passed": 1, "failed": 1})
+
+    def test_known_child_safety_actions_require_boolean_values(self):
+        invalid_values = (0, 1, "false", "true", None, [], {})
+        for key in sorted(CHECK["CHILD_SAFETY_KEYS"]):
+            for value in invalid_values:
+                with self.subTest(key=key, value=value):
+                    result = self.run_payload({"ok": True, "safety": {key: value}})
+                    self.assertFalse(result["ok"])
+                    self.assertEqual(
+                        result["error"], "child returned invalid safety data"
+                    )
+                    self.assertEqual(result["payload"]["safety"], {})
+
+    def test_safety_field_requires_an_object(self):
+        for value in (None, [], "safe", True, 0):
+            with self.subTest(value=value):
+                result = self.run_payload({"ok": True, "safety": value})
+                self.assertFalse(result["ok"])
+                self.assertEqual(result["error"], "child returned invalid safety data")
+                self.assertNotIn("safety", result["payload"])
+
+    def test_duplicate_json_object_members_fail_closed(self):
+        outputs = (
+            '{"ok":true,"safety":{"secrets_printed":true,"secrets_printed":false}}',
+            '{"ok":true,"safety":{"secrets_printed":true},"safety":{}}',
+        )
+        for output in outputs:
+            with self.subTest(output=output):
+                response = subprocess.CompletedProcess(
+                    ["fixture-check"], 0, output, ""
+                )
+                with patch.object(subprocess, "run", return_value=response):
+                    result = CHECK["run_check"](
+                        "fixture", ["fixture-check"], kind="json", timeout=5
+                    )
+                self.assertFalse(result["ok"])
+                self.assertEqual(result["error"], "command did not return valid JSON")
+                self.assertNotIn("payload", result)
 
     def test_invalid_child_text_returns_failed_check(self):
         for stream in ("stdout", "stderr"):
