@@ -76,6 +76,16 @@ def run_check(name: str, command: list[str], *, kind: str, timeout: int) -> dict
             "stdout_tail": tail(stdout),
             "stderr_tail": tail(stderr),
         }
+    except UnicodeDecodeError:
+        return {
+            "name": name,
+            "ok": False,
+            "returncode": 1,
+            "kind": kind,
+            "duration_ms": int((time.monotonic() - started) * 1000),
+            "command": command,
+            "error": "command output could not be decoded",
+        }
     except OSError as exc:
         return {
             "name": name,

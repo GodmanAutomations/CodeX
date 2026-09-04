@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import runpy
 import subprocess
+import sys
 import unittest
 from unittest.mock import patch
 
@@ -42,6 +43,36 @@ class JsonCheckTests(unittest.TestCase):
     def test_aggregation_continues_after_non_object_json(self):
         responses = [
             subprocess.CompletedProcess(["fixture-check"], 0, "[]", ""),
+            subprocess.CompletedProcess(["fixture-check"], 0, '{"ok": true}', ""),
+        ]
+        with patch.object(subprocess, "run", side_effect=responses):
+            payload, returncode = CHECK["build_payload"](
+                "quick", False, ["status", "mcp_doctor"]
+            )
+        self.assertEqual(returncode, 1)
+        self.assertEqual(payload["summary"], {"passed": 1, "failed": 1})
+        self.assertTrue(payload["checks"][1]["ok"])
+
+    def test_invalid_child_text_returns_failed_check(self):
+        for stream in ("stdout", "stderr"):
+            for kind in ("json", "exit-only"):
+                with self.subTest(stream=stream, kind=kind):
+                    result = CHECK["run_check"](
+                        "invalid-text",
+                        [sys.executable, "-c",
+                         f"import sys; sys.{stream}.buffer.write(b'\\xff')"],
+                        kind=kind,
+                        timeout=5,
+                    )
+                    self.assertFalse(result["ok"])
+                    self.assertEqual(result["returncode"], 1)
+                    self.assertEqual(result["error"], "command output could not be decoded")
+                    self.assertNotIn("stdout_tail", result)
+                    self.assertNotIn("stderr_tail", result)
+
+    def test_aggregation_continues_after_invalid_child_text(self):
+        responses = [
+            UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte"),
             subprocess.CompletedProcess(["fixture-check"], 0, '{"ok": true}', ""),
         ]
         with patch.object(subprocess, "run", side_effect=responses):
