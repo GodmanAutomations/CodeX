@@ -177,6 +177,23 @@ class JsonCheckTests(unittest.TestCase):
                 self.assertEqual(result["error"], "command did not return valid JSON")
                 self.assertNotIn("payload", result)
 
+    def test_nonstandard_json_constants_fail_closed(self):
+        for constant in ("NaN", "Infinity", "-Infinity"):
+            with self.subTest(constant=constant):
+                response = subprocess.CompletedProcess(
+                    ["fixture-check"],
+                    0,
+                    f'{{"ok":true,"metric":{constant}}}',
+                    "",
+                )
+                with patch.object(subprocess, "run", return_value=response):
+                    result = CHECK["run_check"](
+                        "fixture", ["fixture-check"], kind="json", timeout=5
+                    )
+                self.assertFalse(result["ok"])
+                self.assertEqual(result["error"], "command did not return valid JSON")
+                self.assertNotIn("payload", result)
+
     def test_invalid_child_text_returns_failed_check(self):
         for stream in ("stdout", "stderr"):
             for kind in ("json", "exit-only"):
