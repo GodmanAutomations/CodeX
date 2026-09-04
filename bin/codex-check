@@ -105,10 +105,11 @@ def run_check(name: str, command: list[str], *, kind: str, timeout: int) -> dict
             item["error"] = "command did not return valid JSON"
             item["stdout_tail"] = tail(result.stdout)
             item["stderr_tail"] = tail(result.stderr)
-        except (AttributeError, TypeError):
-            item["ok"] = False
-            item["error"] = "command did not return a JSON object"
         else:
+            if not isinstance(payload, dict):
+                item["ok"] = False
+                item["error"] = "command did not return a JSON object"
+                return item
             item["payload"] = summarize_json_payload(payload)
             if payload.get("ok") is not True:
                 item["ok"] = False
