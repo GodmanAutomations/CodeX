@@ -63,9 +63,7 @@ def run_check(name: str, command: list[str], *, kind: str, timeout: int) -> dict
         )
         duration_ms = int((time.monotonic() - started) * 1000)
     except subprocess.TimeoutExpired as exc:
-        stdout = timeout_text(exc.stdout)
-        stderr = timeout_text(exc.stderr)
-        return {
+        item = {
             "name": name,
             "ok": False,
             "returncode": 124,
@@ -73,9 +71,12 @@ def run_check(name: str, command: list[str], *, kind: str, timeout: int) -> dict
             "duration_ms": int((time.monotonic() - started) * 1000),
             "command": command,
             "error": f"timed out after {timeout}s",
-            "stdout_tail": tail(stdout),
-            "stderr_tail": tail(stderr),
         }
+        # JSON checks must not expose arbitrary diagnostics on failure either.
+        if kind != "json":
+            item["stdout_tail"] = tail(timeout_text(exc.stdout))
+            item["stderr_tail"] = tail(timeout_text(exc.stderr))
+        return item
     except UnicodeDecodeError:
         return {
             "name": name,
@@ -113,8 +114,6 @@ def run_check(name: str, command: list[str], *, kind: str, timeout: int) -> dict
         except json.JSONDecodeError:
             item["ok"] = False
             item["error"] = "command did not return valid JSON"
-            item["stdout_tail"] = tail(result.stdout)
-            item["stderr_tail"] = tail(result.stderr)
         else:
             if not isinstance(payload, dict):
                 item["ok"] = False

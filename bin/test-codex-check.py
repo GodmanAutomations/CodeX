@@ -83,6 +83,59 @@ class JsonCheckTests(unittest.TestCase):
         self.assertEqual(payload["summary"], {"passed": 1, "failed": 1})
         self.assertTrue(payload["checks"][1]["ok"])
 
+    def test_invalid_json_does_not_forward_child_diagnostics(self):
+        marker = "synthetic-child-diagnostic"
+        for stdout, stderr in ((marker, ""), ("", marker), (marker, marker)):
+            with self.subTest(stdout=bool(stdout), stderr=bool(stderr)):
+                response = subprocess.CompletedProcess(["fixture-check"], 0, stdout, stderr)
+                with patch.object(subprocess, "run", return_value=response):
+                    result = CHECK["run_check"](
+                        "fixture", ["fixture-check"], kind="json", timeout=5
+                    )
+                self.assertFalse(result["ok"])
+                self.assertEqual(result["error"], "command did not return valid JSON")
+                self.assertNotIn(marker, json.dumps(result))
+                self.assertNotIn("stdout_tail", result)
+                self.assertNotIn("stderr_tail", result)
+
+    def test_json_timeout_does_not_forward_child_diagnostics(self):
+        marker = "synthetic-child-diagnostic"
+        for output in (marker, marker.encode()):
+            with self.subTest(output_type=type(output).__name__):
+                timeout = subprocess.TimeoutExpired(
+                    ["fixture-check"], 5, output=output, stderr=output
+                )
+                responses = [
+                    timeout,
+                    subprocess.CompletedProcess(["fixture-check"], 0, '{"ok": true}', ""),
+                ]
+                with patch.object(subprocess, "run", side_effect=responses):
+                    payload, returncode = CHECK["build_payload"](
+                        "quick", False, ["status", "mcp_doctor"]
+                    )
+                self.assertEqual(returncode, 1)
+                self.assertEqual(payload["summary"], {"passed": 1, "failed": 1})
+                self.assertTrue(payload["checks"][1]["ok"])
+                result = payload["checks"][0]
+                self.assertEqual(result["returncode"], 124)
+                self.assertEqual(result["error"], "timed out after 30s")
+                self.assertNotIn(marker, json.dumps(payload))
+                self.assertNotIn("stdout_tail", result)
+                self.assertNotIn("stderr_tail", result)
+
+    def test_exit_only_timeout_preserves_diagnostics(self):
+        timeout = subprocess.TimeoutExpired(
+            ["fixture-check"], 5, output=b"synthetic stdout", stderr=b"synthetic stderr"
+        )
+        with patch.object(subprocess, "run", side_effect=timeout):
+            result = CHECK["run_check"](
+                "fixture", ["fixture-check"], kind="exit-only", timeout=5
+            )
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["returncode"], 124)
+        self.assertEqual(result["stdout_tail"], "synthetic stdout")
+        self.assertEqual(result["stderr_tail"], "synthetic stderr")
+
 
 if __name__ == "__main__":
     unittest.main()
