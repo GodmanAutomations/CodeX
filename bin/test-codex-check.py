@@ -54,6 +54,22 @@ class JsonCheckTests(unittest.TestCase):
         self.assertEqual(payload["summary"], {"passed": 1, "failed": 1})
         self.assertTrue(payload["checks"][1]["ok"])
 
+    def test_duplicate_only_names_return_usage_error_without_running_checks(self):
+        only, only_error = CHECK["parse_only"]("status,mcp_doctor,status,status")
+        self.assertEqual(only, ["status", "mcp_doctor", "status", "status"])
+        self.assertEqual(
+            only_error, "--only included duplicate check name(s): status"
+        )
+        with patch.object(subprocess, "run") as run:
+            payload, returncode = CHECK["build_payload"](
+                "quick", False, only, only_error
+            )
+        self.assertEqual(returncode, 2)
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["checks"], [])
+        self.assertEqual(payload["summary"], {"passed": 0, "failed": 0})
+        run.assert_not_called()
+
     def test_missing_executable_returns_failed_check(self):
         with tempfile.TemporaryDirectory() as directory:
             command = [str(Path(directory) / "missing-check")]

@@ -226,6 +226,14 @@ def parse_only(raw: str | None) -> tuple[list[str] | None, str | None]:
     parsed = [item.strip() for item in raw.split(",") if item.strip()]
     if not parsed:
         return [], "--only did not include any check names"
+    seen: set[str] = set()
+    duplicates: list[str] = []
+    for name in parsed:
+        if name in seen and name not in duplicates:
+            duplicates.append(name)
+        seen.add(name)
+    if duplicates:
+        return parsed, f"--only included duplicate check name(s): {', '.join(duplicates)}"
     return parsed, None
 
 
