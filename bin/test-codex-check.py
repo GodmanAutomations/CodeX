@@ -149,6 +149,14 @@ class JsonCheckTests(unittest.TestCase):
                     )
                     self.assertEqual(result["payload"]["safety"], {})
 
+    def test_safety_field_requires_an_object(self):
+        for value in (None, [], "safe", True, 0):
+            with self.subTest(value=value):
+                result = self.run_payload({"ok": True, "safety": value})
+                self.assertFalse(result["ok"])
+                self.assertEqual(result["error"], "child returned invalid safety data")
+                self.assertNotIn("safety", result["payload"])
+
     def test_invalid_child_text_returns_failed_check(self):
         for stream in ("stdout", "stderr"):
             for kind in ("json", "exit-only"):
