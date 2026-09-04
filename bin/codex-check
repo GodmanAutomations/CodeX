@@ -21,6 +21,7 @@ SAFETY = {
     "secrets_printed": False,
     "trello_writes": False,
 }
+CHILD_SAFETY_KEYS = frozenset(SAFETY) | {"secrets_returned", "pi5_writes"}
 
 
 def tail(text: str, *, lines: int = 24, chars: int = 4000) -> str:
@@ -44,9 +45,9 @@ def summarize_json_payload(payload: dict[str, Any]) -> dict[str, Any]:
     safety = payload.get("safety")
     if isinstance(safety, dict):
         summary["safety"] = {
-            str(key): value
-            for key, value in sorted(safety.items(), key=lambda item: str(item[0]))
-            if isinstance(value, bool)
+            key: safety[key]
+            for key in sorted(CHILD_SAFETY_KEYS)
+            if isinstance(safety.get(key), bool)
         }
     return summary
 

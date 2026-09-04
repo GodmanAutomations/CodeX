@@ -53,6 +53,24 @@ class JsonCheckTests(unittest.TestCase):
         self.assertEqual(payload["summary"], {"passed": 1, "failed": 1})
         self.assertTrue(payload["checks"][1]["ok"])
 
+    def test_safety_summary_only_retains_known_boolean_fields(self):
+        known = {
+            "git_writes": False,
+            "file_deletes": True,
+            "secrets_printed": False,
+            "trello_writes": False,
+            "secrets_returned": False,
+            "pi5_writes": False,
+        }
+        marker = "synthetic-child-diagnostic"
+        result = self.run_payload({"ok": True, "safety": {**known, marker: False}})
+        self.assertEqual(result["payload"]["safety"], known)
+        self.assertNotIn(marker, json.dumps(result))
+        for value in (0, 1, "false", None, [], {}):
+            with self.subTest(value=value):
+                result = self.run_payload({"ok": True, "safety": {"git_writes": value}})
+                self.assertEqual(result["payload"]["safety"], {})
+
     def test_invalid_child_text_returns_failed_check(self):
         for stream in ("stdout", "stderr"):
             for kind in ("json", "exit-only"):
