@@ -159,6 +159,24 @@ class JsonCheckTests(unittest.TestCase):
                 self.assertEqual(result["error"], "child returned invalid safety data")
                 self.assertNotIn("safety", result["payload"])
 
+    def test_duplicate_json_object_members_fail_closed(self):
+        outputs = (
+            '{"ok":true,"safety":{"secrets_printed":true,"secrets_printed":false}}',
+            '{"ok":true,"safety":{"secrets_printed":true},"safety":{}}',
+        )
+        for output in outputs:
+            with self.subTest(output=output):
+                response = subprocess.CompletedProcess(
+                    ["fixture-check"], 0, output, ""
+                )
+                with patch.object(subprocess, "run", return_value=response):
+                    result = CHECK["run_check"](
+                        "fixture", ["fixture-check"], kind="json", timeout=5
+                    )
+                self.assertFalse(result["ok"])
+                self.assertEqual(result["error"], "command did not return valid JSON")
+                self.assertNotIn("payload", result)
+
     def test_invalid_child_text_returns_failed_check(self):
         for stream in ("stdout", "stderr"):
             for kind in ("json", "exit-only"):
