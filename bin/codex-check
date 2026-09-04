@@ -137,8 +137,8 @@ def run_check(name: str, command: list[str], *, kind: str, timeout: int) -> dict
                 object_pairs_hook=unique_object_pairs,
                 parse_constant=reject_nonstandard_json_constant,
             )
-        except ValueError:
-            # Includes JSONDecodeError and Python's integer conversion limit.
+        except (ValueError, RecursionError):
+            # Includes JSONDecodeError, numeric limits, and excessive nesting.
             item["ok"] = False
             item["error"] = "command did not return valid JSON"
         else:
