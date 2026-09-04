@@ -4,6 +4,7 @@ from pathlib import Path
 import runpy
 import subprocess
 import sys
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -51,6 +52,34 @@ class JsonCheckTests(unittest.TestCase):
             )
         self.assertEqual(returncode, 1)
         self.assertEqual(payload["summary"], {"passed": 1, "failed": 1})
+        self.assertTrue(payload["checks"][1]["ok"])
+
+    def test_missing_executable_returns_failed_check(self):
+        with tempfile.TemporaryDirectory() as directory:
+            command = [str(Path(directory) / "missing-check")]
+            for kind in ("json", "exit-only"):
+                with self.subTest(kind=kind):
+                    result = CHECK["run_check"](
+                        "missing", command, kind=kind, timeout=5
+                    )
+                    self.assertFalse(result["ok"])
+                    self.assertEqual(result["returncode"], 127)
+                    self.assertEqual(result["command"], command)
+                    self.assertTrue(result["error"])
+                    self.assertNotIn("payload", result)
+
+    def test_aggregation_continues_after_launch_failure(self):
+        responses = [
+            FileNotFoundError(2, "No such file or directory", "fixture-check"),
+            subprocess.CompletedProcess(["fixture-check"], 0, '{"ok": true}', ""),
+        ]
+        with patch.object(subprocess, "run", side_effect=responses):
+            payload, returncode = CHECK["build_payload"](
+                "quick", False, ["status", "mcp_doctor"]
+            )
+        self.assertEqual(returncode, 1)
+        self.assertEqual(payload["summary"], {"passed": 1, "failed": 1})
+        self.assertEqual(payload["checks"][0]["returncode"], 127)
         self.assertTrue(payload["checks"][1]["ok"])
 
     def test_safety_summary_only_retains_known_boolean_fields(self):
