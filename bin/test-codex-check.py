@@ -104,6 +104,39 @@ class JsonCheckTests(unittest.TestCase):
                 result = self.run_payload({"ok": True, "safety": {"git_writes": value}})
                 self.assertEqual(result["payload"]["safety"], {})
 
+    def test_known_child_safety_actions_fail_the_check_and_profile(self):
+        known_keys = (
+            "file_deletes",
+            "git_writes",
+            "pi5_writes",
+            "secrets_printed",
+            "secrets_returned",
+            "trello_writes",
+        )
+        for key in known_keys:
+            with self.subTest(key=key):
+                result = self.run_payload({"ok": True, "safety": {key: True}})
+                self.assertFalse(result["ok"])
+                self.assertEqual(result["error"], "child reported an unsafe operation")
+                self.assertTrue(result["payload"]["safety"][key])
+
+        responses = [
+            subprocess.CompletedProcess(
+                ["fixture-check"],
+                0,
+                '{"ok": true, "safety": {"secrets_printed": true}}',
+                "",
+            ),
+            subprocess.CompletedProcess(["fixture-check"], 0, '{"ok": true}', ""),
+        ]
+        with patch.object(subprocess, "run", side_effect=responses):
+            payload, returncode = CHECK["build_payload"](
+                "quick", False, ["status", "mcp_doctor"]
+            )
+        self.assertEqual(returncode, 1)
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["summary"], {"passed": 1, "failed": 1})
+
     def test_invalid_child_text_returns_failed_check(self):
         for stream in ("stdout", "stderr"):
             for kind in ("json", "exit-only"):
