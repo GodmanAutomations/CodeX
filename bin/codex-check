@@ -130,6 +130,13 @@ def run_check(name: str, command: list[str], *, kind: str, timeout: int) -> dict
             item["payload"] = summarize_json_payload(payload)
             if payload.get("ok") is not True:
                 item["ok"] = False
+            safety = payload.get("safety")
+            if isinstance(safety, dict) and any(
+                key in safety and not isinstance(safety[key], bool)
+                for key in CHILD_SAFETY_KEYS
+            ):
+                item["ok"] = False
+                item["error"] = "child returned invalid safety data"
             if any(item["payload"].get("safety", {}).values()):
                 item["ok"] = False
                 item["error"] = "child reported an unsafe operation"

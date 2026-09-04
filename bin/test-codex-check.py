@@ -137,6 +137,18 @@ class JsonCheckTests(unittest.TestCase):
         self.assertFalse(payload["ok"])
         self.assertEqual(payload["summary"], {"passed": 1, "failed": 1})
 
+    def test_known_child_safety_actions_require_boolean_values(self):
+        invalid_values = (0, 1, "false", "true", None, [], {})
+        for key in sorted(CHECK["CHILD_SAFETY_KEYS"]):
+            for value in invalid_values:
+                with self.subTest(key=key, value=value):
+                    result = self.run_payload({"ok": True, "safety": {key: value}})
+                    self.assertFalse(result["ok"])
+                    self.assertEqual(
+                        result["error"], "child returned invalid safety data"
+                    )
+                    self.assertEqual(result["payload"]["safety"], {})
+
     def test_invalid_child_text_returns_failed_check(self):
         for stream in ("stdout", "stderr"):
             for kind in ("json", "exit-only"):
