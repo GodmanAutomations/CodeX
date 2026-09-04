@@ -133,14 +133,17 @@ def run_check(name: str, command: list[str], *, kind: str, timeout: int) -> dict
             safety = payload.get("safety")
             invalid_safety = "safety" in payload and not isinstance(safety, dict)
             if isinstance(safety, dict):
-                invalid_safety = invalid_safety or any(
-                    key in safety and not isinstance(safety[key], bool)
-                    for key in CHILD_SAFETY_KEYS
+                invalid_safety = (
+                    any(key not in CHILD_SAFETY_KEYS for key in safety)
+                    or any(
+                        key in safety and not isinstance(safety[key], bool)
+                        for key in CHILD_SAFETY_KEYS
+                    )
                 )
             if invalid_safety:
                 item["ok"] = False
                 item["error"] = "child returned invalid safety data"
-            if any(item["payload"].get("safety", {}).values()):
+            elif any(item["payload"].get("safety", {}).values()):
                 item["ok"] = False
                 item["error"] = "child reported an unsafe operation"
     else:

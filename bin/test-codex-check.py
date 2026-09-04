@@ -97,6 +97,8 @@ class JsonCheckTests(unittest.TestCase):
         }
         marker = "synthetic-child-diagnostic"
         result = self.run_payload({"ok": True, "safety": {**known, marker: False}})
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "child returned invalid safety data")
         self.assertEqual(result["payload"]["safety"], known)
         self.assertNotIn(marker, json.dumps(result))
         for value in (0, 1, "false", None, [], {}):
