@@ -130,6 +130,9 @@ def run_check(name: str, command: list[str], *, kind: str, timeout: int) -> dict
             item["payload"] = summarize_json_payload(payload)
             if payload.get("ok") is not True:
                 item["ok"] = False
+            if any(item["payload"].get("safety", {}).values()):
+                item["ok"] = False
+                item["error"] = "child reported an unsafe operation"
     else:
         item["stdout_tail"] = tail(result.stdout)
         if result.stderr.strip():
