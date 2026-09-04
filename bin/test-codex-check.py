@@ -116,6 +116,29 @@ class JsonCheckTests(unittest.TestCase):
                 self.assertNotIn("stdout_tail", result)
                 self.assertNotIn("stderr_tail", result)
 
+    @unittest.skipUnless(hasattr(sys, "get_int_max_str_digits"), "requires integer limit")
+    def test_aggregation_continues_after_oversized_json_integer(self):
+        original_limit = sys.get_int_max_str_digits()
+        sys.set_int_max_str_digits(4300)
+        self.addCleanup(sys.set_int_max_str_digits, original_limit)
+        responses = [
+            subprocess.CompletedProcess(
+                ["fixture-check"], 0, '{"ok":true,"value":' + "9" * 4301 + "}", ""
+            ),
+            subprocess.CompletedProcess(["fixture-check"], 0, '{"ok":true}', ""),
+        ]
+        with patch.object(subprocess, "run", side_effect=responses):
+            payload, returncode = CHECK["build_payload"](
+                "quick", False, ["status", "mcp_doctor"]
+            )
+        self.assertEqual(returncode, 1)
+        self.assertEqual(payload["summary"], {"passed": 1, "failed": 1})
+        self.assertTrue(payload["checks"][1]["ok"])
+        result = payload["checks"][0]
+        self.assertEqual(result["error"], "command did not return valid JSON")
+        self.assertNotIn("payload", result)
+        self.assertNotIn("9" * 100, json.dumps(payload))
+
     def test_json_timeout_does_not_forward_child_diagnostics(self):
         marker = "synthetic-child-diagnostic"
         for output in (marker, marker.encode()):
