@@ -401,6 +401,30 @@ class JsonCheckTests(unittest.TestCase):
         self.assertNotIn("stdout_tail", result)
         self.assertNotIn("stderr_tail", result)
 
+    def test_real_child_is_stopped_when_stderr_exceeds_output_limit(self):
+        marker = "synthetic-oversized-stderr-diagnostic"
+        result = CHECK["run_check"](
+            "oversized-stderr",
+            [
+                sys.executable,
+                "-c",
+                (
+                    "import sys; "
+                    "sys.stderr.buffer.write("
+                    "b'synthetic-oversized-' + "
+                    "b'stderr-diagnostic' + b'x' * 1000001)"
+                ),
+            ],
+            kind="json",
+            timeout=5,
+        )
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["returncode"], 125)
+        self.assertEqual(result["error"], "command returned oversized JSON")
+        self.assertNotIn(marker, json.dumps(result))
+        self.assertNotIn("stdout_tail", result)
+        self.assertNotIn("stderr_tail", result)
+
     def test_json_timeout_does_not_forward_child_diagnostics(self):
         marker = "synthetic-child-diagnostic"
         for output in (marker, marker.encode()):
