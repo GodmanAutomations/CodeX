@@ -18,7 +18,7 @@ class JsonCheckTests(unittest.TestCase):
         result = subprocess.CompletedProcess(
             ["fixture-check"], returncode, json.dumps(payload), ""
         )
-        with patch.object(subprocess, "run", return_value=result):
+        with patch.object(CHECK["PROCESS_RUNNER"], "run", return_value=result):
             return CHECK["run_check"](
                 "fixture", ["fixture-check"], kind="json", timeout=5
             )
@@ -61,7 +61,7 @@ class JsonCheckTests(unittest.TestCase):
             subprocess.CompletedProcess(["fixture-check"], 0, "[]", ""),
             subprocess.CompletedProcess(["fixture-check"], 0, SAFE_JSON, ""),
         ]
-        with patch.object(subprocess, "run", side_effect=responses):
+        with patch.object(CHECK["PROCESS_RUNNER"], "run", side_effect=responses):
             payload, returncode = CHECK["build_payload"](
                 "quick", False, ["status", "mcp_doctor"]
             )
@@ -75,7 +75,7 @@ class JsonCheckTests(unittest.TestCase):
         self.assertEqual(
             only_error, "--only included duplicate check name(s): status"
         )
-        with patch.object(subprocess, "run") as run:
+        with patch.object(CHECK["PROCESS_RUNNER"], "run") as run:
             payload, returncode = CHECK["build_payload"](
                 "quick", False, only, only_error
             )
@@ -90,7 +90,7 @@ class JsonCheckTests(unittest.TestCase):
             with self.subTest(raw=raw):
                 only, only_error = CHECK["parse_only"](raw)
                 self.assertEqual(only_error, "--only included an empty check name")
-                with patch.object(subprocess, "run") as run:
+                with patch.object(CHECK["PROCESS_RUNNER"], "run") as run:
                     payload, returncode = CHECK["build_payload"](
                         "quick", False, only, only_error
                     )
@@ -123,7 +123,7 @@ class JsonCheckTests(unittest.TestCase):
             FileNotFoundError(2, "No such file or directory", "fixture-check"),
             subprocess.CompletedProcess(["fixture-check"], 0, SAFE_JSON, ""),
         ]
-        with patch.object(subprocess, "run", side_effect=responses):
+        with patch.object(CHECK["PROCESS_RUNNER"], "run", side_effect=responses):
             payload, returncode = CHECK["build_payload"](
                 "quick", False, ["status", "mcp_doctor"]
             )
@@ -177,7 +177,7 @@ class JsonCheckTests(unittest.TestCase):
             ),
             subprocess.CompletedProcess(["fixture-check"], 0, SAFE_JSON, ""),
         ]
-        with patch.object(subprocess, "run", side_effect=responses):
+        with patch.object(CHECK["PROCESS_RUNNER"], "run", side_effect=responses):
             payload, returncode = CHECK["build_payload"](
                 "quick", False, ["status", "mcp_doctor"]
             )
@@ -222,7 +222,7 @@ class JsonCheckTests(unittest.TestCase):
                 response = subprocess.CompletedProcess(
                     ["fixture-check"], 0, output, ""
                 )
-                with patch.object(subprocess, "run", return_value=response):
+                with patch.object(CHECK["PROCESS_RUNNER"], "run", return_value=response):
                     result = CHECK["run_check"](
                         "fixture", ["fixture-check"], kind="json", timeout=5
                     )
@@ -239,7 +239,7 @@ class JsonCheckTests(unittest.TestCase):
                     f'{{"ok":true,"metric":{constant}}}',
                     "",
                 )
-                with patch.object(subprocess, "run", return_value=response):
+                with patch.object(CHECK["PROCESS_RUNNER"], "run", return_value=response):
                     result = CHECK["run_check"](
                         "fixture", ["fixture-check"], kind="json", timeout=5
                     )
@@ -256,7 +256,7 @@ class JsonCheckTests(unittest.TestCase):
             RecursionError("maximum JSON nesting exceeded"),
             {"ok": True, "safety": {"git_writes": False}},
         ]
-        with patch.object(subprocess, "run", side_effect=responses):
+        with patch.object(CHECK["PROCESS_RUNNER"], "run", side_effect=responses):
             with patch.object(CHECK["json"], "loads", side_effect=parsed_payloads):
                 payload, returncode = CHECK["build_payload"](
                     "quick", False, ["status", "mcp_doctor"]
@@ -294,7 +294,7 @@ class JsonCheckTests(unittest.TestCase):
             UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte"),
             subprocess.CompletedProcess(["fixture-check"], 0, SAFE_JSON, ""),
         ]
-        with patch.object(subprocess, "run", side_effect=responses):
+        with patch.object(CHECK["PROCESS_RUNNER"], "run", side_effect=responses):
             payload, returncode = CHECK["build_payload"](
                 "quick", False, ["status", "mcp_doctor"]
             )
@@ -307,7 +307,7 @@ class JsonCheckTests(unittest.TestCase):
         for stdout, stderr in ((marker, ""), ("", marker), (marker, marker)):
             with self.subTest(stdout=bool(stdout), stderr=bool(stderr)):
                 response = subprocess.CompletedProcess(["fixture-check"], 0, stdout, stderr)
-                with patch.object(subprocess, "run", return_value=response):
+                with patch.object(CHECK["PROCESS_RUNNER"], "run", return_value=response):
                     result = CHECK["run_check"](
                         "fixture", ["fixture-check"], kind="json", timeout=5
                     )
@@ -320,7 +320,7 @@ class JsonCheckTests(unittest.TestCase):
     def test_json_payload_must_come_from_stdout(self):
         marker = '{"ok":true,"safety":{"git_writes":false}}'
         response = subprocess.CompletedProcess(["fixture-check"], 0, "", marker)
-        with patch.object(subprocess, "run", return_value=response):
+        with patch.object(CHECK["PROCESS_RUNNER"], "run", return_value=response):
             result = CHECK["run_check"](
                 "fixture", ["fixture-check"], kind="json", timeout=5
             )
@@ -342,7 +342,7 @@ class JsonCheckTests(unittest.TestCase):
             ),
             subprocess.CompletedProcess(["fixture-check"], 0, SAFE_JSON, ""),
         ]
-        with patch.object(subprocess, "run", side_effect=responses):
+        with patch.object(CHECK["PROCESS_RUNNER"], "run", side_effect=responses):
             payload, returncode = CHECK["build_payload"](
                 "quick", False, ["status", "mcp_doctor"]
             )
@@ -371,7 +371,7 @@ class JsonCheckTests(unittest.TestCase):
             ),
             subprocess.CompletedProcess(["fixture-check"], 0, SAFE_JSON, ""),
         ]
-        with patch.object(subprocess, "run", side_effect=responses):
+        with patch.object(CHECK["PROCESS_RUNNER"], "run", side_effect=responses):
             payload, returncode = CHECK["build_payload"](
                 "quick", False, ["status", "mcp_doctor"]
             )
@@ -384,6 +384,23 @@ class JsonCheckTests(unittest.TestCase):
         self.assertNotIn(marker, json.dumps(payload))
         self.assertNotIn("payload", result)
 
+    def test_real_child_is_stopped_at_output_limit(self):
+        result = CHECK["run_check"](
+            "oversized",
+            [
+                sys.executable,
+                "-c",
+                "import sys; sys.stdout.buffer.write(b'x' * 1000001)",
+            ],
+            kind="json",
+            timeout=5,
+        )
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["returncode"], 125)
+        self.assertEqual(result["error"], "command returned oversized JSON")
+        self.assertNotIn("stdout_tail", result)
+        self.assertNotIn("stderr_tail", result)
+
     def test_json_timeout_does_not_forward_child_diagnostics(self):
         marker = "synthetic-child-diagnostic"
         for output in (marker, marker.encode()):
@@ -395,7 +412,7 @@ class JsonCheckTests(unittest.TestCase):
                     timeout,
                     subprocess.CompletedProcess(["fixture-check"], 0, SAFE_JSON, ""),
                 ]
-                with patch.object(subprocess, "run", side_effect=responses):
+                with patch.object(CHECK["PROCESS_RUNNER"], "run", side_effect=responses):
                     payload, returncode = CHECK["build_payload"](
                         "quick", False, ["status", "mcp_doctor"]
                     )
@@ -413,7 +430,7 @@ class JsonCheckTests(unittest.TestCase):
         timeout = subprocess.TimeoutExpired(
             ["fixture-check"], 5, output=b"synthetic stdout", stderr=b"synthetic stderr"
         )
-        with patch.object(subprocess, "run", side_effect=timeout):
+        with patch.object(CHECK["PROCESS_RUNNER"], "run", side_effect=timeout):
             result = CHECK["run_check"](
                 "fixture", ["fixture-check"], kind="exit-only", timeout=5
             )
@@ -427,7 +444,7 @@ class JsonCheckTests(unittest.TestCase):
         response = subprocess.CompletedProcess(
             ["fixture-check"], 0, marker, marker
         )
-        with patch.object(subprocess, "run", return_value=response):
+        with patch.object(CHECK["PROCESS_RUNNER"], "run", return_value=response):
             result = CHECK["run_check"](
                 "fixture", ["fixture-check"], kind="exit-only", timeout=5
             )
