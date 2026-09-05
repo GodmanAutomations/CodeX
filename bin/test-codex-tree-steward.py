@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Isolated regression tests for CodeX tree-steward path matching."""
 from pathlib import Path
+import os
 import runpy
 import subprocess
 import unittest
@@ -50,13 +51,13 @@ class ParseStatusTests(unittest.TestCase):
             [(["status", "--porcelain=v1", "-z", "--untracked-files=all"], False)],
         )
         self.assertEqual(
-            rows,
+            [rows[0], rows[2]],
             [
                 ("??", "bin/café.py"),
-                ("??", "bin/bad-\\udcff.py"),
                 ("R ", "bin/new -> name.py"),
             ],
         )
+        self.assertEqual(os.fsencode(rows[1][1]), b"bin/bad-\xff.py")
 
     def test_rejects_truncated_or_empty_nul_records(self):
         for raw_status in [b"?? bin/file.py", b"?? bin/a.py\0\0?? bin/b.py\0"]:
