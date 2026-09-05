@@ -69,21 +69,28 @@ def run_git(args: list[str]) -> subprocess.CompletedProcess[str]:
 
 
 def parse_status(include_ignored: bool = False) -> list[tuple[str, str]]:
-    args = ["status", "--short", "--untracked-files=all"]
+    args = ["status", "--porcelain=v1", "-z", "--untracked-files=all"]
     if include_ignored:
         args.append("--ignored=matching")
     result = run_git(args)
     if result.returncode != 0:
         raise RuntimeError((result.stderr or result.stdout).strip())
     rows: list[tuple[str, str]] = []
-    for line in result.stdout.splitlines():
-        if not line:
+    records = result.stdout.split("\0")
+    index = 0
+    while index < len(records):
+        record = records[index]
+        index += 1
+        if not record:
             continue
-        status = line[:2]
-        path = line[3:] if len(line) > 3 else ""
-        if " -> " in path:
-            path = path.split(" -> ", 1)[1]
-        rows.append((status, path))
+        if len(record) < 4 or record[2] != " ":
+            raise RuntimeError("malformed git status record")
+        status = record[:2]
+        rows.append((status, record[3:]))
+        if "R" in status or "C" in status:
+            if index >= len(records) or not records[index]:
+                raise RuntimeError("rename or copy status missing source path")
+            index += 1
     return rows
 
 
