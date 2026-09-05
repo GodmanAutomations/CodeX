@@ -125,21 +125,34 @@ class TrackedFilesTests(unittest.TestCase):
 
 
 class ReadTextForScanTests(unittest.TestCase):
-    def test_does_not_follow_symlink_outside_scan_path(self):
+    def test_does_not_follow_symlinks_outside_scan_root(self):
         read_text_for_scan = STEWARD["read_text_for_scan"]
+        original_root = read_text_for_scan.__globals__["ROOT"]
 
         with tempfile.TemporaryDirectory() as temporary_directory:
-            root = Path(temporary_directory)
-            outside = root / "outside.txt"
-            tracked_link = root / "tracked-link"
+            temporary_root = Path(temporary_directory)
+            repository = temporary_root / "repository"
+            outside_directory = temporary_root / "outside"
+            repository.mkdir()
+            outside_directory.mkdir()
+            regular = repository / "regular.txt"
+            outside = outside_directory / "external.txt"
+            final_link = repository / "final-link"
+            parent_link = repository / "parent-link"
+            regular.write_text("ordinary-content", encoding="utf-8")
             outside.write_text("synthetic-sensitive-value", encoding="utf-8")
-            tracked_link.symlink_to(outside)
+            final_link.symlink_to(outside)
+            parent_link.symlink_to(outside_directory, target_is_directory=True)
 
-            self.assertEqual(
-                read_text_for_scan(outside, 1024),
-                "synthetic-sensitive-value",
-            )
-            self.assertIsNone(read_text_for_scan(tracked_link, 1024))
+            read_text_for_scan.__globals__["ROOT"] = repository
+            try:
+                self.assertEqual(read_text_for_scan(regular, 1024), "ordinary-content")
+                self.assertIsNone(read_text_for_scan(final_link, 1024))
+                self.assertIsNone(
+                    read_text_for_scan(parent_link / outside.name, 1024)
+                )
+            finally:
+                read_text_for_scan.__globals__["ROOT"] = original_root
 
 
 if __name__ == "__main__":
