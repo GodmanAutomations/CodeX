@@ -199,6 +199,63 @@ class WriteReceiptsTests(unittest.TestCase):
             self.assertEqual(len(list(receipt_root.iterdir())), 4)
 
 
+class ScanContentTests(unittest.TestCase):
+    def test_allowed_value_only_exempts_the_assignment_that_contains_it(self):
+        scan_content = STEWARD["scan_content"]
+        load_policy = STEWARD["load_policy"]
+        original_root = scan_content.__globals__["ROOT"]
+        original_candidates = scan_content.__globals__["content_scan_candidates"]
+        original_policy_path = load_policy.__globals__["POLICY_PATH"]
+        load_policy.__globals__["POLICY_PATH"] = (
+            Path(__file__).resolve().parents[1]
+            / "config"
+            / "tree-steward-policy.json"
+        )
+        try:
+            policy = load_policy()
+        finally:
+            load_policy.__globals__["POLICY_PATH"] = original_policy_path
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            assignment_name = "api" + "_key"
+            allowed_value = "APPLY_PHOTO" + "_CARD_MATCH_PLAN"
+            synthetic_value = "notarealsecretvalue" + "usedforpolicydoctor000000"
+            closing_suffix = "}"
+            (root / "probe.py").write_text(
+                f"{assignment_name} = '{allowed_value}'\n"
+                f"{assignment_name}={allowed_value}\n"
+                f"{assignment_name} = '{allowed_value}',\n"
+                f"Use `{assignment_name}={allowed_value}`.\n"
+                f"configure({assignment_name}='{allowed_value}')\n"
+                f"{assignment_name} = '{synthetic_value}'  # {allowed_value}\n"
+                f"{assignment_name} = '{allowed_value}$expanded'\n"
+                f"{assignment_name} = '{allowed_value}', '{synthetic_value}'\n"
+                f"{assignment_name}=prefix={allowed_value}\n"
+                f"configure({assignment_name}={allowed_value})\n"
+                f"{assignment_name}={allowed_value}{closing_suffix}\n"
+                f"configure(label='{closing_suffix}', {assignment_name}={allowed_value})\n"
+                f"echo '{closing_suffix}'; {assignment_name}={allowed_value}{closing_suffix}\n"
+                f"APPLY_TOKEN={allowed_value} python tool.py\n"
+                f"# configure({assignment_name}={allowed_value})\n",
+                encoding="utf-8",
+            )
+            scan_content.__globals__["ROOT"] = root
+            scan_content.__globals__["content_scan_candidates"] = (
+                lambda policy, rows: ["probe.py"]
+            )
+            try:
+                findings = scan_content(policy, [])
+            finally:
+                scan_content.__globals__["ROOT"] = original_root
+                scan_content.__globals__["content_scan_candidates"] = original_candidates
+
+        raw_findings = [
+            finding for finding in findings if finding.name == "raw_secret_assignment"
+        ]
+        self.assertEqual([finding.line for finding in raw_findings], [6, 7, 8, 9, 11, 13])
+
+
 class ReadTextForScanTests(unittest.TestCase):
     def test_does_not_follow_symlinks_outside_scan_root(self):
         read_text_for_scan = STEWARD["read_text_for_scan"]
