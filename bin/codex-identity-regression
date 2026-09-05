@@ -390,7 +390,11 @@ for label, path in zip(("quick", "full", "phone", "ensure"), sys.argv[1:]):
             if "payload" in check and not isinstance(check["payload"], dict):
                 errors.append(f"{label}:{name}: payload is not object")
         elif kind in exit_kinds:
-            if "stdout_tail" not in check:
+            if check.get("ok") and (
+                "stdout_tail" in check or "stderr_tail" in check
+            ):
+                errors.append(f"{label}:{name}: successful exit-only check exposes diagnostics")
+            if not check.get("ok") and "stdout_tail" not in check:
                 errors.append(f"{label}:{name}: exit-only check lacks stdout_tail")
             if "stdout_tail" in check and not isinstance(check["stdout_tail"], str):
                 errors.append(f"{label}:{name}: stdout_tail is not string")
