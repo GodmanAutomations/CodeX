@@ -85,6 +85,19 @@ class ParseStatusTests(unittest.TestCase):
 
 
 class TrackedFilesTests(unittest.TestCase):
+    def test_inventory_failure_is_not_silently_treated_as_empty(self):
+        tracked_files = STEWARD["tracked_files"]
+        original_run_git = tracked_files.__globals__["run_git"]
+
+        tracked_files.__globals__["run_git"] = lambda args, text=False: (
+            subprocess.CompletedProcess(args, 128, b"", b"fatal: inventory unavailable\n")
+        )
+        try:
+            with self.assertRaisesRegex(RuntimeError, "inventory unavailable"):
+                tracked_files()
+        finally:
+            tracked_files.__globals__["run_git"] = original_run_git
+
     def test_nul_inventory_preserves_newline_and_non_utf8_paths(self):
         tracked_files = STEWARD["tracked_files"]
         original_run_git = tracked_files.__globals__["run_git"]
