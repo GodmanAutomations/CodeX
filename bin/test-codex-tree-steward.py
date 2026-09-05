@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Isolated regression tests for CodeX tree-steward path matching."""
+from datetime import datetime, timezone
 from pathlib import Path
 import os
 import runpy
@@ -162,6 +163,40 @@ class FileCountTests(unittest.TestCase):
                 self.assertIsNone(file_count("linked-directory"))
             finally:
                 file_count.__globals__["ROOT"] = original_root
+
+
+class WriteReceiptsTests(unittest.TestCase):
+    def test_runs_in_same_second_keep_distinct_receipt_pairs(self):
+        write_receipts = STEWARD["write_receipts"]
+        original_receipt_root = write_receipts.__globals__["RECEIPT_ROOT"]
+        payload = {
+            "generated_at": "fixture",
+            "root": "fixture",
+            "dirty_count": 0,
+            "strict_pass": True,
+            "summary": {},
+            "entries": [],
+            "findings": [],
+            "ignored_advisories": [],
+        }
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            receipt_root = Path(temporary_directory)
+            receipt_time = datetime(2026, 9, 5, 12, 18, 43, tzinfo=timezone.utc)
+            write_receipts.__globals__["RECEIPT_ROOT"] = receipt_root
+            try:
+                first = dict(payload)
+                second = dict(payload)
+                write_receipts(first, receipt_time=receipt_time)
+                write_receipts(second, receipt_time=receipt_time)
+            finally:
+                write_receipts.__globals__["RECEIPT_ROOT"] = original_receipt_root
+
+            self.assertNotEqual(first["receipt_json"], second["receipt_json"])
+            self.assertNotEqual(first["receipt_markdown"], second["receipt_markdown"])
+            self.assertIn("20260905T121843Z", first["receipt_json"])
+            self.assertIn("20260905T121843Z", second["receipt_json"])
+            self.assertEqual(len(list(receipt_root.iterdir())), 4)
 
 
 class ReadTextForScanTests(unittest.TestCase):

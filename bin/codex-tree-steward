@@ -16,6 +16,7 @@ import stat
 import subprocess
 import sys
 import unicodedata
+import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -570,11 +571,14 @@ def markdown(payload: dict[str, object]) -> str:
     return "\n".join(lines)
 
 
-def write_receipts(payload: dict[str, Any]) -> None:
+def write_receipts(
+    payload: dict[str, Any], *, receipt_time: datetime | None = None
+) -> None:
     RECEIPT_ROOT.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    json_path = RECEIPT_ROOT / f"{stamp}-tree-steward.json"
-    md_path = RECEIPT_ROOT / f"{stamp}-tree-steward.md"
+    stamp = (receipt_time or datetime.now(timezone.utc)).strftime("%Y%m%dT%H%M%SZ")
+    receipt_id = uuid.uuid4().hex[:12]
+    json_path = RECEIPT_ROOT / f"{stamp}-{receipt_id}-tree-steward.json"
+    md_path = RECEIPT_ROOT / f"{stamp}-{receipt_id}-tree-steward.md"
     payload["receipt_json"] = str(json_path)
     payload["receipt_markdown"] = str(md_path)
     json_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
