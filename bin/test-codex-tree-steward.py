@@ -199,6 +199,38 @@ class WriteReceiptsTests(unittest.TestCase):
             self.assertEqual(len(list(receipt_root.iterdir())), 4)
 
 
+class ScanContentTests(unittest.TestCase):
+    def test_allowed_value_only_exempts_the_assignment_that_contains_it(self):
+        scan_content = STEWARD["scan_content"]
+        policy = STEWARD["load_policy"]()
+        original_root = scan_content.__globals__["ROOT"]
+        original_candidates = scan_content.__globals__["content_scan_candidates"]
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            synthetic_value = "notarealsecretvalue" + "usedforpolicydoctor000000"
+            (root / "probe.py").write_text(
+                "api_key = 'APPLY_PHOTO_CARD_MATCH_PLAN'\n"
+                f"api_key = '{synthetic_value}'  "
+                "# APPLY_PHOTO_CARD_MATCH_PLAN\n",
+                encoding="utf-8",
+            )
+            scan_content.__globals__["ROOT"] = root
+            scan_content.__globals__["content_scan_candidates"] = (
+                lambda policy, rows: ["probe.py"]
+            )
+            try:
+                findings = scan_content(policy, [])
+            finally:
+                scan_content.__globals__["ROOT"] = original_root
+                scan_content.__globals__["content_scan_candidates"] = original_candidates
+
+        raw_findings = [
+            finding for finding in findings if finding.name == "raw_secret_assignment"
+        ]
+        self.assertEqual([finding.line for finding in raw_findings], [2])
+
+
 class ReadTextForScanTests(unittest.TestCase):
     def test_does_not_follow_symlinks_outside_scan_root(self):
         read_text_for_scan = STEWARD["read_text_for_scan"]
