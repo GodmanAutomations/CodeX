@@ -386,7 +386,7 @@ def raw_secret_match_is_allowed(
     match_text = match.group(0)
     for value in allowed_values:
         value_match = re.search(
-            rf"(?<![{value_character}]){re.escape(value)}$",
+            rf"(?<![{value_character}]){re.escape(value)}(?:\.)?$",
             match_text,
         )
         if value_match is None:

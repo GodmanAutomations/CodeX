@@ -227,6 +227,8 @@ class ScanContentTests(unittest.TestCase):
                 f"{assignment_name}={allowed_value}\n"
                 f"{assignment_name} = '{allowed_value}',\n"
                 f"Use `{assignment_name}={allowed_value}`.\n"
+                f"Use {assignment_name}={allowed_value}.\n"
+                f"{assignment_name}={allowed_value}.suffix\n"
                 f"configure({assignment_name}='{allowed_value}')\n"
                 f"{assignment_name} = '{synthetic_value}'  # {allowed_value}\n"
                 f"{assignment_name} = '{allowed_value}$expanded'\n"
@@ -253,7 +255,7 @@ class ScanContentTests(unittest.TestCase):
         raw_findings = [
             finding for finding in findings if finding.name == "raw_secret_assignment"
         ]
-        self.assertEqual([finding.line for finding in raw_findings], [6, 7, 8, 9, 11, 13])
+        self.assertEqual([finding.line for finding in raw_findings], [6, 8, 9, 10, 11, 13, 15])
 
 
 class ReadTextForScanTests(unittest.TestCase):
