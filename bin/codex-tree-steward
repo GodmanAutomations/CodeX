@@ -394,11 +394,14 @@ def raw_secret_match_is_allowed(
         assignment_prefix = match_text[:value_match.start()]
         if re.fullmatch(r"[^:=]+[:=]\s*['\"]?", assignment_prefix) is None:
             continue
+        matched_terminal_period = value_match.group(0).endswith(".")
         quote_index = value_match.start() - 1
         quote = match_text[quote_index] if quote_index >= 0 else ""
         remainder = line[match.end():]
         prefix = line[:match.start()]
         if quote in {"'", '"'}:
+            if matched_terminal_period:
+                continue
             if not remainder.startswith(quote):
                 continue
             remainder = remainder[1:]
@@ -420,6 +423,8 @@ def raw_secret_match_is_allowed(
                 return True
         remainder = remainder.lstrip()
         if not remainder or remainder.startswith("#"):
+            return True
+        if re.fullmatch(r"\.(?:\s*#.*)?", remainder):
             return True
         if re.fullmatch(r"[)\]},]+(?:\s*#.*)?", remainder) and (
             closing_delimiters_are_syntactic(prefix, remainder)

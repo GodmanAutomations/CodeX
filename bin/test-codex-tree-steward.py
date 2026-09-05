@@ -224,6 +224,8 @@ class ScanContentTests(unittest.TestCase):
             closing_suffix = "}"
             (root / "probe.py").write_text(
                 f"{assignment_name} = '{allowed_value}'\n"
+                f"{assignment_name} = '{allowed_value}.'\n"
+                f"Use {assignment_name}='{allowed_value}'.\n"
                 f"{assignment_name}={allowed_value}\n"
                 f"{assignment_name} = '{allowed_value}',\n"
                 f"Use `{assignment_name}={allowed_value}`.\n"
@@ -255,7 +257,7 @@ class ScanContentTests(unittest.TestCase):
         raw_findings = [
             finding for finding in findings if finding.name == "raw_secret_assignment"
         ]
-        self.assertEqual([finding.line for finding in raw_findings], [6, 8, 9, 10, 11, 13, 15])
+        self.assertEqual([finding.line for finding in raw_findings], [2, 8, 10, 11, 12, 13, 15, 17])
 
 
 class ReadTextForScanTests(unittest.TestCase):
