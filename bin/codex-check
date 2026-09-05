@@ -130,7 +130,7 @@ def run_check(name: str, command: list[str], *, kind: str, timeout: int) -> dict
     }
 
     if kind == "json":
-        output = result.stdout.strip() or result.stderr.strip()
+        output = result.stdout.strip()
         try:
             payload = json.loads(
                 output,
