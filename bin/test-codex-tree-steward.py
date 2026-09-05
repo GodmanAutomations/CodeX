@@ -164,6 +164,37 @@ class FileCountTests(unittest.TestCase):
                 file_count.__globals__["ROOT"] = original_root
 
 
+class WriteReceiptsTests(unittest.TestCase):
+    def test_runs_in_same_second_keep_distinct_receipt_pairs(self):
+        write_receipts = STEWARD["write_receipts"]
+        original_receipt_root = write_receipts.__globals__["RECEIPT_ROOT"]
+        payload = {
+            "generated_at": "fixture",
+            "root": "fixture",
+            "dirty_count": 0,
+            "strict_pass": True,
+            "summary": {},
+            "entries": [],
+            "findings": [],
+            "ignored_advisories": [],
+        }
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            receipt_root = Path(temporary_directory)
+            write_receipts.__globals__["RECEIPT_ROOT"] = receipt_root
+            try:
+                first = dict(payload)
+                second = dict(payload)
+                write_receipts(first)
+                write_receipts(second)
+            finally:
+                write_receipts.__globals__["RECEIPT_ROOT"] = original_receipt_root
+
+            self.assertNotEqual(first["receipt_json"], second["receipt_json"])
+            self.assertNotEqual(first["receipt_markdown"], second["receipt_markdown"])
+            self.assertEqual(len(list(receipt_root.iterdir())), 4)
+
+
 class ReadTextForScanTests(unittest.TestCase):
     def test_does_not_follow_symlinks_outside_scan_root(self):
         read_text_for_scan = STEWARD["read_text_for_scan"]
