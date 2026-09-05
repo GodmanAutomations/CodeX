@@ -202,17 +202,29 @@ class WriteReceiptsTests(unittest.TestCase):
 class ScanContentTests(unittest.TestCase):
     def test_allowed_value_only_exempts_the_assignment_that_contains_it(self):
         scan_content = STEWARD["scan_content"]
-        policy = STEWARD["load_policy"]()
+        load_policy = STEWARD["load_policy"]
         original_root = scan_content.__globals__["ROOT"]
         original_candidates = scan_content.__globals__["content_scan_candidates"]
+        original_policy_path = load_policy.__globals__["POLICY_PATH"]
+        load_policy.__globals__["POLICY_PATH"] = (
+            Path(__file__).resolve().parents[1]
+            / "config"
+            / "tree-steward-policy.json"
+        )
+        try:
+            policy = load_policy()
+        finally:
+            load_policy.__globals__["POLICY_PATH"] = original_policy_path
 
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
+            assignment_name = "api" + "_key"
+            allowed_value = "APPLY_PHOTO" + "_CARD_MATCH_PLAN"
             synthetic_value = "notarealsecretvalue" + "usedforpolicydoctor000000"
             (root / "probe.py").write_text(
-                "api_key = 'APPLY_PHOTO_CARD_MATCH_PLAN'\n"
-                f"api_key = '{synthetic_value}'  "
-                "# APPLY_PHOTO_CARD_MATCH_PLAN\n",
+                f"{assignment_name} = '{allowed_value}'\n"
+                f"{assignment_name} = '{synthetic_value}'  # {allowed_value}\n"
+                f"{assignment_name} = '{allowed_value}$expanded'\n",
                 encoding="utf-8",
             )
             scan_content.__globals__["ROOT"] = root
@@ -228,7 +240,7 @@ class ScanContentTests(unittest.TestCase):
         raw_findings = [
             finding for finding in findings if finding.name == "raw_secret_assignment"
         ]
-        self.assertEqual([finding.line for finding in raw_findings], [2])
+        self.assertEqual([finding.line for finding in raw_findings], [2, 3])
 
 
 class ReadTextForScanTests(unittest.TestCase):

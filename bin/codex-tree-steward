@@ -340,16 +340,32 @@ def read_text_for_scan(path: Path, max_bytes: int) -> str | None:
         return None
 
 
-def raw_secret_match_is_allowed(match_text: str, allowed_values: set[str]) -> bool:
-    """Return true only when this detector match contains an exact allowed value."""
+def raw_secret_match_is_allowed(
+    line: str, match: re.Match[str], allowed_values: set[str]
+) -> bool:
+    """Return true only when the complete assigned value is exactly allowlisted."""
     value_character = r"A-Za-z0-9_./+=-"
-    return any(
-        re.search(
-            rf"(?<![{value_character}]){re.escape(value)}(?![{value_character}])",
+    match_text = match.group(0)
+    for value in allowed_values:
+        value_match = re.search(
+            rf"(?<![{value_character}]){re.escape(value)}$",
             match_text,
         )
-        for value in allowed_values
-    )
+        if value_match is None:
+            continue
+        quote_index = value_match.start() - 1
+        quote = match_text[quote_index] if quote_index >= 0 else ""
+        remainder = line[match.end():]
+        if quote in {"'", '"'}:
+            if not remainder.startswith(quote):
+                continue
+            remainder = remainder[1:]
+        elif remainder and not remainder[0].isspace() and remainder[0] not in ",;#)]}":
+            continue
+        remainder = remainder.lstrip()
+        if not remainder or remainder[0] in ",;#)]}":
+            return True
+    return False
 
 
 def scan_content(policy: dict[str, object], rows: list[tuple[str, str]]) -> list[Finding]:
@@ -398,7 +414,7 @@ def scan_content(policy: dict[str, object], rows: list[tuple[str, str]]) -> list
                     continue
                 name = str(item.get("name") or "content_check")
                 if name == "raw_secret_assignment" and all(
-                    raw_secret_match_is_allowed(match.group(0), allowed_secret_values)
+                    raw_secret_match_is_allowed(line, match, allowed_secret_values)
                     for match in matches
                 ):
                     continue
