@@ -571,9 +571,11 @@ def markdown(payload: dict[str, object]) -> str:
     return "\n".join(lines)
 
 
-def write_receipts(payload: dict[str, Any]) -> None:
+def write_receipts(
+    payload: dict[str, Any], *, receipt_time: datetime | None = None
+) -> None:
     RECEIPT_ROOT.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    stamp = (receipt_time or datetime.now(timezone.utc)).strftime("%Y%m%dT%H%M%SZ")
     receipt_id = uuid.uuid4().hex[:12]
     json_path = RECEIPT_ROOT / f"{stamp}-{receipt_id}-tree-steward.json"
     md_path = RECEIPT_ROOT / f"{stamp}-{receipt_id}-tree-steward.md"
