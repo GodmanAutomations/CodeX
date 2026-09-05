@@ -8,11 +8,13 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import html
 import json
 import os
 import re
 import subprocess
 import sys
+import unicodedata
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -58,32 +60,72 @@ class IgnoredAdvisory:
     recommendation: str
 
 
-def run_git(args: list[str]) -> subprocess.CompletedProcess[str]:
+def run_git(args: list[str], *, text: bool = True) -> subprocess.CompletedProcess[Any]:
     return subprocess.run(
         ["git", "-C", str(ROOT), *args],
         check=False,
         capture_output=True,
-        text=True,
+        text=text,
         timeout=20,
     )
 
 
+def decode_status_path(raw: bytes) -> str:
+    return os.fsdecode(raw)
+
+
+def display_path(path: str) -> str:
+    visible = []
+    for character in path:
+        codepoint = ord(character)
+        if character == "\\":
+            visible.append("\\\\")
+        elif codepoint < 32 or codepoint == 127 or unicodedata.category(character) in {"Cf", "Cs"}:
+            if codepoint <= 0xFF:
+                visible.append(f"\\x{codepoint:02x}")
+            elif codepoint <= 0xFFFF:
+                visible.append(f"\\u{codepoint:04x}")
+            else:
+                visible.append(f"\\U{codepoint:08x}")
+        else:
+            visible.append(character)
+    return "".join(visible)
+
+
+def markdown_path(path: str) -> str:
+    return f"<code>{html.escape(display_path(path), quote=True)}</code>"
+
+
 def parse_status(include_ignored: bool = False) -> list[tuple[str, str]]:
-    args = ["status", "--short", "--untracked-files=all"]
+    args = ["status", "--porcelain=v1", "-z", "--untracked-files=all"]
     if include_ignored:
         args.append("--ignored=matching")
-    result = run_git(args)
+    result = run_git(args, text=False)
     if result.returncode != 0:
-        raise RuntimeError((result.stderr or result.stdout).strip())
+        detail = decode_status_path(result.stderr or result.stdout).strip()
+        raise RuntimeError(detail or f"git status exited {result.returncode}")
+    raw_status = result.stdout
+    if raw_status and not raw_status.endswith(b"\0"):
+        raise RuntimeError("git status output missing final NUL")
+    records = raw_status.split(b"\0")[:-1] if raw_status else []
+    if any(not record for record in records):
+        raise RuntimeError("git status output contains an empty record")
     rows: list[tuple[str, str]] = []
-    for line in result.stdout.splitlines():
-        if not line:
-            continue
-        status = line[:2]
-        path = line[3:] if len(line) > 3 else ""
-        if " -> " in path:
-            path = path.split(" -> ", 1)[1]
-        rows.append((status, path))
+    index = 0
+    while index < len(records):
+        record = records[index]
+        index += 1
+        if len(record) < 4 or record[2:3] != b" ":
+            raise RuntimeError("malformed git status record")
+        try:
+            status = record[:2].decode("ascii")
+        except UnicodeDecodeError as exc:
+            raise RuntimeError("malformed git status code") from exc
+        rows.append((status, decode_status_path(record[3:])))
+        if "R" in status or "C" in status:
+            if index >= len(records) or not records[index]:
+                raise RuntimeError("rename or copy status missing source path")
+            index += 1
     return rows
 
 
@@ -409,7 +451,7 @@ def markdown(payload: dict[str, object]) -> str:
     for entry in entries:
         lines.extend(
             [
-                f"### `{entry.path}`",
+                f"### {markdown_path(entry.path)}",
                 "",
                 f"- Status: `{entry.status.strip() or entry.status}`",
                 f"- Category: `{entry.category}`",
@@ -428,7 +470,7 @@ def markdown(payload: dict[str, object]) -> str:
         for advisory in advisories[:25]:
             lines.extend(
                 [
-                    f"### `{advisory.path}`",
+                    f"### {markdown_path(advisory.path)}",
                     "",
                     f"- Status: `{advisory.status.strip() or advisory.status}`",
                     f"- Category: `{advisory.category}`",
@@ -448,7 +490,7 @@ def markdown(payload: dict[str, object]) -> str:
                 [
                     f"### `{finding.name}`",
                     "",
-                    f"- Location: `{location}`",
+                    f"- Location: {markdown_path(location)}",
                     f"- Severity: `{finding.severity}`",
                     f"- Message: {finding.message}",
                     "",
@@ -478,7 +520,7 @@ def write_receipts(payload: dict[str, Any]) -> None:
     payload["receipt_json"] = str(json_path)
     payload["receipt_markdown"] = str(md_path)
     json_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    md_path.write_text(markdown(payload), encoding="utf-8")
+    md_path.write_text(markdown(payload), encoding="utf-8", errors="backslashreplace")
 
 
 def run_doctor(json_mode: bool) -> int:
@@ -767,13 +809,13 @@ def main() -> int:
         if ignored_count:
             print(f"ignored_advisories={ignored_count}")
             for advisory in payload["ignored_advisories"][:8]:
-                print(f"- ignored: {advisory['path']} ({advisory['category']})")
+                print(f"- ignored: {display_path(advisory['path'])} ({advisory['category']})")
         findings = [Finding(**item) for item in payload.get("findings", [])]
         if findings:
             print(f"policy_findings={len(findings)}")
             for finding in findings[:8]:
                 location = finding.path if finding.line is None else f"{finding.path}:{finding.line}"
-                print(f"- {finding.severity}: {finding.name} at {location}")
+                print(f"- {finding.severity}: {finding.name} at {display_path(location)}")
         if not args.no_receipt:
             print(f"receipt={payload['receipt_markdown']}")
 
