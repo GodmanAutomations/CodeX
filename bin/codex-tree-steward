@@ -362,7 +362,7 @@ def closing_delimiters_are_syntactic(prefix: str, remainder: str) -> bool:
             continue
         if character == "#":
             stack.clear()
-            break
+            continue
         if character in closing_to_opening.values():
             stack.append(character)
         elif character in closing_to_opening and stack:

@@ -236,7 +236,8 @@ class ScanContentTests(unittest.TestCase):
                 f"{assignment_name}={allowed_value}{closing_suffix}\n"
                 f"configure(label='{closing_suffix}', {assignment_name}={allowed_value})\n"
                 f"echo '{closing_suffix}'; {assignment_name}={allowed_value}{closing_suffix}\n"
-                f"APPLY_TOKEN={allowed_value} python tool.py\n",
+                f"APPLY_TOKEN={allowed_value} python tool.py\n"
+                f"# configure({assignment_name}={allowed_value})\n",
                 encoding="utf-8",
             )
             scan_content.__globals__["ROOT"] = root
