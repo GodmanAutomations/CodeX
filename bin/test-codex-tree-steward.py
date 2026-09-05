@@ -200,6 +200,23 @@ class WriteReceiptsTests(unittest.TestCase):
 
 
 class ScanContentTests(unittest.TestCase):
+    def test_docstring_ranges_use_character_offsets(self):
+        source = '"""café"""; value = 1\n'
+
+        ranges = STEWARD["python_docstring_ranges"](source)
+
+        self.assertEqual(ranges[1], [(0, source.index(";"))])
+
+    def test_docstring_range_parse_failures_disable_exemptions(self):
+        function = STEWARD["python_docstring_ranges"]
+        ast_module = function.__globals__["ast"]
+        original_parse = ast_module.parse
+        ast_module.parse = lambda _text: (_ for _ in ()).throw(RecursionError())
+        try:
+            self.assertEqual(function('"""probe"""'), {})
+        finally:
+            ast_module.parse = original_parse
+
     def test_allowed_value_only_exempts_the_assignment_that_contains_it(self):
         scan_content = STEWARD["scan_content"]
         load_policy = STEWARD["load_policy"]

@@ -383,8 +383,14 @@ def python_docstring_ranges(text: str) -> dict[int, list[tuple[int, int]]]:
     """Return source-column ranges occupied by syntactic Python docstrings."""
     try:
         tree = ast.parse(text)
-    except (SyntaxError, ValueError):
+    except (SyntaxError, ValueError, RecursionError, MemoryError):
         return {}
+
+    source_lines = text.splitlines()
+
+    def character_column(line_number: int, byte_column: int) -> int:
+        encoded = source_lines[line_number - 1].encode("utf-8")
+        return len(encoded[:byte_column].decode("utf-8"))
 
     ranges: dict[int, list[tuple[int, int]]] = {}
     for node in ast.walk(tree):
@@ -397,8 +403,16 @@ def python_docstring_ranges(text: str) -> dict[int, list[tuple[int, int]]]:
         end_line = getattr(value, "end_lineno", value.lineno)
         end_column = getattr(value, "end_col_offset", value.col_offset + 1)
         for line_number in range(value.lineno, end_line + 1):
-            start = value.col_offset if line_number == value.lineno else 0
-            end = end_column if line_number == end_line else sys.maxsize
+            start = (
+                character_column(line_number, value.col_offset)
+                if line_number == value.lineno
+                else 0
+            )
+            end = (
+                character_column(line_number, end_column)
+                if line_number == end_line
+                else sys.maxsize
+            )
             ranges.setdefault(line_number, []).append((start, end))
     return ranges
 
