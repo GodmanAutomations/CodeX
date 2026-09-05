@@ -224,7 +224,8 @@ class ScanContentTests(unittest.TestCase):
             (root / "probe.py").write_text(
                 f"{assignment_name} = '{allowed_value}'\n"
                 f"{assignment_name} = '{synthetic_value}'  # {allowed_value}\n"
-                f"{assignment_name} = '{allowed_value}$expanded'\n",
+                f"{assignment_name} = '{allowed_value}$expanded'\n"
+                f"{assignment_name} = '{allowed_value}', '{synthetic_value}'\n",
                 encoding="utf-8",
             )
             scan_content.__globals__["ROOT"] = root
@@ -240,7 +241,7 @@ class ScanContentTests(unittest.TestCase):
         raw_findings = [
             finding for finding in findings if finding.name == "raw_secret_assignment"
         ]
-        self.assertEqual([finding.line for finding in raw_findings], [2, 3])
+        self.assertEqual([finding.line for finding in raw_findings], [2, 3, 4])
 
 
 class ReadTextForScanTests(unittest.TestCase):
