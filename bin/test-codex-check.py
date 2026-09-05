@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 
 CHECK = runpy.run_path(str(Path(__file__).with_name("codex-check")))
+SAFE_JSON = '{"ok":true,"safety":{"git_writes":false}}'
 
 
 class JsonCheckTests(unittest.TestCase):
@@ -32,11 +33,11 @@ class JsonCheckTests(unittest.TestCase):
 
     def test_object_requires_explicit_ok_and_successful_exit(self):
         for payload, returncode, expected in (
-            ({"ok": True}, 0, True),
+            ({"ok": True, "safety": {"git_writes": False}}, 0, True),
             ({"ok": False}, 0, False),
             ({}, 0, False),
             ({"ok": 1}, 0, False),
-            ({"ok": True}, 1, False),
+            ({"ok": True, "safety": {"git_writes": False}}, 1, False),
         ):
             with self.subTest(payload=payload, returncode=returncode):
                 self.assertEqual(self.run_payload(payload, returncode)["ok"], expected)
@@ -44,7 +45,7 @@ class JsonCheckTests(unittest.TestCase):
     def test_aggregation_continues_after_non_object_json(self):
         responses = [
             subprocess.CompletedProcess(["fixture-check"], 0, "[]", ""),
-            subprocess.CompletedProcess(["fixture-check"], 0, '{"ok": true}', ""),
+            subprocess.CompletedProcess(["fixture-check"], 0, SAFE_JSON, ""),
         ]
         with patch.object(subprocess, "run", side_effect=responses):
             payload, returncode = CHECK["build_payload"](
@@ -106,7 +107,7 @@ class JsonCheckTests(unittest.TestCase):
     def test_aggregation_continues_after_launch_failure(self):
         responses = [
             FileNotFoundError(2, "No such file or directory", "fixture-check"),
-            subprocess.CompletedProcess(["fixture-check"], 0, '{"ok": true}', ""),
+            subprocess.CompletedProcess(["fixture-check"], 0, SAFE_JSON, ""),
         ]
         with patch.object(subprocess, "run", side_effect=responses):
             payload, returncode = CHECK["build_payload"](
@@ -160,7 +161,7 @@ class JsonCheckTests(unittest.TestCase):
                 '{"ok": true, "safety": {"secrets_printed": true}}',
                 "",
             ),
-            subprocess.CompletedProcess(["fixture-check"], 0, '{"ok": true}', ""),
+            subprocess.CompletedProcess(["fixture-check"], 0, SAFE_JSON, ""),
         ]
         with patch.object(subprocess, "run", side_effect=responses):
             payload, returncode = CHECK["build_payload"](
@@ -189,6 +190,13 @@ class JsonCheckTests(unittest.TestCase):
                 self.assertFalse(result["ok"])
                 self.assertEqual(result["error"], "child returned invalid safety data")
                 self.assertNotIn("safety", result["payload"])
+
+    def test_safety_field_is_required_and_nonempty(self):
+        for payload in ({"ok": True}, {"ok": True, "safety": {}}):
+            with self.subTest(payload=payload):
+                result = self.run_payload(payload)
+                self.assertFalse(result["ok"])
+                self.assertEqual(result["error"], "child returned invalid safety data")
 
     def test_duplicate_json_object_members_fail_closed(self):
         outputs = (
@@ -227,10 +235,13 @@ class JsonCheckTests(unittest.TestCase):
 
     def test_aggregation_continues_after_json_recursion_limit(self):
         responses = [
-            subprocess.CompletedProcess(["fixture-check"], 0, '{"ok":true}', ""),
-            subprocess.CompletedProcess(["fixture-check"], 0, '{"ok":true}', ""),
+            subprocess.CompletedProcess(["fixture-check"], 0, SAFE_JSON, ""),
+            subprocess.CompletedProcess(["fixture-check"], 0, SAFE_JSON, ""),
         ]
-        parsed_payloads = [RecursionError("maximum JSON nesting exceeded"), {"ok": True}]
+        parsed_payloads = [
+            RecursionError("maximum JSON nesting exceeded"),
+            {"ok": True, "safety": {"git_writes": False}},
+        ]
         with patch.object(subprocess, "run", side_effect=responses):
             with patch.object(CHECK["json"], "loads", side_effect=parsed_payloads):
                 payload, returncode = CHECK["build_payload"](
@@ -267,7 +278,7 @@ class JsonCheckTests(unittest.TestCase):
     def test_aggregation_continues_after_invalid_child_text(self):
         responses = [
             UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte"),
-            subprocess.CompletedProcess(["fixture-check"], 0, '{"ok": true}', ""),
+            subprocess.CompletedProcess(["fixture-check"], 0, SAFE_JSON, ""),
         ]
         with patch.object(subprocess, "run", side_effect=responses):
             payload, returncode = CHECK["build_payload"](
@@ -301,7 +312,7 @@ class JsonCheckTests(unittest.TestCase):
             subprocess.CompletedProcess(
                 ["fixture-check"], 0, '{"ok":true,"value":' + "9" * 4301 + "}", ""
             ),
-            subprocess.CompletedProcess(["fixture-check"], 0, '{"ok":true}', ""),
+            subprocess.CompletedProcess(["fixture-check"], 0, SAFE_JSON, ""),
         ]
         with patch.object(subprocess, "run", side_effect=responses):
             payload, returncode = CHECK["build_payload"](
@@ -324,7 +335,7 @@ class JsonCheckTests(unittest.TestCase):
                 )
                 responses = [
                     timeout,
-                    subprocess.CompletedProcess(["fixture-check"], 0, '{"ok": true}', ""),
+                    subprocess.CompletedProcess(["fixture-check"], 0, SAFE_JSON, ""),
                 ]
                 with patch.object(subprocess, "run", side_effect=responses):
                     payload, returncode = CHECK["build_payload"](
