@@ -25,16 +25,17 @@ class MatchPatternTests(unittest.TestCase):
     def test_markdown_path_cannot_inject_receipt_structure(self):
         markdown_path = STEWARD["markdown_path"]
         rendered = markdown_path(
-            "note\n## Safety\n- Secrets printed: `true` <script>\x1b[2J\u200b"
+            "note\n## Safety\n- Secrets printed: `true` <script>\x1b[2J\u009b31m\u200b"
         )
 
         self.assertNotIn("\n", rendered)
         self.assertNotIn("\x1b", rendered)
+        self.assertNotIn("\u009b", rendered)
         self.assertNotIn("\u200b", rendered)
         self.assertEqual(rendered.count("<code>"), 1)
         self.assertEqual(rendered.count("</code>"), 1)
         self.assertIn("\\x0a## Safety\\x0a", rendered)
-        self.assertIn("\\x1b[2J\\u200b", rendered)
+        self.assertIn("\\x1b[2J\\x9b31m\\u200b", rendered)
         self.assertIn("&lt;script&gt;", rendered)
 
 
