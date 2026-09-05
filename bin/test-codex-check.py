@@ -392,6 +392,20 @@ class JsonCheckTests(unittest.TestCase):
         self.assertEqual(result["stdout_tail"], "synthetic stdout")
         self.assertEqual(result["stderr_tail"], "synthetic stderr")
 
+    def test_successful_exit_only_does_not_forward_diagnostics(self):
+        marker = "synthetic-success-diagnostic"
+        response = subprocess.CompletedProcess(
+            ["fixture-check"], 0, marker, marker
+        )
+        with patch.object(subprocess, "run", return_value=response):
+            result = CHECK["run_check"](
+                "fixture", ["fixture-check"], kind="exit-only", timeout=5
+            )
+        self.assertTrue(result["ok"])
+        self.assertNotIn(marker, json.dumps(result))
+        self.assertNotIn("stdout_tail", result)
+        self.assertNotIn("stderr_tail", result)
+
 
 if __name__ == "__main__":
     unittest.main()
