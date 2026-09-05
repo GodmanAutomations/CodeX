@@ -230,7 +230,8 @@ class ScanContentTests(unittest.TestCase):
                 f"{assignment_name} = '{synthetic_value}'  # {allowed_value}\n"
                 f"{assignment_name} = '{allowed_value}$expanded'\n"
                 f"{assignment_name} = '{allowed_value}', '{synthetic_value}'\n"
-                f"{assignment_name}=prefix={allowed_value}\n",
+                f"{assignment_name}=prefix={allowed_value}\n"
+                f"configure({assignment_name}={allowed_value})\n",
                 encoding="utf-8",
             )
             scan_content.__globals__["ROOT"] = root

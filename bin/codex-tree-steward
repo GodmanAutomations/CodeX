@@ -366,7 +366,11 @@ def raw_secret_match_is_allowed(
             remainder = remainder[1:]
         elif prefix.endswith("`") and remainder.startswith("`"):
             return True
-        elif remainder and not remainder[0].isspace() and remainder[0] != "#":
+        elif (
+            remainder
+            and not remainder[0].isspace()
+            and remainder[0] not in "#)]},"
+        ):
             continue
         remainder = remainder.lstrip()
         if not remainder or remainder.startswith("#"):
