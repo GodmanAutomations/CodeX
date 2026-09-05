@@ -169,7 +169,7 @@ def run_check(name: str, command: list[str], *, kind: str, timeout: int) -> dict
             elif any(item["payload"].get("safety", {}).values()):
                 item["ok"] = False
                 item["error"] = "child reported an unsafe operation"
-    else:
+    elif not item["ok"]:
         item["stdout_tail"] = tail(result.stdout)
         if result.stderr.strip():
             item["stderr_tail"] = tail(result.stderr)
