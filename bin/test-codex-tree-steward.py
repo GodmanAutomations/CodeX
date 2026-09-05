@@ -221,6 +221,7 @@ class ScanContentTests(unittest.TestCase):
             assignment_name = "api" + "_key"
             allowed_value = "APPLY_PHOTO" + "_CARD_MATCH_PLAN"
             synthetic_value = "notarealsecretvalue" + "usedforpolicydoctor000000"
+            closing_suffix = "}"
             (root / "probe.py").write_text(
                 f"{assignment_name} = '{allowed_value}'\n"
                 f"{assignment_name}={allowed_value}\n"
@@ -231,7 +232,8 @@ class ScanContentTests(unittest.TestCase):
                 f"{assignment_name} = '{allowed_value}$expanded'\n"
                 f"{assignment_name} = '{allowed_value}', '{synthetic_value}'\n"
                 f"{assignment_name}=prefix={allowed_value}\n"
-                f"configure({assignment_name}={allowed_value})\n",
+                f"configure({assignment_name}={allowed_value})\n"
+                f"{assignment_name}={allowed_value}{closing_suffix}\n",
                 encoding="utf-8",
             )
             scan_content.__globals__["ROOT"] = root
@@ -247,7 +249,7 @@ class ScanContentTests(unittest.TestCase):
         raw_findings = [
             finding for finding in findings if finding.name == "raw_secret_assignment"
         ]
-        self.assertEqual([finding.line for finding in raw_findings], [6, 7, 8, 9])
+        self.assertEqual([finding.line for finding in raw_findings], [6, 7, 8, 9, 11])
 
 
 class ReadTextForScanTests(unittest.TestCase):

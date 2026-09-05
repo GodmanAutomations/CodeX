@@ -340,6 +340,26 @@ def read_text_for_scan(path: Path, max_bytes: int) -> str | None:
         return None
 
 
+def closing_delimiters_are_syntactic(prefix: str, remainder: str) -> bool:
+    """Return true when closing delimiters balance openers before the assignment."""
+    closing_to_opening = {")": "(", "]": "[", "}": "{"}
+    stack: list[str] = []
+    for character in prefix:
+        if character in closing_to_opening.values():
+            stack.append(character)
+        elif character in closing_to_opening and stack:
+            if stack[-1] == closing_to_opening[character]:
+                stack.pop()
+
+    delimiter_tail = remainder.split("#", 1)[0].rstrip()
+    for character in delimiter_tail:
+        if character == ",":
+            continue
+        if not stack or stack.pop() != closing_to_opening.get(character):
+            return False
+    return True
+
+
 def raw_secret_match_is_allowed(
     line: str, match: re.Match[str], allowed_values: set[str]
 ) -> bool:
@@ -375,7 +395,9 @@ def raw_secret_match_is_allowed(
         remainder = remainder.lstrip()
         if not remainder or remainder.startswith("#"):
             return True
-        if re.fullmatch(r"[)\]},]+(?:\s*#.*)?", remainder):
+        if re.fullmatch(r"[)\]},]+(?:\s*#.*)?", remainder) and (
+            closing_delimiters_are_syntactic(prefix, remainder)
+        ):
             return True
         if remainder.startswith(","):
             comma_tail = remainder[1:].lstrip()
