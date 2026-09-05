@@ -271,6 +271,28 @@ class JsonCheckTests(unittest.TestCase):
         self.assertEqual(result["error"], "command did not return valid JSON")
         self.assertNotIn("payload", result)
 
+    def test_aggregation_continues_after_json_decoder_memory_error(self):
+        responses = [
+            subprocess.CompletedProcess(["fixture-check"], 0, SAFE_JSON, ""),
+            subprocess.CompletedProcess(["fixture-check"], 0, SAFE_JSON, ""),
+        ]
+        parsed_payloads = [
+            MemoryError("synthetic decoder exhaustion"),
+            {"ok": True, "safety": {"git_writes": False}},
+        ]
+        with patch.object(CHECK["PROCESS_RUNNER"], "run", side_effect=responses):
+            with patch.object(CHECK["json"], "loads", side_effect=parsed_payloads):
+                payload, returncode = CHECK["build_payload"](
+                    "quick", False, ["status", "mcp_doctor"]
+                )
+        self.assertEqual(returncode, 1)
+        self.assertEqual(payload["summary"], {"passed": 1, "failed": 1})
+        self.assertTrue(payload["checks"][1]["ok"])
+        result = payload["checks"][0]
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "command did not return valid JSON")
+        self.assertNotIn("payload", result)
+
     def test_invalid_child_text_returns_failed_check(self):
         for stream in ("stdout", "stderr"):
             for kind in ("json", "exit-only"):
