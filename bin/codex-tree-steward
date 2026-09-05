@@ -14,6 +14,7 @@ import os
 import re
 import subprocess
 import sys
+import unicodedata
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -73,9 +74,26 @@ def decode_status_path(raw: bytes) -> str:
     return os.fsdecode(raw)
 
 
+def display_path(path: str) -> str:
+    visible = []
+    for character in path:
+        codepoint = ord(character)
+        if character == "\\":
+            visible.append("\\\\")
+        elif codepoint < 32 or codepoint == 127 or unicodedata.category(character) in {"Cf", "Cs"}:
+            if codepoint <= 0xFF:
+                visible.append(f"\\x{codepoint:02x}")
+            elif codepoint <= 0xFFFF:
+                visible.append(f"\\u{codepoint:04x}")
+            else:
+                visible.append(f"\\U{codepoint:08x}")
+        else:
+            visible.append(character)
+    return "".join(visible)
+
+
 def markdown_path(path: str) -> str:
-    visible = path.replace("\\", "\\\\").replace("\r", "\\r").replace("\n", "\\n")
-    return f"<code>{html.escape(visible, quote=True)}</code>"
+    return f"<code>{html.escape(display_path(path), quote=True)}</code>"
 
 
 def parse_status(include_ignored: bool = False) -> list[tuple[str, str]]:
@@ -791,13 +809,13 @@ def main() -> int:
         if ignored_count:
             print(f"ignored_advisories={ignored_count}")
             for advisory in payload["ignored_advisories"][:8]:
-                print(f"- ignored: {advisory['path']} ({advisory['category']})")
+                print(f"- ignored: {display_path(advisory['path'])} ({advisory['category']})")
         findings = [Finding(**item) for item in payload.get("findings", [])]
         if findings:
             print(f"policy_findings={len(findings)}")
             for finding in findings[:8]:
                 location = finding.path if finding.line is None else f"{finding.path}:{finding.line}"
-                print(f"- {finding.severity}: {finding.name} at {location}")
+                print(f"- {finding.severity}: {finding.name} at {display_path(location)}")
         if not args.no_receipt:
             print(f"receipt={payload['receipt_markdown']}")
 
