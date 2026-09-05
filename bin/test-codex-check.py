@@ -354,6 +354,36 @@ class JsonCheckTests(unittest.TestCase):
         self.assertNotIn("payload", result)
         self.assertNotIn("9" * 100, json.dumps(payload))
 
+    def test_aggregation_continues_after_oversized_json_output(self):
+        marker = "synthetic-oversized-diagnostic"
+        responses = [
+            subprocess.CompletedProcess(
+                ["fixture-check"],
+                0,
+                json.dumps(
+                    {
+                        "ok": True,
+                        "safety": {"git_writes": False},
+                        "padding": marker + "x" * 1_000_001,
+                    }
+                ),
+                "",
+            ),
+            subprocess.CompletedProcess(["fixture-check"], 0, SAFE_JSON, ""),
+        ]
+        with patch.object(subprocess, "run", side_effect=responses):
+            payload, returncode = CHECK["build_payload"](
+                "quick", False, ["status", "mcp_doctor"]
+            )
+        self.assertEqual(returncode, 1)
+        self.assertEqual(payload["summary"], {"passed": 1, "failed": 1})
+        self.assertTrue(payload["checks"][1]["ok"])
+        result = payload["checks"][0]
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "command returned oversized JSON")
+        self.assertNotIn(marker, json.dumps(payload))
+        self.assertNotIn("payload", result)
+
     def test_json_timeout_does_not_forward_child_diagnostics(self):
         marker = "synthetic-child-diagnostic"
         for output in (marker, marker.encode()):

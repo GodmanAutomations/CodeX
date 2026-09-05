@@ -22,6 +22,7 @@ SAFETY = {
     "trello_writes": False,
 }
 CHILD_SAFETY_KEYS = frozenset(SAFETY) | {"secrets_returned", "pi5_writes"}
+MAX_JSON_OUTPUT_CHARS = 1_000_000
 
 
 def tail(text: str, *, lines: int = 24, chars: int = 4000) -> str:
@@ -130,6 +131,10 @@ def run_check(name: str, command: list[str], *, kind: str, timeout: int) -> dict
     }
 
     if kind == "json":
+        if len(result.stdout) > MAX_JSON_OUTPUT_CHARS:
+            item["ok"] = False
+            item["error"] = "command returned oversized JSON"
+            return item
         output = result.stdout.strip()
         try:
             payload = json.loads(
