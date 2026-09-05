@@ -167,15 +167,21 @@ def excluded(path: str, patterns: list[str]) -> bool:
 
 def file_count(path: str) -> int | None:
     full = ROOT / path
-    if not full.is_dir():
+    try:
+        metadata = full.stat(follow_symlinks=False)
+    except OSError:
+        return None
+    if not stat.S_ISDIR(metadata.st_mode):
         return None
     count = 0
-    for _, dirs, files in os.walk(full):
+    walked = False
+    for _, dirs, files, _ in os.fwalk(full, follow_symlinks=False):
+        walked = True
         dirs[:] = [d for d in dirs if d not in {".git", "__pycache__", ".venv", "node_modules"}]
         count += len(files)
         if count > 500:
             break
-    return count
+    return count if walked else None
 
 
 def policy_rule(policy: dict[str, object], path: str) -> dict[str, str] | None:
