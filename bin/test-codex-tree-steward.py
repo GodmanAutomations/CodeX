@@ -84,5 +84,31 @@ class ParseStatusTests(unittest.TestCase):
                     self.parse_status()
 
 
+class TrackedFilesTests(unittest.TestCase):
+    def test_nul_inventory_preserves_newline_and_non_utf8_paths(self):
+        tracked_files = STEWARD["tracked_files"]
+        original_run_git = tracked_files.__globals__["run_git"]
+        calls = []
+
+        def fake_run_git(args, *, text=True):
+            calls.append((args, text))
+            return subprocess.CompletedProcess(
+                args,
+                0,
+                b"bin/line\nbreak.py\0bin/bad-\xff.py\0",
+                b"",
+            )
+
+        tracked_files.__globals__["run_git"] = fake_run_git
+        try:
+            paths = tracked_files()
+        finally:
+            tracked_files.__globals__["run_git"] = original_run_git
+
+        self.assertEqual(calls, [(["ls-files", "-z"], False)])
+        self.assertEqual(paths[0], "bin/line\nbreak.py")
+        self.assertEqual(os.fsencode(paths[1]), b"bin/bad-\xff.py")
+
+
 if __name__ == "__main__":
     unittest.main()
