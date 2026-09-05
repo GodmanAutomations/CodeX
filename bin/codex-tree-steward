@@ -399,9 +399,17 @@ def raw_secret_match_is_allowed(
         quote = match_text[quote_index] if quote_index >= 0 else ""
         remainder = line[match.end():]
         prefix = line[:match.start()]
-        if quote in {"'", '"'}:
-            if matched_terminal_period:
+        if matched_terminal_period:
+            prose_prefix = prefix.strip()
+            if (
+                quote in {"'", '"'}
+                or prefix.endswith("`")
+                or not prefix.endswith((" ", "\t"))
+                or len(re.findall(r"[A-Za-z]+", prose_prefix)) < 3
+                or re.fullmatch(r"[A-Za-z0-9 ,'-]+", prose_prefix) is None
+            ):
                 continue
+        if quote in {"'", '"'}:
             if not remainder.startswith(quote):
                 continue
             remainder = remainder[1:]
