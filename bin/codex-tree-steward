@@ -136,10 +136,10 @@ def load_policy() -> dict[str, object]:
 
 
 def tracked_files() -> list[str]:
-    result = run_git(["ls-files"])
+    result = run_git(["ls-files", "-z"], text=False)
     if result.returncode != 0:
         return []
-    return [line for line in result.stdout.splitlines() if line]
+    return [decode_status_path(path) for path in result.stdout.split(b"\0") if path]
 
 
 def ignored_status_rows() -> list[tuple[str, str]]:
