@@ -141,7 +141,13 @@ def tracked_files() -> list[str]:
     if result.returncode != 0:
         detail = decode_status_path(result.stderr or result.stdout).strip()
         raise RuntimeError(detail or f"git ls-files exited {result.returncode}")
-    return [decode_status_path(path) for path in result.stdout.split(b"\0") if path]
+    raw_paths = result.stdout
+    if raw_paths and not raw_paths.endswith(b"\0"):
+        raise RuntimeError("git ls-files output missing final NUL")
+    records = raw_paths.split(b"\0")[:-1] if raw_paths else []
+    if any(not record for record in records):
+        raise RuntimeError("git ls-files output contains an empty record")
+    return [decode_status_path(path) for path in records]
 
 
 def ignored_status_rows() -> list[tuple[str, str]]:

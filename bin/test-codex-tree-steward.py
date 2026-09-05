@@ -123,6 +123,21 @@ class TrackedFilesTests(unittest.TestCase):
         self.assertEqual(paths[0], "bin/line\nbreak.py")
         self.assertEqual(os.fsencode(paths[1]), b"bin/bad-\xff.py")
 
+    def test_rejects_truncated_or_empty_nul_records(self):
+        tracked_files = STEWARD["tracked_files"]
+        original_run_git = tracked_files.__globals__["run_git"]
+
+        try:
+            for raw_paths in [b"bin/a.py", b"bin/a.py\0\0bin/b.py\0"]:
+                with self.subTest(raw_paths=raw_paths):
+                    tracked_files.__globals__["run_git"] = lambda args, text=False: (
+                        subprocess.CompletedProcess(args, 0, raw_paths, b"")
+                    )
+                    with self.assertRaises(RuntimeError):
+                        tracked_files()
+        finally:
+            tracked_files.__globals__["run_git"] = original_run_git
+
 
 class ReadTextForScanTests(unittest.TestCase):
     def test_does_not_follow_symlinks_outside_scan_root(self):
