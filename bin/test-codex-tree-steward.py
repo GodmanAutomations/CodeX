@@ -20,6 +20,18 @@ class MatchPatternTests(unittest.TestCase):
             match_pattern("mcp_servers_evil/probe.py", "mcp_servers/**")
         )
 
+    def test_markdown_path_cannot_inject_receipt_structure(self):
+        markdown_path = STEWARD["markdown_path"]
+        rendered = markdown_path(
+            "note\n## Safety\n- Secrets printed: `true` <script>"
+        )
+
+        self.assertNotIn("\n", rendered)
+        self.assertEqual(rendered.count("<code>"), 1)
+        self.assertEqual(rendered.count("</code>"), 1)
+        self.assertIn("\\n## Safety\\n", rendered)
+        self.assertIn("&lt;script&gt;", rendered)
+
 
 class ParseStatusTests(unittest.TestCase):
     def setUp(self):

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import html
 import json
 import os
 import re
@@ -70,6 +71,11 @@ def run_git(args: list[str], *, text: bool = True) -> subprocess.CompletedProces
 
 def decode_status_path(raw: bytes) -> str:
     return os.fsdecode(raw)
+
+
+def markdown_path(path: str) -> str:
+    visible = path.replace("\\", "\\\\").replace("\r", "\\r").replace("\n", "\\n")
+    return f"<code>{html.escape(visible, quote=True)}</code>"
 
 
 def parse_status(include_ignored: bool = False) -> list[tuple[str, str]]:
@@ -427,7 +433,7 @@ def markdown(payload: dict[str, object]) -> str:
     for entry in entries:
         lines.extend(
             [
-                f"### `{entry.path}`",
+                f"### {markdown_path(entry.path)}",
                 "",
                 f"- Status: `{entry.status.strip() or entry.status}`",
                 f"- Category: `{entry.category}`",
@@ -446,7 +452,7 @@ def markdown(payload: dict[str, object]) -> str:
         for advisory in advisories[:25]:
             lines.extend(
                 [
-                    f"### `{advisory.path}`",
+                    f"### {markdown_path(advisory.path)}",
                     "",
                     f"- Status: `{advisory.status.strip() or advisory.status}`",
                     f"- Category: `{advisory.category}`",
@@ -466,7 +472,7 @@ def markdown(payload: dict[str, object]) -> str:
                 [
                     f"### `{finding.name}`",
                     "",
-                    f"- Location: `{location}`",
+                    f"- Location: {markdown_path(location)}",
                     f"- Severity: `{finding.severity}`",
                     f"- Message: {finding.message}",
                     "",
