@@ -226,7 +226,7 @@ class ScanContentTests(unittest.TestCase):
                 f"{assignment_name}={allowed_value}\n"
                 f"{assignment_name} = '{allowed_value}',\n"
                 f"Use `{assignment_name}={allowed_value}`.\n"
-                f"Use {assignment_name}={allowed_value} to confirm.\n"
+                f"configure({assignment_name}='{allowed_value}')\n"
                 f"{assignment_name} = '{synthetic_value}'  # {allowed_value}\n"
                 f"{assignment_name} = '{allowed_value}$expanded'\n"
                 f"{assignment_name} = '{allowed_value}', '{synthetic_value}'\n",

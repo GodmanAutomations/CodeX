@@ -365,10 +365,10 @@ def raw_secret_match_is_allowed(
             return True
         elif remainder and not remainder[0].isspace() and remainder[0] != "#":
             continue
-        elif remainder and remainder[0].isspace():
-            return True
         remainder = remainder.lstrip()
         if not remainder or remainder.startswith("#"):
+            return True
+        if re.fullmatch(r"[)\]},]+(?:\s*#.*)?", remainder):
             return True
         if remainder.startswith(","):
             comma_tail = remainder[1:].lstrip()
