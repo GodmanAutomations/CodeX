@@ -106,7 +106,8 @@ def ignored_status_rows() -> list[tuple[str, str]]:
 
 def match_pattern(path: str, pattern: str) -> bool:
     if pattern.endswith("/**"):
-        return path.startswith(pattern[:-3])
+        directory = pattern[:-3]
+        return path == directory or path.startswith(f"{directory}/")
     return fnmatch.fnmatch(path, pattern)
 
 
