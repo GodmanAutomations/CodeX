@@ -1,5 +1,6 @@
 """Isolated regression tests for the public health aggregator."""
 import json
+import os
 from pathlib import Path
 import runpy
 import subprocess
@@ -403,27 +404,35 @@ class JsonCheckTests(unittest.TestCase):
 
     def test_real_child_is_stopped_when_stderr_exceeds_output_limit(self):
         marker = "synthetic-oversized-stderr-diagnostic"
-        result = CHECK["run_check"](
-            "oversized-stderr",
-            [
-                sys.executable,
-                "-c",
-                (
-                    "import sys; "
-                    "sys.stderr.buffer.write("
-                    "b'synthetic-oversized-' + "
-                    "b'stderr-diagnostic' + b'x' * 1000001)"
-                ),
-            ],
-            kind="json",
-            timeout=5,
-        )
+        with tempfile.TemporaryDirectory() as directory:
+            pid_path = Path(directory) / "child.pid"
+            result = CHECK["run_check"](
+                "oversized-stderr",
+                [
+                    sys.executable,
+                    "-c",
+                    (
+                        "import os, pathlib, sys, time; "
+                        "pathlib.Path(sys.argv[1]).write_text(str(os.getpid())); "
+                        "sys.stderr.buffer.write("
+                        "b'synthetic-oversized-' + "
+                        "b'stderr-diagnostic' + b'x' * 1000001); "
+                        "sys.stderr.buffer.flush(); time.sleep(60)"
+                    ),
+                    str(pid_path),
+                ],
+                kind="json",
+                timeout=5,
+            )
+            child_pid = int(pid_path.read_text())
         self.assertFalse(result["ok"])
         self.assertEqual(result["returncode"], 125)
         self.assertEqual(result["error"], "command returned oversized JSON")
         self.assertNotIn(marker, json.dumps(result))
         self.assertNotIn("stdout_tail", result)
         self.assertNotIn("stderr_tail", result)
+        with self.assertRaises(ProcessLookupError):
+            os.kill(child_pid, 0)
 
     def test_json_timeout_does_not_forward_child_diagnostics(self):
         marker = "synthetic-child-diagnostic"
