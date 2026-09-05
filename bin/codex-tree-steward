@@ -138,7 +138,8 @@ def load_policy() -> dict[str, object]:
 def tracked_files() -> list[str]:
     result = run_git(["ls-files", "-z"], text=False)
     if result.returncode != 0:
-        return []
+        detail = decode_status_path(result.stderr or result.stdout).strip()
+        raise RuntimeError(detail or f"git ls-files exited {result.returncode}")
     return [decode_status_path(path) for path in result.stdout.split(b"\0") if path]
 
 
