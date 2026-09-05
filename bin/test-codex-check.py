@@ -1,10 +1,12 @@
 """Isolated regression tests for the public health aggregator."""
 import json
+import os
 from pathlib import Path
 import runpy
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -400,6 +402,68 @@ class JsonCheckTests(unittest.TestCase):
         self.assertEqual(result["error"], "command returned oversized JSON")
         self.assertNotIn("stdout_tail", result)
         self.assertNotIn("stderr_tail", result)
+
+    def test_real_child_is_stopped_when_stderr_exceeds_output_limit(self):
+        marker = "synthetic-oversized-stderr-diagnostic"
+        with tempfile.TemporaryDirectory() as directory:
+            descendant_pid_path = Path(directory) / "descendant.pid"
+            survival_path = Path(directory) / "descendant-survived"
+            descendant_script = (
+                "import pathlib, sys, time\n"
+                "time.sleep(0.5)\n"
+                "pathlib.Path(sys.argv[1]).write_text('survived')\n"
+                "time.sleep(60)\n"
+            )
+            result = CHECK["run_check"](
+                "oversized-stderr",
+                [
+                    sys.executable,
+                    "-c",
+                    (
+                        "import pathlib, subprocess, sys, time; "
+                        "descendant = subprocess.Popen("
+                        "[sys.executable, '-c', sys.argv[2], sys.argv[3]]); "
+                        "pathlib.Path(sys.argv[1]).write_text(str(descendant.pid)); "
+                        "sys.stderr.buffer.write("
+                        "b'synthetic-oversized-' + "
+                        "b'stderr-diagnostic' + b'x' * 1000001); "
+                        "sys.stderr.buffer.flush(); time.sleep(60)"
+                    ),
+                    str(descendant_pid_path),
+                    descendant_script,
+                    str(survival_path),
+                ],
+                kind="json",
+                timeout=5,
+            )
+            descendant_pid = int(descendant_pid_path.read_text())
+            time.sleep(0.75)
+            try:
+                self.assertFalse(result["ok"])
+                self.assertEqual(result["returncode"], 125)
+                self.assertEqual(result["error"], "command returned oversized JSON")
+                self.assertNotIn(marker, json.dumps(result))
+                self.assertNotIn("stdout_tail", result)
+                self.assertNotIn("stderr_tail", result)
+                self.assertFalse(survival_path.exists())
+                deadline = time.monotonic() + 2
+                while time.monotonic() < deadline:
+                    process_state = subprocess.run(
+                        ["ps", "-o", "stat=", "-p", str(descendant_pid)],
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                    ).stdout.strip()
+                    if not process_state or process_state.startswith("Z"):
+                        break
+                    time.sleep(0.05)
+                else:
+                    self.fail("descendant remained alive after process-group cleanup")
+            finally:
+                try:
+                    os.kill(descendant_pid, 9)
+                except ProcessLookupError:
+                    pass
 
     def test_json_timeout_does_not_forward_child_diagnostics(self):
         marker = "synthetic-child-diagnostic"
