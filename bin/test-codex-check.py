@@ -303,6 +303,20 @@ class JsonCheckTests(unittest.TestCase):
                 self.assertNotIn("stdout_tail", result)
                 self.assertNotIn("stderr_tail", result)
 
+    def test_json_payload_must_come_from_stdout(self):
+        marker = '{"ok":true,"safety":{"git_writes":false}}'
+        response = subprocess.CompletedProcess(["fixture-check"], 0, "", marker)
+        with patch.object(subprocess, "run", return_value=response):
+            result = CHECK["run_check"](
+                "fixture", ["fixture-check"], kind="json", timeout=5
+            )
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "command did not return valid JSON")
+        self.assertNotIn(marker, json.dumps(result))
+        self.assertNotIn("payload", result)
+        self.assertNotIn("stdout_tail", result)
+        self.assertNotIn("stderr_tail", result)
+
     @unittest.skipUnless(hasattr(sys, "get_int_max_str_digits"), "requires integer limit")
     def test_aggregation_continues_after_oversized_json_integer(self):
         original_limit = sys.get_int_max_str_digits()
