@@ -42,6 +42,20 @@ class JsonCheckTests(unittest.TestCase):
             with self.subTest(payload=payload, returncode=returncode):
                 self.assertEqual(self.run_payload(payload, returncode)["ok"], expected)
 
+    def test_explicit_child_error_fails_closed_without_forwarding_diagnostics(self):
+        marker = "synthetic-child-diagnostic"
+        result = self.run_payload(
+            {
+                "ok": True,
+                "error": {"detail": marker},
+                "safety": {"git_writes": False},
+            }
+        )
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "child reported an error")
+        self.assertTrue(result["payload"]["error_present"])
+        self.assertNotIn(marker, json.dumps(result))
+
     def test_aggregation_continues_after_non_object_json(self):
         responses = [
             subprocess.CompletedProcess(["fixture-check"], 0, "[]", ""),
