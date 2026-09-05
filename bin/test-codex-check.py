@@ -446,8 +446,19 @@ class JsonCheckTests(unittest.TestCase):
                 self.assertNotIn("stdout_tail", result)
                 self.assertNotIn("stderr_tail", result)
                 self.assertFalse(survival_path.exists())
-                with self.assertRaises(ProcessLookupError):
-                    os.kill(descendant_pid, 0)
+                deadline = time.monotonic() + 2
+                while time.monotonic() < deadline:
+                    process_state = subprocess.run(
+                        ["ps", "-o", "stat=", "-p", str(descendant_pid)],
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                    ).stdout.strip()
+                    if not process_state or process_state.startswith("Z"):
+                        break
+                    time.sleep(0.05)
+                else:
+                    self.fail("descendant remained alive after process-group cleanup")
             finally:
                 try:
                     os.kill(descendant_pid, 9)
