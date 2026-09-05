@@ -272,12 +272,13 @@ class JsonCheckTests(unittest.TestCase):
         self.assertNotIn("payload", result)
 
     def test_aggregation_continues_after_json_decoder_memory_error(self):
+        marker = "synthetic-memory-error-diagnostic"
         responses = [
-            subprocess.CompletedProcess(["fixture-check"], 0, SAFE_JSON, ""),
+            subprocess.CompletedProcess(["fixture-check"], 0, marker, marker),
             subprocess.CompletedProcess(["fixture-check"], 0, SAFE_JSON, ""),
         ]
         parsed_payloads = [
-            MemoryError("synthetic decoder exhaustion"),
+            MemoryError(marker),
             {"ok": True, "safety": {"git_writes": False}},
         ]
         with patch.object(CHECK["PROCESS_RUNNER"], "run", side_effect=responses):
@@ -292,6 +293,9 @@ class JsonCheckTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["error"], "command did not return valid JSON")
         self.assertNotIn("payload", result)
+        self.assertNotIn("stdout_tail", result)
+        self.assertNotIn("stderr_tail", result)
+        self.assertNotIn(marker, json.dumps(payload))
 
     def test_invalid_child_text_returns_failed_check(self):
         for stream in ("stdout", "stderr"):
