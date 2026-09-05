@@ -58,35 +58,46 @@ class IgnoredAdvisory:
     recommendation: str
 
 
-def run_git(args: list[str]) -> subprocess.CompletedProcess[str]:
+def run_git(args: list[str], *, text: bool = True) -> subprocess.CompletedProcess[Any]:
     return subprocess.run(
         ["git", "-C", str(ROOT), *args],
         check=False,
         capture_output=True,
-        text=True,
+        text=text,
         timeout=20,
     )
+
+
+def decode_status_path(raw: bytes) -> str:
+    return os.fsdecode(raw).encode("utf-8", errors="backslashreplace").decode("utf-8")
 
 
 def parse_status(include_ignored: bool = False) -> list[tuple[str, str]]:
     args = ["status", "--porcelain=v1", "-z", "--untracked-files=all"]
     if include_ignored:
         args.append("--ignored=matching")
-    result = run_git(args)
+    result = run_git(args, text=False)
     if result.returncode != 0:
-        raise RuntimeError((result.stderr or result.stdout).strip())
+        detail = decode_status_path(result.stderr or result.stdout).strip()
+        raise RuntimeError(detail or f"git status exited {result.returncode}")
+    raw_status = result.stdout
+    if raw_status and not raw_status.endswith(b"\0"):
+        raise RuntimeError("git status output missing final NUL")
+    records = raw_status.split(b"\0")[:-1] if raw_status else []
+    if any(not record for record in records):
+        raise RuntimeError("git status output contains an empty record")
     rows: list[tuple[str, str]] = []
-    records = result.stdout.split("\0")
     index = 0
     while index < len(records):
         record = records[index]
         index += 1
-        if not record:
-            continue
-        if len(record) < 4 or record[2] != " ":
+        if len(record) < 4 or record[2:3] != b" ":
             raise RuntimeError("malformed git status record")
-        status = record[:2]
-        rows.append((status, record[3:]))
+        try:
+            status = record[:2].decode("ascii")
+        except UnicodeDecodeError as exc:
+            raise RuntimeError("malformed git status code") from exc
+        rows.append((status, decode_status_path(record[3:])))
         if "R" in status or "C" in status:
             if index >= len(records) or not records[index]:
                 raise RuntimeError("rename or copy status missing source path")
