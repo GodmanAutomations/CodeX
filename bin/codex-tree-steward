@@ -344,7 +344,25 @@ def closing_delimiters_are_syntactic(prefix: str, remainder: str) -> bool:
     """Return true when closing delimiters balance openers before the assignment."""
     closing_to_opening = {")": "(", "]": "[", "}": "{"}
     stack: list[str] = []
+    quote = ""
+    escaped = False
     for character in prefix:
+        if escaped:
+            escaped = False
+            continue
+        if character == "\\" and quote:
+            escaped = True
+            continue
+        if quote:
+            if character == quote:
+                quote = ""
+            continue
+        if character in {"'", '"', "`"}:
+            quote = character
+            continue
+        if character == "#":
+            stack.clear()
+            break
         if character in closing_to_opening.values():
             stack.append(character)
         elif character in closing_to_opening and stack:
@@ -392,6 +410,14 @@ def raw_secret_match_is_allowed(
             and remainder[0] not in "#)]},"
         ):
             continue
+        elif remainder and remainder[0].isspace():
+            assignment_name = re.split(r"[:=]", assignment_prefix, maxsplit=1)[0].strip()
+            if (
+                not prefix.strip()
+                and re.fullmatch(r"[A-Z_][A-Z0-9_]*", assignment_name)
+                and re.match(r"\s+[A-Za-z0-9_./-]+(?:\s|$)", remainder)
+            ):
+                return True
         remainder = remainder.lstrip()
         if not remainder or remainder.startswith("#"):
             return True

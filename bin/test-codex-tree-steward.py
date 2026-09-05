@@ -233,7 +233,10 @@ class ScanContentTests(unittest.TestCase):
                 f"{assignment_name} = '{allowed_value}', '{synthetic_value}'\n"
                 f"{assignment_name}=prefix={allowed_value}\n"
                 f"configure({assignment_name}={allowed_value})\n"
-                f"{assignment_name}={allowed_value}{closing_suffix}\n",
+                f"{assignment_name}={allowed_value}{closing_suffix}\n"
+                f"configure(label='{closing_suffix}', {assignment_name}={allowed_value})\n"
+                f"echo '{closing_suffix}'; {assignment_name}={allowed_value}{closing_suffix}\n"
+                f"APPLY_TOKEN={allowed_value} python tool.py\n",
                 encoding="utf-8",
             )
             scan_content.__globals__["ROOT"] = root
@@ -249,7 +252,7 @@ class ScanContentTests(unittest.TestCase):
         raw_findings = [
             finding for finding in findings if finding.name == "raw_secret_assignment"
         ]
-        self.assertEqual([finding.line for finding in raw_findings], [6, 7, 8, 9, 11])
+        self.assertEqual([finding.line for finding in raw_findings], [6, 7, 8, 9, 11, 13])
 
 
 class ReadTextForScanTests(unittest.TestCase):
