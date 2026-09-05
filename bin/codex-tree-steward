@@ -12,6 +12,7 @@ import html
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 import unicodedata
@@ -268,11 +269,28 @@ def content_scan_candidates(policy: dict[str, object], rows: list[tuple[str, str
 
 
 def read_text_for_scan(path: Path, max_bytes: int) -> str | None:
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    if nofollow is None:
+        return None
     try:
-        if path.stat().st_size > max_bytes:
-            return None
-        raw = path.read_bytes()
+        descriptor = os.open(path, os.O_RDONLY | nofollow)
     except OSError:
+        return None
+    try:
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > max_bytes:
+            return None
+        raw = bytearray()
+        while len(raw) <= max_bytes:
+            chunk = os.read(descriptor, min(65_536, max_bytes + 1 - len(raw)))
+            if not chunk:
+                break
+            raw.extend(chunk)
+    except OSError:
+        return None
+    finally:
+        os.close(descriptor)
+    if len(raw) > max_bytes:
         return None
     if b"\0" in raw:
         return None

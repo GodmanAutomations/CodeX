@@ -4,6 +4,7 @@ from pathlib import Path
 import os
 import runpy
 import subprocess
+import tempfile
 import unittest
 
 
@@ -121,6 +122,24 @@ class TrackedFilesTests(unittest.TestCase):
         self.assertEqual(calls, [(["ls-files", "-z"], False)])
         self.assertEqual(paths[0], "bin/line\nbreak.py")
         self.assertEqual(os.fsencode(paths[1]), b"bin/bad-\xff.py")
+
+
+class ReadTextForScanTests(unittest.TestCase):
+    def test_does_not_follow_symlink_outside_scan_path(self):
+        read_text_for_scan = STEWARD["read_text_for_scan"]
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            outside = root / "outside.txt"
+            tracked_link = root / "tracked-link"
+            outside.write_text("synthetic-sensitive-value", encoding="utf-8")
+            tracked_link.symlink_to(outside)
+
+            self.assertEqual(
+                read_text_for_scan(outside, 1024),
+                "synthetic-sensitive-value",
+            )
+            self.assertIsNone(read_text_for_scan(tracked_link, 1024))
 
 
 if __name__ == "__main__":
