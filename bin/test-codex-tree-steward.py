@@ -200,6 +200,23 @@ class WriteReceiptsTests(unittest.TestCase):
 
 
 class ScanContentTests(unittest.TestCase):
+    def test_docstring_ranges_use_character_offsets(self):
+        source = '"""café"""; value = 1\n'
+
+        ranges = STEWARD["python_docstring_ranges"](source)
+
+        self.assertEqual(ranges[1], [(0, source.index(";"))])
+
+    def test_docstring_range_parse_failures_disable_exemptions(self):
+        function = STEWARD["python_docstring_ranges"]
+        ast_module = function.__globals__["ast"]
+        original_parse = ast_module.parse
+        ast_module.parse = lambda _text: (_ for _ in ()).throw(RecursionError())
+        try:
+            self.assertEqual(function('"""probe"""'), {})
+        finally:
+            ast_module.parse = original_parse
+
     def test_allowed_value_only_exempts_the_assignment_that_contains_it(self):
         scan_content = STEWARD["scan_content"]
         load_policy = STEWARD["load_policy"]
@@ -227,6 +244,7 @@ class ScanContentTests(unittest.TestCase):
                 f"{assignment_name}={allowed_value}\n"
                 f"{assignment_name} = '{allowed_value}',\n"
                 f"Use `{assignment_name}={allowed_value}`.\n"
+                f"{assignment_name}={allowed_value}.suffix\n"
                 f"configure({assignment_name}='{allowed_value}')\n"
                 f"{assignment_name} = '{synthetic_value}'  # {allowed_value}\n"
                 f"{assignment_name} = '{allowed_value}$expanded'\n"
@@ -240,9 +258,22 @@ class ScanContentTests(unittest.TestCase):
                 f"# configure({assignment_name}={allowed_value})\n",
                 encoding="utf-8",
             )
+            (root / "doc_probe.py").write_text(
+                '"""\n'
+                f"Use this exact {assignment_name}={allowed_value}.\n"
+                f"Use `{assignment_name}={allowed_value}.`.\n"
+                f"Use {assignment_name}='{allowed_value}'.\n"
+                f"Use {assignment_name}='{allowed_value}.'\n"
+                '"""\n',
+                encoding="utf-8",
+            )
+            (root / "probe.sh").write_text(
+                f"time command env {assignment_name}={allowed_value}.\n",
+                encoding="utf-8",
+            )
             scan_content.__globals__["ROOT"] = root
             scan_content.__globals__["content_scan_candidates"] = (
-                lambda policy, rows: ["probe.py"]
+                lambda policy, rows: ["probe.py", "doc_probe.py", "probe.sh"]
             )
             try:
                 findings = scan_content(policy, [])
@@ -250,10 +281,17 @@ class ScanContentTests(unittest.TestCase):
                 scan_content.__globals__["ROOT"] = original_root
                 scan_content.__globals__["content_scan_candidates"] = original_candidates
 
-        raw_findings = [
-            finding for finding in findings if finding.name == "raw_secret_assignment"
-        ]
-        self.assertEqual([finding.line for finding in raw_findings], [6, 7, 8, 9, 11, 13])
+        raw_lines_by_path = {
+            path: [
+                finding.line
+                for finding in findings
+                if finding.name == "raw_secret_assignment" and finding.path == path
+            ]
+            for path in ("probe.py", "doc_probe.py", "probe.sh")
+        }
+        self.assertEqual(raw_lines_by_path["probe.py"], [5, 7, 8, 9, 10, 12, 14])
+        self.assertEqual(raw_lines_by_path["doc_probe.py"], [3, 5])
+        self.assertEqual(raw_lines_by_path["probe.sh"], [1])
 
 
 class ReadTextForScanTests(unittest.TestCase):
