@@ -7,6 +7,7 @@ it does not revert, delete, stage, or commit anything.
 from __future__ import annotations
 
 import argparse
+import ast
 import fnmatch
 import html
 import json
@@ -378,15 +379,44 @@ def closing_delimiters_are_syntactic(prefix: str, remainder: str) -> bool:
     return True
 
 
+def python_docstring_ranges(text: str) -> dict[int, list[tuple[int, int]]]:
+    """Return source-column ranges occupied by syntactic Python docstrings."""
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError):
+        return {}
+
+    ranges: dict[int, list[tuple[int, int]]] = {}
+    for node in ast.walk(tree):
+        body = getattr(node, "body", None)
+        if not isinstance(body, list) or not body or not isinstance(body[0], ast.Expr):
+            continue
+        value = body[0].value
+        if not isinstance(value, ast.Constant) or not isinstance(value.value, str):
+            continue
+        end_line = getattr(value, "end_lineno", value.lineno)
+        end_column = getattr(value, "end_col_offset", value.col_offset + 1)
+        for line_number in range(value.lineno, end_line + 1):
+            start = value.col_offset if line_number == value.lineno else 0
+            end = end_column if line_number == end_line else sys.maxsize
+            ranges.setdefault(line_number, []).append((start, end))
+    return ranges
+
+
 def raw_secret_match_is_allowed(
-    line: str, match: re.Match[str], allowed_values: set[str]
+    line: str,
+    match: re.Match[str],
+    allowed_values: set[str],
+    *,
+    terminal_period_is_prose: bool = False,
 ) -> bool:
     """Return true only when the complete assigned value is exactly allowlisted."""
     value_character = r"A-Za-z0-9_./+-"
     match_text = match.group(0)
     for value in allowed_values:
+        terminal_period_suffix = r"(?:\.)?" if terminal_period_is_prose else ""
         value_match = re.search(
-            rf"(?<![{value_character}]){re.escape(value)}(?:\.)?$",
+            rf"(?<![{value_character}]){re.escape(value)}{terminal_period_suffix}$",
             match_text,
         )
         if value_match is None:
@@ -399,16 +429,8 @@ def raw_secret_match_is_allowed(
         quote = match_text[quote_index] if quote_index >= 0 else ""
         remainder = line[match.end():]
         prefix = line[:match.start()]
-        if matched_terminal_period:
-            prose_prefix = prefix.strip()
-            if (
-                quote in {"'", '"'}
-                or prefix.endswith("`")
-                or not prefix.endswith((" ", "\t"))
-                or len(re.findall(r"[A-Za-z]+", prose_prefix)) < 3
-                or re.fullmatch(r"[A-Za-z0-9 ,'-]+", prose_prefix) is None
-            ):
-                continue
+        if matched_terminal_period and (quote in {"'", '"'} or prefix.endswith("`")):
+            continue
         if quote in {"'", '"'}:
             if not remainder.startswith(quote):
                 continue
@@ -432,7 +454,7 @@ def raw_secret_match_is_allowed(
         remainder = remainder.lstrip()
         if not remainder or remainder.startswith("#"):
             return True
-        if re.fullmatch(r"\.(?:\s*#.*)?", remainder):
+        if terminal_period_is_prose and re.fullmatch(r"\.(?:\s*#.*)?", remainder):
             return True
         if re.fullmatch(r"[)\]},]+(?:\s*#.*)?", remainder) and (
             closing_delimiters_are_syntactic(prefix, remainder)
@@ -472,6 +494,7 @@ def scan_content(policy: dict[str, object], rows: list[tuple[str, str]]) -> list
         text = read_text_for_scan(path, max_bytes)
         if text is None:
             continue
+        docstring_ranges = python_docstring_ranges(text) if path.suffix == ".py" else {}
         active_patterns = []
         for item, compiled in patterns:
             include_paths = [
@@ -491,7 +514,15 @@ def scan_content(policy: dict[str, object], rows: list[tuple[str, str]]) -> list
                     continue
                 name = str(item.get("name") or "content_check")
                 if name == "raw_secret_assignment" and all(
-                    raw_secret_match_is_allowed(line, match, allowed_secret_values)
+                    raw_secret_match_is_allowed(
+                        line,
+                        match,
+                        allowed_secret_values,
+                        terminal_period_is_prose=any(
+                            start <= match.start() < end
+                            for start, end in docstring_ranges.get(line_number, [])
+                        ),
+                    )
                     for match in matches
                 ):
                     continue

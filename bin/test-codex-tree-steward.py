@@ -224,14 +224,9 @@ class ScanContentTests(unittest.TestCase):
             closing_suffix = "}"
             (root / "probe.py").write_text(
                 f"{assignment_name} = '{allowed_value}'\n"
-                f"{assignment_name} = '{allowed_value}.'\n"
-                f"Use {assignment_name}='{allowed_value}'.\n"
                 f"{assignment_name}={allowed_value}\n"
                 f"{assignment_name} = '{allowed_value}',\n"
                 f"Use `{assignment_name}={allowed_value}`.\n"
-                f"Use `{assignment_name}={allowed_value}.`.\n"
-                f"Use this exact {assignment_name}={allowed_value}.\n"
-                f"{assignment_name}={allowed_value}.\n"
                 f"{assignment_name}={allowed_value}.suffix\n"
                 f"configure({assignment_name}='{allowed_value}')\n"
                 f"{assignment_name} = '{synthetic_value}'  # {allowed_value}\n"
@@ -246,9 +241,22 @@ class ScanContentTests(unittest.TestCase):
                 f"# configure({assignment_name}={allowed_value})\n",
                 encoding="utf-8",
             )
+            (root / "doc_probe.py").write_text(
+                '"""\n'
+                f"Use this exact {assignment_name}={allowed_value}.\n"
+                f"Use `{assignment_name}={allowed_value}.`.\n"
+                f"Use {assignment_name}='{allowed_value}'.\n"
+                f"Use {assignment_name}='{allowed_value}.'\n"
+                '"""\n',
+                encoding="utf-8",
+            )
+            (root / "probe.sh").write_text(
+                f"time command env {assignment_name}={allowed_value}.\n",
+                encoding="utf-8",
+            )
             scan_content.__globals__["ROOT"] = root
             scan_content.__globals__["content_scan_candidates"] = (
-                lambda policy, rows: ["probe.py"]
+                lambda policy, rows: ["probe.py", "doc_probe.py", "probe.sh"]
             )
             try:
                 findings = scan_content(policy, [])
@@ -256,13 +264,17 @@ class ScanContentTests(unittest.TestCase):
                 scan_content.__globals__["ROOT"] = original_root
                 scan_content.__globals__["content_scan_candidates"] = original_candidates
 
-        raw_findings = [
-            finding for finding in findings if finding.name == "raw_secret_assignment"
-        ]
-        self.assertEqual(
-            [finding.line for finding in raw_findings],
-            [2, 7, 9, 10, 12, 13, 14, 15, 17, 19],
-        )
+        raw_lines_by_path = {
+            path: [
+                finding.line
+                for finding in findings
+                if finding.name == "raw_secret_assignment" and finding.path == path
+            ]
+            for path in ("probe.py", "doc_probe.py", "probe.sh")
+        }
+        self.assertEqual(raw_lines_by_path["probe.py"], [5, 7, 8, 9, 10, 12, 14])
+        self.assertEqual(raw_lines_by_path["doc_probe.py"], [3, 5])
+        self.assertEqual(raw_lines_by_path["probe.sh"], [1])
 
 
 class ReadTextForScanTests(unittest.TestCase):
