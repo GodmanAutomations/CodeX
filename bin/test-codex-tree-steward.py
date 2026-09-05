@@ -139,6 +139,31 @@ class TrackedFilesTests(unittest.TestCase):
             tracked_files.__globals__["run_git"] = original_run_git
 
 
+class FileCountTests(unittest.TestCase):
+    def test_does_not_traverse_directory_symlink_outside_root(self):
+        file_count = STEWARD["file_count"]
+        original_root = file_count.__globals__["ROOT"]
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary_root = Path(temporary_directory)
+            repository = temporary_root / "repository"
+            outside_directory = temporary_root / "outside"
+            repository.mkdir()
+            outside_directory.mkdir()
+            (outside_directory / "external.txt").write_text(
+                "outside-content", encoding="utf-8"
+            )
+            (repository / "linked-directory").symlink_to(
+                outside_directory, target_is_directory=True
+            )
+
+            file_count.__globals__["ROOT"] = repository
+            try:
+                self.assertIsNone(file_count("linked-directory"))
+            finally:
+                file_count.__globals__["ROOT"] = original_root
+
+
 class ReadTextForScanTests(unittest.TestCase):
     def test_does_not_follow_symlinks_outside_scan_root(self):
         read_text_for_scan = STEWARD["read_text_for_scan"]
