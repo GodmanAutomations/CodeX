@@ -48,7 +48,10 @@ def launchctl_present(name: str) -> bool:
 
 def process_running(pattern: str) -> bool:
     pgrep = shutil.which("pgrep") or "/usr/bin/pgrep"
-    result = run([pgrep, "-f", pattern], timeout=3)
+    try:
+        result = run([pgrep, "-f", pattern], timeout=3)
+    except Exception:
+        return False
     return result.returncode == 0
 
 

@@ -10,6 +10,18 @@ STATUS = runpy.run_path(str(Path(__file__).with_name("codex-status")))
 
 
 class JsonCommandTests(unittest.TestCase):
+    def test_process_probe_errors_report_not_running(self):
+        for error in (
+            subprocess.TimeoutExpired(["pgrep"], 3),
+            OSError("pgrep unavailable"),
+        ):
+            with self.subTest(error=type(error).__name__):
+                with patch.dict(
+                    STATUS["process_running"].__globals__,
+                    {"run": lambda *_args, **_kwargs: (_ for _ in ()).throw(error)},
+                ):
+                    self.assertFalse(STATUS["process_running"]("fixture"))
+
     def test_non_object_json_returns_failed_status_without_crashing(self):
         response = subprocess.CompletedProcess(["fixture"], 0, "[]", "")
         with patch.dict(
