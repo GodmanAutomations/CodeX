@@ -117,6 +117,23 @@ class JsonCommandTests(unittest.TestCase):
             },
         )
 
+    def test_duplicate_json_object_members_fail_closed(self):
+        response = subprocess.CompletedProcess(
+            ["fixture"],
+            0,
+            '{"ok": false, "ok": true}',
+            "",
+        )
+        with patch.dict(
+            STATUS["json_command"].__globals__,
+            {"run": lambda *_args, **_kwargs: response},
+        ):
+            result = STATUS["json_command"](["fixture"])
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["returncode"], 0)
+        self.assertEqual(result["error"], "command did not return valid JSON")
+
     def test_nonzero_exit_cannot_report_healthy_status(self):
         response = subprocess.CompletedProcess(
             ["fixture"],
