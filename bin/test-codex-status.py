@@ -43,6 +43,21 @@ class JsonCommandTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["returncode"], 1)
 
+    def test_tree_health_preserves_json_command_failure(self):
+        failed_payload = {
+            "ok": False,
+            "strict_pass": True,
+            "returncode": 1,
+        }
+        with patch.dict(
+            STATUS["tree_health"].__globals__,
+            {"json_command": lambda *_args, **_kwargs: failed_payload},
+        ):
+            result = STATUS["tree_health"]()
+
+        self.assertFalse(result["ok"])
+        self.assertTrue(result["strict_pass"])
+
 
 if __name__ == "__main__":
     unittest.main()

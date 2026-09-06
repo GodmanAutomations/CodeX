@@ -86,7 +86,7 @@ def tree_health() -> dict[str, Any]:
         return {"ok": False, "error": "missing", "path": str(TREE_STEWARD)}
     payload = json_command([str(TREE_STEWARD), "--json", "--no-receipt"], timeout=20)
     return {
-        "ok": bool(payload.get("strict_pass")),
+        "ok": bool(payload.get("ok")) and bool(payload.get("strict_pass")),
         "path": str(TREE_STEWARD),
         "dirty_count": payload.get("dirty_count"),
         "strict_pass": payload.get("strict_pass"),
