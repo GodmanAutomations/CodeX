@@ -51,7 +51,10 @@ class JsonCommandTests(unittest.TestCase):
         }
         with patch.dict(
             STATUS["tree_health"].__globals__,
-            {"json_command": lambda *_args, **_kwargs: failed_payload},
+            {
+                "TREE_STEWARD": Path(__file__),
+                "json_command": lambda *_args, **_kwargs: failed_payload,
+            },
         ):
             result = STATUS["tree_health"]()
 
