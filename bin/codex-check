@@ -134,6 +134,18 @@ def timeout_text(value: str | bytes | None) -> str:
     return value or ""
 
 
+def terminal_safe(value: Any) -> str:
+    """Render untrusted text without emitting terminal control characters."""
+    rendered: list[str] = []
+    for character in str(value):
+        codepoint = ord(character)
+        if codepoint < 32 or 127 <= codepoint <= 159:
+            rendered.append(f"\\x{codepoint:02x}")
+        else:
+            rendered.append(character)
+    return "".join(rendered)
+
+
 def unique_object_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     """Build a JSON object while rejecting ambiguous duplicate members."""
     result: dict[str, Any] = {}
@@ -422,25 +434,28 @@ def build_payload(
 
 
 def format_text(payload: dict[str, Any]) -> str:
+    selected = ", ".join(
+        terminal_safe(item) for item in payload.get("selected_checks") or []
+    )
     lines = [
         "CodeX Check",
-        f"profile: {payload.get('profile')}",
-        f"selected: {', '.join(payload.get('selected_checks') or [])}",
-        f"root: {payload.get('root')}",
+        f"profile: {terminal_safe(payload.get('profile'))}",
+        f"selected: {selected}",
+        f"root: {terminal_safe(payload.get('root'))}",
         f"status: {'OK' if payload.get('ok') else 'NO'}",
         f"summary: passed={payload.get('summary', {}).get('passed')} failed={payload.get('summary', {}).get('failed')}",
         "",
     ]
     if payload.get("error"):
-        lines.append(f"error: {payload['error']}")
+        lines.append(f"error: {terminal_safe(payload['error'])}")
         lines.append("")
     for check in payload.get("checks", []):
         lines.append(
-            f"- {check.get('name')}: {'OK' if check.get('ok') else 'NO'} "
+            f"- {terminal_safe(check.get('name'))}: {'OK' if check.get('ok') else 'NO'} "
             f"rc={check.get('returncode')} {check.get('duration_ms')}ms"
         )
         if check.get("error"):
-            lines.append(f"  error: {check['error']}")
+            lines.append(f"  error: {terminal_safe(check['error'])}")
         check_payload = check.get("payload")
         if not check.get("ok") and isinstance(check_payload, dict):
             payload_bits = []
@@ -452,11 +467,11 @@ def format_text(payload: dict[str, Any]) -> str:
         elif not check.get("ok") and check.get("stdout_tail"):
             lines.append("  stdout_tail:")
             for line in str(check["stdout_tail"]).splitlines()[-6:]:
-                lines.append(f"    {line}")
+                lines.append(f"    {terminal_safe(line)}")
         if not check.get("ok") and check.get("stderr_tail"):
             lines.append("  stderr_tail:")
             for line in str(check["stderr_tail"]).splitlines()[-6:]:
-                lines.append(f"    {line}")
+                lines.append(f"    {terminal_safe(line)}")
     return "\n".join(lines)
 
 

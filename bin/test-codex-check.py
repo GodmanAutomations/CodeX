@@ -102,6 +102,21 @@ class JsonCheckTests(unittest.TestCase):
                 self.assertEqual(payload["summary"], {"passed": 0, "failed": 0})
                 run.assert_not_called()
 
+    def test_text_output_escapes_terminal_controls_from_only_names(self):
+        malicious_name = "bad\x1b]0;probe\x07\x9b"
+        only, only_error = CHECK["parse_only"](malicious_name)
+        payload, returncode = CHECK["build_payload"](
+            "quick", False, only, only_error
+        )
+
+        rendered = CHECK["format_text"](payload)
+
+        self.assertEqual(returncode, 2)
+        self.assertNotIn("\x1b", rendered)
+        self.assertNotIn("\x07", rendered)
+        self.assertNotIn("\x9b", rendered)
+        self.assertIn(r"bad\x1b]0;probe\x07\x9b", rendered)
+
     def test_missing_executable_returns_failed_check(self):
         with tempfile.TemporaryDirectory() as directory:
             command = [str(Path(directory) / "missing-check")]
