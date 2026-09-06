@@ -66,6 +66,8 @@ def json_command(cmd: list[str], timeout: int = 20) -> dict[str, Any]:
         payload = json.loads(output)
     except Exception:
         payload = {"ok": False, "error": output[:800] or f"exit {result.returncode}"}
+    if not isinstance(payload, dict):
+        payload = {"ok": False, "error": "command did not return a JSON object"}
     payload.setdefault("returncode", result.returncode)
     return payload
 
