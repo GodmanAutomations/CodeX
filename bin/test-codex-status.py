@@ -10,6 +10,24 @@ STATUS = runpy.run_path(str(Path(__file__).with_name("codex-status")))
 
 
 class JsonCommandTests(unittest.TestCase):
+    def test_json_payload_must_come_from_stdout(self):
+        response = subprocess.CompletedProcess(
+            ["fixture"],
+            0,
+            "",
+            '{"ok": true, "strict_pass": true}',
+        )
+        with patch.dict(
+            STATUS["json_command"].__globals__,
+            {"run": lambda *_args, **_kwargs: response},
+        ):
+            result = STATUS["json_command"](["fixture"])
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["returncode"], 0)
+        self.assertEqual(result["error"], "command did not return JSON on stdout")
+        self.assertNotIn("strict_pass", result)
+
     def test_process_probe_errors_report_not_running(self):
         for error in (
             subprocess.TimeoutExpired(["pgrep"], 3),
