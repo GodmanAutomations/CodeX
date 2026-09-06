@@ -176,7 +176,9 @@ def build_status(include_pi: bool = True) -> dict[str, Any]:
     trello = json_command([str(TRELLO_LAUNCHER), "--status"], timeout=20)
     tree = tree_health()
     op_resolution = trello.get("op_resolution")
-    op_resolution_valid = op_resolution is None or isinstance(op_resolution, dict)
+    op_resolution_valid = (
+        "op_resolution" not in trello or isinstance(op_resolution, dict)
+    )
     trello_ok = trello.get("ok") is True and op_resolution_valid
     op_status = (
         op_resolution.get("status")
