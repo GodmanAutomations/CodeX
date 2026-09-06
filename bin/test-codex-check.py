@@ -104,7 +104,7 @@ class JsonCheckTests(unittest.TestCase):
                 run.assert_not_called()
 
     def test_text_output_escapes_terminal_controls_from_only_names(self):
-        malicious_name = "bad\x1b]0;probe\x07\x9b"
+        malicious_name = "bad\x1b]0;probe\x07\x9b\u202e"
         only, only_error = CHECK["parse_only"](malicious_name)
         payload, returncode = CHECK["build_payload"](
             "quick", False, only, only_error
@@ -116,7 +116,8 @@ class JsonCheckTests(unittest.TestCase):
         self.assertNotIn("\x1b", rendered)
         self.assertNotIn("\x07", rendered)
         self.assertNotIn("\x9b", rendered)
-        self.assertIn(r"bad\x1b]0;probe\x07\x9b", rendered)
+        self.assertNotIn("\u202e", rendered)
+        self.assertIn(r"bad\x1b]0;probe\x07\x9b\u202e", rendered)
 
     def test_cli_text_output_escapes_surrogate_encoded_c1_bytes(self):
         result = subprocess.run(
@@ -131,7 +132,7 @@ class JsonCheckTests(unittest.TestCase):
 
     def test_cli_argparse_errors_escape_terminal_controls(self):
         result = subprocess.run(
-            [os.fsencode(CHECK_PATH), b"--bad\x1b]0;probe\x07"],
+            [os.fsencode(CHECK_PATH), "--bad\x1b]0;probe\x07\u202e"],
             check=False,
             capture_output=True,
         )
@@ -139,7 +140,8 @@ class JsonCheckTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertNotIn(b"\x1b", result.stderr)
         self.assertNotIn(b"\x07", result.stderr)
-        self.assertIn(rb"--bad\x1b]0;probe\x07", result.stderr)
+        self.assertNotIn("\u202e".encode(), result.stderr)
+        self.assertIn(rb"--bad\x1b]0;probe\x07\u202e", result.stderr)
 
     def test_missing_executable_returns_failed_check(self):
         with tempfile.TemporaryDirectory() as directory:
