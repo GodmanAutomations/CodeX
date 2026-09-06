@@ -279,7 +279,7 @@ def terminal_safe(value: Any) -> str:
             rendered.append(f"\\u{codepoint:04x}")
         elif codepoint < 32 or 127 <= codepoint <= 159:
             rendered.append(f"\\x{codepoint:02x}")
-        elif unicodedata.category(character) == "Cf":
+        elif unicodedata.category(character) in {"Cf", "Zl", "Zp"}:
             escape = "\\u" if codepoint <= 0xFFFF else "\\U"
             width = 4 if codepoint <= 0xFFFF else 8
             rendered.append(f"{escape}{codepoint:0{width}x}")

@@ -61,8 +61,8 @@ class JsonCommandTests(unittest.TestCase):
             [{"name": "stable.md", "path": "/fixture/stable.md"}],
         )
 
-    def test_text_output_escapes_terminal_controls(self):
-        marker = "note\x1b]0;probe\x07\x9b\u202e.md"
+    def test_text_output_escapes_terminal_and_line_controls(self):
+        marker = "note\x1b]0;probe\x07\x9b\u202e\u2028line\u2029paragraph.md"
         status = {
             "app_only": True,
             "codex_app_running": True,
@@ -82,7 +82,12 @@ class JsonCommandTests(unittest.TestCase):
         self.assertNotIn("\x07", rendered)
         self.assertNotIn("\x9b", rendered)
         self.assertNotIn("\u202e", rendered)
-        self.assertIn(r"note\x1b]0;probe\x07\x9b\u202e.md", rendered)
+        self.assertNotIn("\u2028", rendered)
+        self.assertNotIn("\u2029", rendered)
+        self.assertIn(
+            r"note\x1b]0;probe\x07\x9b\u202e\u2028line\u2029paragraph.md",
+            rendered,
+        )
 
     def test_json_payload_must_come_from_stdout(self):
         response = subprocess.CompletedProcess(
