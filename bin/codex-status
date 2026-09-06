@@ -117,17 +117,31 @@ def tree_health() -> dict[str, Any]:
     if not TREE_STEWARD.exists():
         return {"ok": False, "error": "missing", "path": str(TREE_STEWARD)}
     payload = json_command([str(TREE_STEWARD), "--json", "--no-receipt"], timeout=20)
+    findings = payload.get("findings", [])
+    ignored_advisories = payload.get("ignored_advisories", [])
+    collections_valid = isinstance(findings, list) and isinstance(
+        ignored_advisories, list
+    )
+    error = payload.get("error")
+    if not collections_valid and not error:
+        error = "tree steward returned invalid collection data"
     return {
-        "ok": bool(payload.get("ok")) and bool(payload.get("strict_pass")),
+        "ok": (
+            bool(payload.get("ok"))
+            and bool(payload.get("strict_pass"))
+            and collections_valid
+        ),
         "path": str(TREE_STEWARD),
         "dirty_count": payload.get("dirty_count"),
         "strict_pass": payload.get("strict_pass"),
         "strict_blockers": payload.get("strict_blockers"),
         "summary": payload.get("summary") or {},
-        "findings_count": len(payload.get("findings") or []),
-        "ignored_advisories_count": len(payload.get("ignored_advisories") or []),
+        "findings_count": len(findings) if isinstance(findings, list) else 0,
+        "ignored_advisories_count": (
+            len(ignored_advisories) if isinstance(ignored_advisories, list) else 0
+        ),
         "policy_path": payload.get("policy_path"),
-        "error": payload.get("error"),
+        "error": error,
     }
 
 
