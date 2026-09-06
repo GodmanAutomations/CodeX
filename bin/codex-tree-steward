@@ -95,6 +95,14 @@ def display_path(path: str) -> str:
     return "".join(visible)
 
 
+class SafeArgumentParser(argparse.ArgumentParser):
+    """Keep malformed command-line input from controlling the terminal."""
+
+    def error(self, message: str) -> None:
+        self.print_usage(sys.stderr)
+        self.exit(2, f"{display_path(self.prog)}: error: {display_path(message)}\n")
+
+
 def markdown_path(path: str) -> str:
     return f"<code>{html.escape(display_path(path), quote=True)}</code>"
 
@@ -1035,7 +1043,10 @@ def run_doctor(json_mode: bool) -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Classify dirty CodeX tree state")
+    parser = SafeArgumentParser(
+        prog=display_path(os.path.basename(sys.argv[0])),
+        description="Classify dirty CodeX tree state",
+    )
     parser.add_argument("--json", action="store_true", help="Print JSON instead of a plain summary.")
     parser.add_argument("--no-receipt", action="store_true", help="Do not write receipt files.")
     parser.add_argument("--strict", action="store_true", help="Exit non-zero when risky or review-needed items exist.")
@@ -1091,5 +1102,5 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except Exception as exc:
-        print(f"codex-tree-steward: {exc}", file=sys.stderr)
+        print(f"codex-tree-steward: {display_path(str(exc))}", file=sys.stderr)
         raise SystemExit(2)
