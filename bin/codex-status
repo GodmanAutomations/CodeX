@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import subprocess
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -192,6 +193,26 @@ def yn(value: bool | None) -> str:
     return "OK" if value else "NO"
 
 
+def terminal_safe(value: Any) -> str:
+    """Render untrusted text without emitting terminal control characters."""
+    rendered: list[str] = []
+    for character in str(value):
+        codepoint = ord(character)
+        if 0xDC80 <= codepoint <= 0xDCFF:
+            rendered.append(f"\\x{codepoint - 0xDC00:02x}")
+        elif 0xD800 <= codepoint <= 0xDFFF:
+            rendered.append(f"\\u{codepoint:04x}")
+        elif codepoint < 32 or 127 <= codepoint <= 159:
+            rendered.append(f"\\x{codepoint:02x}")
+        elif unicodedata.category(character) == "Cf":
+            escape = "\\u" if codepoint <= 0xFFFF else "\\U"
+            width = 4 if codepoint <= 0xFFFF else 8
+            rendered.append(f"{escape}{codepoint:0{width}x}")
+        else:
+            rendered.append(character)
+    return "".join(rendered)
+
+
 def format_status(status: dict[str, Any]) -> str:
     lines = [
         "CodeX Status",
@@ -216,33 +237,33 @@ def format_status(status: dict[str, Any]) -> str:
             "",
             "Tree steward:",
             f"- strict pass: {yn(tree.get('strict_pass'))}",
-            f"- dirty count: {tree.get('dirty_count')}",
-            f"- blockers: {tree.get('strict_blockers')}",
-            f"- policy findings: {tree.get('findings_count')}",
-            f"- ignored advisories: {tree.get('ignored_advisories_count')}",
+            f"- dirty count: {terminal_safe(tree.get('dirty_count'))}",
+            f"- blockers: {terminal_safe(tree.get('strict_blockers'))}",
+            f"- policy findings: {terminal_safe(tree.get('findings_count'))}",
+            f"- ignored advisories: {terminal_safe(tree.get('ignored_advisories_count'))}",
             "",
             "Trello MCP:",
             f"- status: {yn(trello.get('ok'))}",
-            f"- credential source: {trello.get('credential_source') or 'unknown'}",
+            f"- credential source: {terminal_safe(trello.get('credential_source') or 'unknown')}",
             f"- 1Password attempted: {yn(trello.get('op_attempted'))}",
-            f"- tool count: {trello.get('tool_count')}",
+            f"- tool count: {terminal_safe(trello.get('tool_count'))}",
             "",
             "Pi / Candice:",
-            f"- {status.get('pi', {}).get('status')}",
+            f"- {terminal_safe(status.get('pi', {}).get('status'))}",
             "",
             "Latest work notes:",
         ]
     )
     for item in status.get("latest_work_notes", []):
-        lines.append(f"- {item['name']}")
+        lines.append(f"- {terminal_safe(item['name'])}")
     lines.append("")
     lines.append("Latest tree receipts:")
     for item in status.get("latest_tree_receipts", []):
-        lines.append(f"- {item['name']}")
+        lines.append(f"- {terminal_safe(item['name'])}")
     lines.append("")
     lines.append("Latest handoffs:")
     for item in status.get("latest_handoffs", []):
-        lines.append(f"- {item['name']}")
+        lines.append(f"- {terminal_safe(item['name'])}")
     return "\n".join(lines)
 
 

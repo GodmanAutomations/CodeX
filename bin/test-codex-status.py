@@ -10,6 +10,29 @@ STATUS = runpy.run_path(str(Path(__file__).with_name("codex-status")))
 
 
 class JsonCommandTests(unittest.TestCase):
+    def test_text_output_escapes_terminal_controls(self):
+        marker = "note\x1b]0;probe\x07\x9b\u202e.md"
+        status = {
+            "app_only": True,
+            "codex_app_running": True,
+            "onepassword_app_running": True,
+            "environment": {},
+            "trello_mcp": {"credential_source": marker},
+            "tree": {"strict_blockers": marker},
+            "pi": {"status": marker},
+            "latest_work_notes": [{"name": marker}],
+            "latest_tree_receipts": [{"name": marker}],
+            "latest_handoffs": [{"name": marker}],
+        }
+
+        rendered = STATUS["format_status"](status)
+
+        self.assertNotIn("\x1b", rendered)
+        self.assertNotIn("\x07", rendered)
+        self.assertNotIn("\x9b", rendered)
+        self.assertNotIn("\u202e", rendered)
+        self.assertIn(r"note\x1b]0;probe\x07\x9b\u202e.md", rendered)
+
     def test_json_payload_must_come_from_stdout(self):
         response = subprocess.CompletedProcess(
             ["fixture"],
