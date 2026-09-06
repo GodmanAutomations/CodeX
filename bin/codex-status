@@ -64,7 +64,13 @@ def json_command(cmd: list[str], timeout: int = 20) -> dict[str, Any]:
         result = run(cmd, timeout=timeout)
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
-    output = result.stdout.strip() or result.stderr.strip()
+    output = result.stdout.strip()
+    if not output:
+        return {
+            "ok": False,
+            "error": "command did not return JSON on stdout",
+            "returncode": result.returncode,
+        }
     try:
         payload = json.loads(output)
     except Exception:
