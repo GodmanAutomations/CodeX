@@ -202,7 +202,8 @@ def build_status(include_pi: bool = True) -> dict[str, Any]:
         "op_resolution" not in trello
         or (
             isinstance(op_resolution, dict)
-            and (op_status is None or isinstance(op_status, str))
+            and isinstance(op_status, str)
+            and bool(op_status)
         )
     )
     trello_ok = trello.get("ok") is True and op_resolution_valid
@@ -236,6 +237,7 @@ def build_status(include_pi: bool = True) -> dict[str, Any]:
             "ok": trello_ok,
             "credential_source": trello.get("credential_source"),
             "op_attempted": isinstance(op_status, str)
+            and bool(op_status)
             and op_status != "not_attempted",
             "tool_count": count_trello_tools(),
         },
