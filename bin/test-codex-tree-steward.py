@@ -199,6 +199,114 @@ class WriteReceiptsTests(unittest.TestCase):
             self.assertIn("20260905T121843Z", second["receipt_json"])
             self.assertEqual(len(list(receipt_root.iterdir())), 4)
 
+    def test_existing_receipt_pair_is_preserved_on_id_collision(self):
+        write_receipts = STEWARD["write_receipts"]
+        original_receipt_root = write_receipts.__globals__["RECEIPT_ROOT"]
+        uuid_module = write_receipts.__globals__["uuid"]
+        original_uuid4 = uuid_module.uuid4
+        payload = {
+            "generated_at": "fixture",
+            "root": "fixture",
+            "dirty_count": 0,
+            "strict_pass": True,
+            "summary": {},
+            "entries": [],
+            "findings": [],
+            "ignored_advisories": [],
+        }
+
+        class FixedUuid:
+            def __init__(self, value):
+                self.hex = value
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            receipt_root = Path(temporary_directory)
+            receipt_time = datetime(2026, 9, 6, 1, 0, 0, tzinfo=timezone.utc)
+            existing_json = receipt_root / (
+                "20260906T010000Z-aaaaaaaaaaaa-tree-steward.json"
+            )
+            existing_markdown = receipt_root / (
+                "20260906T010000Z-aaaaaaaaaaaa-tree-steward.md"
+            )
+            existing_json.write_text("preserve-json\n", encoding="utf-8")
+            existing_markdown.write_text("preserve-markdown\n", encoding="utf-8")
+            receipt_ids = iter(["a" * 32, "b" * 32])
+            write_receipts.__globals__["RECEIPT_ROOT"] = receipt_root
+            uuid_module.uuid4 = lambda: FixedUuid(next(receipt_ids))
+            try:
+                write_receipts(payload, receipt_time=receipt_time)
+            finally:
+                write_receipts.__globals__["RECEIPT_ROOT"] = original_receipt_root
+                uuid_module.uuid4 = original_uuid4
+
+            self.assertEqual(existing_json.read_text(encoding="utf-8"), "preserve-json\n")
+            self.assertEqual(
+                existing_markdown.read_text(encoding="utf-8"),
+                "preserve-markdown\n",
+            )
+            self.assertIn("-bbbbbbbbbbbb-tree-steward.json", payload["receipt_json"])
+            self.assertIn("-bbbbbbbbbbbb-tree-steward.md", payload["receipt_markdown"])
+            self.assertEqual(len(list(receipt_root.iterdir())), 4)
+
+    def test_partial_collision_cleanup_is_reported_without_removing_existing_file(self):
+        write_receipts = STEWARD["write_receipts"]
+        original_receipt_root = write_receipts.__globals__["RECEIPT_ROOT"]
+        uuid_module = write_receipts.__globals__["uuid"]
+        original_uuid4 = uuid_module.uuid4
+        payload = {
+            "generated_at": "fixture",
+            "root": "fixture",
+            "dirty_count": 0,
+            "strict_pass": True,
+            "summary": {},
+            "entries": [],
+            "findings": [],
+            "ignored_advisories": [],
+            "safety": {
+                "git_writes": False,
+                "file_deletes": False,
+                "secrets_printed": False,
+                "trello_writes": False,
+            },
+        }
+
+        class FixedUuid:
+            def __init__(self, value):
+                self.hex = value
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            receipt_root = Path(temporary_directory)
+            receipt_time = datetime(2026, 9, 6, 1, 0, 0, tzinfo=timezone.utc)
+            collided_json = receipt_root / (
+                "20260906T010000Z-aaaaaaaaaaaa-tree-steward.json"
+            )
+            existing_markdown = receipt_root / (
+                "20260906T010000Z-aaaaaaaaaaaa-tree-steward.md"
+            )
+            existing_markdown.write_text("preserve-markdown\n", encoding="utf-8")
+            receipt_ids = iter(["a" * 32, "b" * 32])
+            write_receipts.__globals__["RECEIPT_ROOT"] = receipt_root
+            uuid_module.uuid4 = lambda: FixedUuid(next(receipt_ids))
+            try:
+                write_receipts(payload, receipt_time=receipt_time)
+            finally:
+                write_receipts.__globals__["RECEIPT_ROOT"] = original_receipt_root
+                uuid_module.uuid4 = original_uuid4
+
+            self.assertFalse(collided_json.exists())
+            self.assertEqual(
+                existing_markdown.read_text(encoding="utf-8"),
+                "preserve-markdown\n",
+            )
+            self.assertTrue(payload["safety"]["file_deletes"])
+            self.assertEqual(
+                payload["receipt_cleanup"],
+                {"self_created_files_removed": 1},
+            )
+            rendered = Path(payload["receipt_markdown"]).read_text(encoding="utf-8")
+            self.assertIn("- File deletes: `true`", rendered)
+            self.assertIn("no pre-existing path was removed", rendered)
+
 
 class ScanContentTests(unittest.TestCase):
     def test_docstring_ranges_use_character_offsets(self):

@@ -2,7 +2,7 @@
 """Classify CodeX git-tree drift and write a cleanup receipt.
 
 This is intentionally conservative. It inventories and classifies the worktree;
-it does not revert, delete, stage, or commit anything.
+it does not remove pre-existing paths, stage, or commit anything.
 """
 from __future__ import annotations
 
@@ -648,6 +648,7 @@ def build_payload(policy: dict[str, object], preflight: str | None) -> dict[str,
 
 def markdown(payload: dict[str, object]) -> str:
     entries = [Entry(**item) for item in payload["entries"]]  # type: ignore[arg-type]
+    safety = payload.get("safety") if isinstance(payload.get("safety"), dict) else {}
     lines = [
         "# CodeX Tree Steward Receipt",
         "",
@@ -716,13 +717,20 @@ def markdown(payload: dict[str, object]) -> str:
         [
             "## Safety",
             "",
-            "- Git writes: `false`",
-            "- File deletes: `false`",
-            "- Secrets printed: `false`",
-            "- Trello writes: `false`",
+            f"- Git writes: `{str(safety.get('git_writes') is True).lower()}`",
+            f"- File deletes: `{str(safety.get('file_deletes') is True).lower()}`",
+            f"- Secrets printed: `{str(safety.get('secrets_printed') is True).lower()}`",
+            f"- Trello writes: `{str(safety.get('trello_writes') is True).lower()}`",
             "",
         ]
     )
+    cleanup = payload.get("receipt_cleanup")
+    if isinstance(cleanup, dict) and cleanup.get("self_created_files_removed"):
+        lines.append(
+            "Receipt collision cleanup removed "
+            f"`{cleanup['self_created_files_removed']}` file(s) created by this run; "
+            "no pre-existing path was removed."
+        )
     return "\n".join(lines)
 
 
@@ -731,13 +739,44 @@ def write_receipts(
 ) -> None:
     RECEIPT_ROOT.mkdir(parents=True, exist_ok=True)
     stamp = (receipt_time or datetime.now(timezone.utc)).strftime("%Y%m%dT%H%M%SZ")
-    receipt_id = uuid.uuid4().hex[:12]
-    json_path = RECEIPT_ROOT / f"{stamp}-{receipt_id}-tree-steward.json"
-    md_path = RECEIPT_ROOT / f"{stamp}-{receipt_id}-tree-steward.md"
-    payload["receipt_json"] = str(json_path)
-    payload["receipt_markdown"] = str(md_path)
-    json_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    md_path.write_text(markdown(payload), encoding="utf-8", errors="backslashreplace")
+    self_created_files_removed = 0
+    for _ in range(100):
+        receipt_id = uuid.uuid4().hex[:12]
+        json_path = RECEIPT_ROOT / f"{stamp}-{receipt_id}-tree-steward.json"
+        md_path = RECEIPT_ROOT / f"{stamp}-{receipt_id}-tree-steward.md"
+        try:
+            json_stream = json_path.open("x", encoding="utf-8")
+        except FileExistsError:
+            continue
+        try:
+            md_stream = md_path.open("x", encoding="utf-8", errors="backslashreplace")
+        except FileExistsError:
+            json_stream.close()
+            json_path.unlink()
+            self_created_files_removed += 1
+            continue
+        except BaseException:
+            json_stream.close()
+            json_path.unlink()
+            raise
+
+        payload["receipt_json"] = str(json_path)
+        payload["receipt_markdown"] = str(md_path)
+        if self_created_files_removed:
+            payload["safety"]["file_deletes"] = True
+            payload["receipt_cleanup"] = {
+                "self_created_files_removed": self_created_files_removed,
+            }
+        try:
+            with json_stream, md_stream:
+                json_stream.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+                md_stream.write(markdown(payload))
+        except BaseException:
+            json_path.unlink(missing_ok=True)
+            md_path.unlink(missing_ok=True)
+            raise
+        return
+    raise RuntimeError("could not reserve a unique tree-steward receipt pair")
 
 
 def run_doctor(json_mode: bool) -> int:
