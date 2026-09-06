@@ -168,6 +168,35 @@ class JsonCommandTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertTrue(result["strict_pass"])
 
+    def test_malformed_op_resolution_fails_closed_without_crashing(self):
+        with patch.dict(
+            STATUS["build_status"].__globals__,
+            {
+                "json_command": lambda *_args, **_kwargs: {
+                    "ok": True,
+                    "op_resolution": [],
+                },
+                "tree_health": lambda: {"ok": True},
+                "launchctl_present": lambda _name: False,
+                "any_process_running": lambda _patterns: False,
+                "process_running": lambda _pattern: False,
+                "count_trello_tools": lambda: 0,
+                "latest_files": lambda *_args, **_kwargs: [],
+            },
+        ):
+            result = STATUS["build_status"](include_pi=False)
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(
+            result["trello_mcp"],
+            {
+                "ok": False,
+                "credential_source": None,
+                "op_attempted": False,
+                "tool_count": 0,
+            },
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
