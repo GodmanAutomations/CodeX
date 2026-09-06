@@ -27,6 +27,22 @@ class JsonCommandTests(unittest.TestCase):
             },
         )
 
+    def test_nonzero_exit_cannot_report_healthy_status(self):
+        response = subprocess.CompletedProcess(
+            ["fixture"],
+            1,
+            '{"ok": true, "status": "healthy", "returncode": 0}',
+            "",
+        )
+        with patch.dict(
+            STATUS["json_command"].__globals__,
+            {"run": lambda *_args, **_kwargs: response},
+        ):
+            result = STATUS["json_command"](["fixture"])
+
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["returncode"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()
