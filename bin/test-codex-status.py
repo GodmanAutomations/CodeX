@@ -208,7 +208,7 @@ class JsonCommandTests(unittest.TestCase):
                 )
 
     def test_malformed_op_resolution_fails_closed_without_crashing(self):
-        for malformed in ([], None):
+        for malformed in ([], None, {"status": []}):
             with self.subTest(malformed=malformed):
                 with patch.dict(
                     STATUS["build_status"].__globals__,

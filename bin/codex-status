@@ -193,15 +193,19 @@ def build_status(include_pi: bool = True) -> dict[str, Any]:
     trello = json_command([str(TRELLO_LAUNCHER), "--status"], timeout=20)
     tree = tree_health()
     op_resolution = trello.get("op_resolution")
-    op_resolution_valid = (
-        "op_resolution" not in trello or isinstance(op_resolution, dict)
-    )
-    trello_ok = trello.get("ok") is True and op_resolution_valid
     op_status = (
         op_resolution.get("status")
         if isinstance(op_resolution, dict)
         else None
     )
+    op_resolution_valid = (
+        "op_resolution" not in trello
+        or (
+            isinstance(op_resolution, dict)
+            and (op_status is None or isinstance(op_status, str))
+        )
+    )
+    trello_ok = trello.get("ok") is True and op_resolution_valid
     env = {
         name: {
             "current_process": bool(os.environ.get(name)),
@@ -231,7 +235,8 @@ def build_status(include_pi: bool = True) -> dict[str, Any]:
         "trello_mcp": {
             "ok": trello_ok,
             "credential_source": trello.get("credential_source"),
-            "op_attempted": op_status not in {None, "not_attempted"},
+            "op_attempted": isinstance(op_status, str)
+            and op_status != "not_attempted",
             "tool_count": count_trello_tools(),
         },
         "tree": tree,
