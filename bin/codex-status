@@ -122,18 +122,26 @@ def tree_health() -> dict[str, Any]:
     collections_valid = isinstance(findings, list) and isinstance(
         ignored_advisories, list
     )
+    child_ok = payload.get("ok")
+    strict_pass = payload.get("strict_pass")
+    health_flags_valid = isinstance(child_ok, bool) and isinstance(
+        strict_pass, bool
+    )
     error = payload.get("error")
     if not collections_valid and not error:
         error = "tree steward returned invalid collection data"
+    elif not health_flags_valid and not error:
+        error = "tree steward returned invalid health flags"
     return {
         "ok": (
-            bool(payload.get("ok"))
-            and bool(payload.get("strict_pass"))
+            child_ok is True
+            and strict_pass is True
+            and health_flags_valid
             and collections_valid
         ),
         "path": str(TREE_STEWARD),
         "dirty_count": payload.get("dirty_count"),
-        "strict_pass": payload.get("strict_pass"),
+        "strict_pass": strict_pass if isinstance(strict_pass, bool) else None,
         "strict_blockers": payload.get("strict_blockers"),
         "summary": payload.get("summary") or {},
         "findings_count": len(findings) if isinstance(findings, list) else 0,

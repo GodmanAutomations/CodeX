@@ -207,6 +207,34 @@ class JsonCommandTests(unittest.TestCase):
                     "tree steward returned invalid collection data",
                 )
 
+    def test_tree_health_requires_boolean_health_flags(self):
+        for field in ("ok", "strict_pass"):
+            for malformed in (1, "yes", [], {}):
+                with self.subTest(field=field, malformed=malformed):
+                    payload = {
+                        "ok": True,
+                        "strict_pass": True,
+                        "findings": [],
+                        "ignored_advisories": [],
+                        field: malformed,
+                    }
+                    with patch.dict(
+                        STATUS["tree_health"].__globals__,
+                        {
+                            "TREE_STEWARD": Path(__file__),
+                            "json_command": lambda *_args, **_kwargs: payload,
+                        },
+                    ):
+                        result = STATUS["tree_health"]()
+
+                    self.assertFalse(result["ok"])
+                    self.assertEqual(
+                        result["error"],
+                        "tree steward returned invalid health flags",
+                    )
+                    if field == "strict_pass":
+                        self.assertIsNone(result["strict_pass"])
+
     def test_malformed_op_resolution_fails_closed_without_crashing(self):
         for malformed in (
             [],
