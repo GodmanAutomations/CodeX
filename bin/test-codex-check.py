@@ -11,7 +11,8 @@ import unittest
 from unittest.mock import patch
 
 
-CHECK = runpy.run_path(str(Path(__file__).with_name("codex-check")))
+CHECK_PATH = Path(__file__).with_name("codex-check")
+CHECK = runpy.run_path(str(CHECK_PATH))
 SAFE_JSON = '{"ok":true,"safety":{"git_writes":false}}'
 
 
@@ -116,6 +117,29 @@ class JsonCheckTests(unittest.TestCase):
         self.assertNotIn("\x07", rendered)
         self.assertNotIn("\x9b", rendered)
         self.assertIn(r"bad\x1b]0;probe\x07\x9b", rendered)
+
+    def test_cli_text_output_escapes_surrogate_encoded_c1_bytes(self):
+        result = subprocess.run(
+            [os.fsencode(CHECK_PATH), b"--only", b"bad\x9b"],
+            check=False,
+            capture_output=True,
+        )
+
+        self.assertEqual(result.returncode, 2)
+        self.assertNotIn(b"\x9b", result.stdout)
+        self.assertIn(rb"bad\x9b", result.stdout)
+
+    def test_cli_argparse_errors_escape_terminal_controls(self):
+        result = subprocess.run(
+            [os.fsencode(CHECK_PATH), b"--bad\x1b]0;probe\x07"],
+            check=False,
+            capture_output=True,
+        )
+
+        self.assertEqual(result.returncode, 2)
+        self.assertNotIn(b"\x1b", result.stderr)
+        self.assertNotIn(b"\x07", result.stderr)
+        self.assertIn(rb"--bad\x1b]0;probe\x07", result.stderr)
 
     def test_missing_executable_returns_failed_check(self):
         with tempfile.TemporaryDirectory() as directory:
