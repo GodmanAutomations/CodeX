@@ -60,6 +60,21 @@ def any_process_running(patterns: list[str]) -> bool:
     return any(process_running(pattern) for pattern in patterns)
 
 
+def unique_object_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """Build a JSON object while rejecting ambiguous duplicate members."""
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON object member")
+        result[key] = value
+    return result
+
+
+def reject_nonstandard_json_constant(value: str) -> Any:
+    """Reject NaN and infinities, which are not valid JSON values."""
+    raise ValueError(f"non-standard JSON constant: {value}")
+
+
 def json_command(cmd: list[str], timeout: int = 20) -> dict[str, Any]:
     try:
         result = run(cmd, timeout=timeout)
@@ -73,9 +88,13 @@ def json_command(cmd: list[str], timeout: int = 20) -> dict[str, Any]:
             "returncode": result.returncode,
         }
     try:
-        payload = json.loads(output)
+        payload = json.loads(
+            output,
+            object_pairs_hook=unique_object_pairs,
+            parse_constant=reject_nonstandard_json_constant,
+        )
     except Exception:
-        payload = {"ok": False, "error": output[:800] or f"exit {result.returncode}"}
+        payload = {"ok": False, "error": "command did not return valid JSON"}
     if not isinstance(payload, dict):
         payload = {"ok": False, "error": "command did not return a JSON object"}
     payload["returncode"] = result.returncode
