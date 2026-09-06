@@ -749,6 +749,13 @@ def run_doctor(json_mode: bool) -> int:
         ROOT / secret_probe_name,
         ROOT / "mcp_servers" / mcp_probe_name,
     ]
+    created_probes: list[Path] = []
+
+    def create_probe(path: Path, content: str) -> None:
+        with path.open("x", encoding="utf-8") as stream:
+            created_probes.append(path)
+            stream.write(content)
+
     checks: list[dict[str, Any]] = []
     try:
         stale_path_probe = "REDACTED" + "-Code"
@@ -796,8 +803,8 @@ def run_doctor(json_mode: bool) -> int:
             *((value, "false_positive") for value in false_positive_probes),
         ]
         probe_text = "\n".join(value for value, _kind in probe_rows) + "\n"
-        probes[0].write_text(probe_text, encoding="utf-8")
-        probes[1].write_text("# doctor probe\nprint('tree steward doctor')\n", encoding="utf-8")
+        create_probe(probes[0], probe_text)
+        create_probe(probes[1], "# doctor probe\nprint('tree steward doctor')\n")
         payload = build_payload(policy, "trello-mcp")
         checks.append(
             {
@@ -974,7 +981,7 @@ def run_doctor(json_mode: bool) -> int:
             },
         }
     finally:
-        for probe in probes:
+        for probe in created_probes:
             try:
                 probe.unlink()
             except OSError:
