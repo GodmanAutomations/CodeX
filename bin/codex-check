@@ -10,6 +10,7 @@ import signal
 import subprocess
 import sys
 import time
+import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -132,6 +133,34 @@ def timeout_text(value: str | bytes | None) -> str:
     if isinstance(value, bytes):
         return value.decode(errors="replace")
     return value or ""
+
+
+def terminal_safe(value: Any) -> str:
+    """Render untrusted text without emitting terminal control characters."""
+    rendered: list[str] = []
+    for character in str(value):
+        codepoint = ord(character)
+        if 0xDC80 <= codepoint <= 0xDCFF:
+            rendered.append(f"\\x{codepoint - 0xDC00:02x}")
+        elif 0xD800 <= codepoint <= 0xDFFF:
+            rendered.append(f"\\u{codepoint:04x}")
+        elif codepoint < 32 or 127 <= codepoint <= 159:
+            rendered.append(f"\\x{codepoint:02x}")
+        elif unicodedata.category(character) == "Cf":
+            escape = "\\u" if codepoint <= 0xFFFF else "\\U"
+            width = 4 if codepoint <= 0xFFFF else 8
+            rendered.append(f"{escape}{codepoint:0{width}x}")
+        else:
+            rendered.append(character)
+    return "".join(rendered)
+
+
+class SafeArgumentParser(argparse.ArgumentParser):
+    """Keep malformed command-line input from controlling the terminal."""
+
+    def error(self, message: str) -> None:
+        self.print_usage(sys.stderr)
+        self.exit(2, f"{terminal_safe(self.prog)}: error: {terminal_safe(message)}\n")
 
 
 def unique_object_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -422,25 +451,28 @@ def build_payload(
 
 
 def format_text(payload: dict[str, Any]) -> str:
+    selected = ", ".join(
+        terminal_safe(item) for item in payload.get("selected_checks") or []
+    )
     lines = [
         "CodeX Check",
-        f"profile: {payload.get('profile')}",
-        f"selected: {', '.join(payload.get('selected_checks') or [])}",
-        f"root: {payload.get('root')}",
+        f"profile: {terminal_safe(payload.get('profile'))}",
+        f"selected: {selected}",
+        f"root: {terminal_safe(payload.get('root'))}",
         f"status: {'OK' if payload.get('ok') else 'NO'}",
         f"summary: passed={payload.get('summary', {}).get('passed')} failed={payload.get('summary', {}).get('failed')}",
         "",
     ]
     if payload.get("error"):
-        lines.append(f"error: {payload['error']}")
+        lines.append(f"error: {terminal_safe(payload['error'])}")
         lines.append("")
     for check in payload.get("checks", []):
         lines.append(
-            f"- {check.get('name')}: {'OK' if check.get('ok') else 'NO'} "
+            f"- {terminal_safe(check.get('name'))}: {'OK' if check.get('ok') else 'NO'} "
             f"rc={check.get('returncode')} {check.get('duration_ms')}ms"
         )
         if check.get("error"):
-            lines.append(f"  error: {check['error']}")
+            lines.append(f"  error: {terminal_safe(check['error'])}")
         check_payload = check.get("payload")
         if not check.get("ok") and isinstance(check_payload, dict):
             payload_bits = []
@@ -452,16 +484,19 @@ def format_text(payload: dict[str, Any]) -> str:
         elif not check.get("ok") and check.get("stdout_tail"):
             lines.append("  stdout_tail:")
             for line in str(check["stdout_tail"]).splitlines()[-6:]:
-                lines.append(f"    {line}")
+                lines.append(f"    {terminal_safe(line)}")
         if not check.get("ok") and check.get("stderr_tail"):
             lines.append("  stderr_tail:")
             for line in str(check["stderr_tail"]).splitlines()[-6:]:
-                lines.append(f"    {line}")
+                lines.append(f"    {terminal_safe(line)}")
     return "\n".join(lines)
 
 
 def main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(description="Run read-only CodeX health checks")
+    parser = SafeArgumentParser(
+        prog=terminal_safe(os.path.basename(sys.argv[0])),
+        description="Run read-only CodeX health checks",
+    )
     parser.add_argument("--json", action="store_true", help="Print machine-readable JSON.")
     parser.add_argument("--profile", choices=["quick", "full", "phone"], default="quick")
     parser.add_argument("--with-pi", action="store_true", help="Include Pi reachability in codex-status.")
