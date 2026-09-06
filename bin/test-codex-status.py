@@ -10,6 +10,20 @@ STATUS = runpy.run_path(str(Path(__file__).with_name("codex-status")))
 
 
 class JsonCommandTests(unittest.TestCase):
+    def test_tool_count_tolerates_server_disappearing_during_probe(self):
+        class DisappearingServer:
+            def exists(self):
+                return True
+
+            def read_text(self, **_kwargs):
+                raise FileNotFoundError("server disappeared during probe")
+
+        with patch.dict(
+            STATUS["count_trello_tools"].__globals__,
+            {"TRELLO_SERVER": DisappearingServer()},
+        ):
+            self.assertEqual(STATUS["count_trello_tools"](), 0)
+
     def test_latest_files_skips_entry_that_disappears_during_scan(self):
         class StableFile:
             name = "stable.md"
