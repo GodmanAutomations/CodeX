@@ -731,13 +731,37 @@ def write_receipts(
 ) -> None:
     RECEIPT_ROOT.mkdir(parents=True, exist_ok=True)
     stamp = (receipt_time or datetime.now(timezone.utc)).strftime("%Y%m%dT%H%M%SZ")
-    receipt_id = uuid.uuid4().hex[:12]
-    json_path = RECEIPT_ROOT / f"{stamp}-{receipt_id}-tree-steward.json"
-    md_path = RECEIPT_ROOT / f"{stamp}-{receipt_id}-tree-steward.md"
-    payload["receipt_json"] = str(json_path)
-    payload["receipt_markdown"] = str(md_path)
-    json_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    md_path.write_text(markdown(payload), encoding="utf-8", errors="backslashreplace")
+    for _ in range(100):
+        receipt_id = uuid.uuid4().hex[:12]
+        json_path = RECEIPT_ROOT / f"{stamp}-{receipt_id}-tree-steward.json"
+        md_path = RECEIPT_ROOT / f"{stamp}-{receipt_id}-tree-steward.md"
+        try:
+            json_stream = json_path.open("x", encoding="utf-8")
+        except FileExistsError:
+            continue
+        try:
+            md_stream = md_path.open("x", encoding="utf-8", errors="backslashreplace")
+        except FileExistsError:
+            json_stream.close()
+            json_path.unlink()
+            continue
+        except BaseException:
+            json_stream.close()
+            json_path.unlink()
+            raise
+
+        payload["receipt_json"] = str(json_path)
+        payload["receipt_markdown"] = str(md_path)
+        try:
+            with json_stream, md_stream:
+                json_stream.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+                md_stream.write(markdown(payload))
+        except BaseException:
+            json_path.unlink(missing_ok=True)
+            md_path.unlink(missing_ok=True)
+            raise
+        return
+    raise RuntimeError("could not reserve a unique tree-steward receipt pair")
 
 
 def run_doctor(json_mode: bool) -> int:
