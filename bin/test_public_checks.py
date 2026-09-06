@@ -68,3 +68,7 @@ class DiscoveryAdapterTests(unittest.TestCase):
                     "legacy public-check test discovery returned no tests",
                 ):
                     load_tests(unittest.TestLoader(), standard_tests, None)
+
+
+if __name__ == "__main__":
+    unittest.main()
