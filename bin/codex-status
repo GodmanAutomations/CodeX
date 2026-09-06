@@ -112,9 +112,23 @@ def tree_health() -> dict[str, Any]:
 def latest_files(folder: Path, limit: int = 5) -> list[dict[str, str]]:
     if not folder.exists():
         return []
-    files = [p for p in folder.iterdir() if p.is_file()]
-    files.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-    return [{"name": p.name, "path": str(p)} for p in files[:limit]]
+    try:
+        entries = list(folder.iterdir())
+    except OSError:
+        return []
+
+    files: list[tuple[float, Path]] = []
+    for path in entries:
+        try:
+            if path.is_file():
+                files.append((path.stat().st_mtime, path))
+        except OSError:
+            continue
+    files.sort(key=lambda item: item[0], reverse=True)
+    return [
+        {"name": path.name, "path": str(path)}
+        for _, path in files[:limit]
+    ]
 
 
 def pi_status() -> dict[str, Any]:
