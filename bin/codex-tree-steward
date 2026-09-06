@@ -83,7 +83,13 @@ def display_path(path: str) -> str:
         codepoint = ord(character)
         if character == "\\":
             visible.append("\\\\")
-        elif codepoint < 32 or codepoint == 127 or unicodedata.category(character) in {"Cc", "Cf", "Cs"}:
+        elif codepoint < 32 or codepoint == 127 or unicodedata.category(character) in {
+            "Cc",
+            "Cf",
+            "Cs",
+            "Zl",
+            "Zp",
+        }:
             if codepoint <= 0xFF:
                 visible.append(f"\\x{codepoint:02x}")
             elif codepoint <= 0xFFFF:

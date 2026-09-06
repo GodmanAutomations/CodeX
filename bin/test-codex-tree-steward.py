@@ -43,7 +43,10 @@ class CliSafetyTests(unittest.TestCase):
     def test_argparse_errors_escape_terminal_controls(self):
         steward_path = os.fsencode(Path(__file__).with_name("codex-tree-steward"))
         result = subprocess.run(
-            [steward_path, b"--bad\x1b]0;probe\x07\x9b\xe2\x80\xae"],
+            [
+                steward_path,
+                b"--bad\x1b]0;probe\x07\x9b\xe2\x80\xae\xe2\x80\xa8\xe2\x80\xa9",
+            ],
             check=False,
             capture_output=True,
         )
@@ -53,7 +56,12 @@ class CliSafetyTests(unittest.TestCase):
         self.assertNotIn(b"\x07", result.stderr)
         self.assertNotIn(b"\x9b", result.stderr)
         self.assertNotIn("\u202e".encode(), result.stderr)
-        self.assertIn(rb"--bad\x1b]0;probe\x07\udc9b\u202e", result.stderr)
+        self.assertNotIn("\u2028".encode(), result.stderr)
+        self.assertNotIn("\u2029".encode(), result.stderr)
+        self.assertIn(
+            rb"--bad\x1b]0;probe\x07\udc9b\u202e\u2028\u2029",
+            result.stderr,
+        )
 
 
 class ParseStatusTests(unittest.TestCase):
