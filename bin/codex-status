@@ -68,7 +68,9 @@ def json_command(cmd: list[str], timeout: int = 20) -> dict[str, Any]:
         payload = {"ok": False, "error": output[:800] or f"exit {result.returncode}"}
     if not isinstance(payload, dict):
         payload = {"ok": False, "error": "command did not return a JSON object"}
-    payload.setdefault("returncode", result.returncode)
+    payload["returncode"] = result.returncode
+    if result.returncode != 0:
+        payload["ok"] = False
     return payload
 
 
@@ -84,7 +86,7 @@ def tree_health() -> dict[str, Any]:
         return {"ok": False, "error": "missing", "path": str(TREE_STEWARD)}
     payload = json_command([str(TREE_STEWARD), "--json", "--no-receipt"], timeout=20)
     return {
-        "ok": bool(payload.get("strict_pass")),
+        "ok": bool(payload.get("ok")) and bool(payload.get("strict_pass")),
         "path": str(TREE_STEWARD),
         "dirty_count": payload.get("dirty_count"),
         "strict_pass": payload.get("strict_pass"),
