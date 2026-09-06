@@ -104,9 +104,12 @@ def json_command(cmd: list[str], timeout: int = 20) -> dict[str, Any]:
 
 
 def count_trello_tools() -> int:
-    if not TRELLO_SERVER.exists():
+    try:
+        if not TRELLO_SERVER.exists():
+            return 0
+        text = TRELLO_SERVER.read_text(encoding="utf-8", errors="replace")
+    except OSError:
         return 0
-    text = TRELLO_SERVER.read_text(encoding="utf-8", errors="replace")
     return len(re.findall(r"(?m)^@mcp\.tool\(\)\n(?:.+\n)*?def\s+[A-Za-z_][A-Za-z0-9_]*\(", text))
 
 
