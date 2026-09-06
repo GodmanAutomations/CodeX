@@ -326,5 +326,45 @@ class ReadTextForScanTests(unittest.TestCase):
                 read_text_for_scan.__globals__["ROOT"] = original_root
 
 
+class RunDoctorTests(unittest.TestCase):
+    def test_existing_probe_collision_is_preserved(self):
+        run_doctor = STEWARD["run_doctor"]
+        original_root = run_doctor.__globals__["ROOT"]
+        original_datetime = run_doctor.__globals__["datetime"]
+        frozen_time = datetime(2026, 9, 6, 0, 20, 0, tzinfo=timezone.utc)
+
+        class FrozenDateTime:
+            @classmethod
+            def now(cls, tz=None):
+                return frozen_time
+
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            (root / "mcp_servers").mkdir()
+            subprocess.run(
+                ["git", "init", "-q", str(root)],
+                check=True,
+                capture_output=True,
+            )
+            collision = root / (
+                f"TREE_STEWARD_DOCTOR_SECRET_{os.getpid()}-"
+                f"{frozen_time.strftime('%Y%m%dT%H%M%SZ')}.md"
+            )
+            collision.write_text("existing-content\n", encoding="utf-8")
+
+            run_doctor.__globals__["ROOT"] = root
+            run_doctor.__globals__["datetime"] = FrozenDateTime
+            try:
+                with self.assertRaises(FileExistsError):
+                    run_doctor(json_mode=True)
+                self.assertEqual(
+                    collision.read_text(encoding="utf-8"),
+                    "existing-content\n",
+                )
+            finally:
+                run_doctor.__globals__["ROOT"] = original_root
+                run_doctor.__globals__["datetime"] = original_datetime
+
+
 if __name__ == "__main__":
     unittest.main()
