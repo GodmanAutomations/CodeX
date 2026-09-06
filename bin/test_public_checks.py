@@ -5,8 +5,10 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 import sys
+import tempfile
 import types
 import unittest
+from unittest.mock import patch
 
 
 TEST_DIR = Path(__file__).resolve().parent
@@ -41,9 +43,28 @@ def load_tests(
     if not paths:
         raise RuntimeError("no legacy public-check tests were found")
 
-    suite = unittest.TestSuite(standard_tests)
+    legacy_suite = unittest.TestSuite()
     for index, path in enumerate(paths):
-        suite.addTests(loader.loadTestsFromModule(load_module(path, index)))
-    if suite.countTestCases() == 0:
+        legacy_suite.addTests(loader.loadTestsFromModule(load_module(path, index)))
+    if legacy_suite.countTestCases() == 0:
         raise RuntimeError("legacy public-check test discovery returned no tests")
+
+    suite = unittest.TestSuite(standard_tests)
+    suite.addTests(legacy_suite)
     return suite
+
+
+class DiscoveryAdapterTests(unittest.TestCase):
+    def test_standard_tests_cannot_mask_empty_legacy_suite(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            empty_test = Path(directory) / "test-codex-empty.py"
+            empty_test.write_text("VALUE = 1\n", encoding="utf-8")
+            standard_tests = unittest.TestSuite(
+                [unittest.FunctionTestCase(lambda: None)]
+            )
+            with patch.dict(load_tests.__globals__, {"TEST_DIR": Path(directory)}):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    "legacy public-check test discovery returned no tests",
+                ):
+                    load_tests(unittest.TestLoader(), standard_tests, None)
