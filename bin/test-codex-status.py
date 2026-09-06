@@ -10,6 +10,43 @@ STATUS = runpy.run_path(str(Path(__file__).with_name("codex-status")))
 
 
 class JsonCommandTests(unittest.TestCase):
+    def test_latest_files_skips_entry_that_disappears_during_scan(self):
+        class StableFile:
+            name = "stable.md"
+
+            def is_file(self):
+                return True
+
+            def stat(self):
+                return type("Stat", (), {"st_mtime": 10})()
+
+            def __str__(self):
+                return "/fixture/stable.md"
+
+        class VanishedFile:
+            name = "vanished.md"
+
+            def is_file(self):
+                return True
+
+            def stat(self):
+                raise FileNotFoundError("vanished during scan")
+
+            def __str__(self):
+                return "/fixture/vanished.md"
+
+        class Folder:
+            def exists(self):
+                return True
+
+            def iterdir(self):
+                return iter([VanishedFile(), StableFile()])
+
+        self.assertEqual(
+            STATUS["latest_files"](Folder()),
+            [{"name": "stable.md", "path": "/fixture/stable.md"}],
+        )
+
     def test_text_output_escapes_terminal_controls(self):
         marker = "note\x1b]0;probe\x07\x9b\u202e.md"
         status = {
