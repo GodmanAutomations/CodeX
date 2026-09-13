@@ -1,146 +1,17 @@
 #!/usr/bin/env python3
-"""CodeX browser lane.
-
-Camoufox is the hard default for CodeX browser use. The nodriver/Chrome path
-exists only as an explicit fallback for one-off compatibility checks.
-"""
+"""CodeX's isolated headless Camoufox browser lane."""
 
 from __future__ import annotations
 
 import argparse
-import asyncio
 import datetime as dt
 import json
-import os
-import shutil
-import socket
-import subprocess
-import tempfile
-import time
 from pathlib import Path
 from urllib.parse import urldefrag, urljoin, urlparse
-from urllib.request import urlopen
-
-import nodriver as uc
-from nodriver import cdp
 
 
-CHROME = Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
 ARTIFACTS = Path("/Users/stephengodman/CodeX/browser/artifacts")
 DEFAULT_ENGINE = "camoufox"
-
-
-def free_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.bind(("127.0.0.1", 0))
-        return int(sock.getsockname()[1])
-
-
-def wait_for_debugger(port: int, timeout: float = 20.0) -> dict:
-    deadline = time.time() + timeout
-    last_error: Exception | None = None
-    while time.time() < deadline:
-        try:
-            with urlopen(f"http://127.0.0.1:{port}/json/version", timeout=1) as response:
-                return json.loads(response.read().decode("utf-8"))
-        except Exception as exc:  # noqa: BLE001 - collect final readiness error
-            last_error = exc
-            time.sleep(0.5)
-    raise RuntimeError(f"Chrome remote debugger did not become ready on port {port}: {last_error}")
-
-
-def launch_chrome(port: int, profile: Path) -> subprocess.Popen:
-    if not CHROME.exists():
-        raise FileNotFoundError(f"Chrome executable not found: {CHROME}")
-    return subprocess.Popen(
-        [
-            str(CHROME),
-            "--headless=new",
-            "--remote-debugging-host=127.0.0.1",
-            f"--remote-debugging-port={port}",
-            f"--user-data-dir={profile}",
-            "--no-first-run",
-            "--no-default-browser-check",
-            "--disable-gpu",
-            "--disable-dev-shm-usage",
-            "about:blank",
-        ],
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-
-
-async def extract_headlines_nodriver(url: str, limit: int) -> dict:
-    port = free_port()
-    profile = Path(tempfile.mkdtemp(prefix="codex-browser-profile-"))
-    process = launch_chrome(port, profile)
-    try:
-        version = wait_for_debugger(port)
-        browser = await uc.start(host="127.0.0.1", port=port)
-        try:
-            page = await browser.get(url)
-            await page.sleep(2)
-            expression = f"""
-            (() => {{
-              const selectors = ['.titleline > a', 'h1 a, h2 a, h3 a', 'a'];
-              for (const selector of selectors) {{
-                const items = Array.from(document.querySelectorAll(selector))
-                  .map((a) => a.innerText || a.textContent || '')
-                  .map((text) => text.trim())
-                  .filter(Boolean)
-                  .slice(0, {limit});
-                if (items.length) return items;
-              }}
-              return [];
-            }})()
-            """
-            result = await page.send(
-                cdp.runtime.evaluate(
-                    expression=expression,
-                    return_by_value=True,
-                )
-            )
-            remote_object = result[0] if isinstance(result, tuple) else result.result
-            return {
-                "engine": "nodriver",
-                "browser": version.get("Browser"),
-                "url": url,
-                "headlines": remote_object.value or [],
-            }
-        finally:
-            browser.stop()
-    finally:
-        process.terminate()
-        try:
-            process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            process.kill()
-        shutil.rmtree(profile, ignore_errors=True)
-
-
-async def extract_headlines_browser_use(url: str, limit: int) -> dict:
-    os.environ.setdefault("BROWSER_USE_LOGGING_LEVEL", "critical")
-    os.environ.setdefault("BROWSER_USE_SETUP_LOGGING", "false")
-    from browser_use.browser import BrowserSession
-
-    session = BrowserSession(headless=True, enable_default_extensions=False)
-    await session.start()
-    try:
-        page = await session.new_page(url)
-        await asyncio.sleep(2)
-        raw = await page.evaluate(
-            f"(...args) => JSON.stringify(Array.from(document.querySelectorAll('.titleline > a')).slice(0,{limit}).map(a => a.innerText))"
-        )
-        headlines = json.loads(raw) if isinstance(raw, str) else raw
-        return {
-            "engine": "browser-use",
-            "browser": "BrowserSession",
-            "url": url,
-            "headlines": headlines or [],
-        }
-    finally:
-        await session.stop()
 
 
 def extract_headlines_camoufox(url: str, limit: int) -> dict:
@@ -414,10 +285,6 @@ def write_report_camoufox(url: str, limit: int) -> dict:
 
 
 def extract_headlines(url: str, limit: int, engine: str) -> dict:
-    if engine == "nodriver":
-        return asyncio.run(extract_headlines_nodriver(url, limit))
-    if engine == "browser-use":
-        return asyncio.run(extract_headlines_browser_use(url, limit))
     if engine == "camoufox":
         return extract_headlines_camoufox(url, limit)
     raise ValueError(f"Unknown engine: {engine}")
@@ -454,7 +321,7 @@ def main() -> int:
     headlines = sub.add_parser("headlines", help="Extract first visible headlines/links from a page.")
     headlines.add_argument("url", nargs="?", default="https://news.ycombinator.com")
     headlines.add_argument("--limit", type=int, default=3)
-    headlines.add_argument("--engine", choices=["camoufox", "browser-use", "nodriver"], default=DEFAULT_ENGINE)
+    headlines.add_argument("--engine", choices=["camoufox"], default=DEFAULT_ENGINE)
     headlines.add_argument("--json", action="store_true")
 
     read = sub.add_parser("read", help="Read title, headings, snippets, and links from a page.")

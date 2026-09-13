@@ -111,30 +111,18 @@ If Stephen asks whether anything important is hidden or overlooked, read `ROOM-S
 
 ## Browser
 
-Use Camoufox as the hard default for CodeX browser work.
+Use Camoufox exclusively for CodeX browser work.
 
 - Primary command: `/Users/stephengodman/CodeX/bin/codex-browser`
 - Default engine: `camoufox`
 - Runtime Python: `/Users/stephengodman/GodmanAutomations/godman-lab/.venv/bin/python`
-- Installed there: `camoufox`, `browser_use`, `nodriver`
+- Browser engine used by this command: `camoufox` only
 - Archived dependency mirror: `/Users/stephengodman/CodeX-archives/dependency-stash-2026-06-14/Users/stephengodman/...`
 - Archived browser engines mirror: `/Users/stephengodman/CodeX-archives/dependency-stash-2026-06-14/Users/stephengodman/Library/Caches/ms-playwright`
 - Archive pointer: `/Users/stephengodman/CodeX/DEPENDENCY-STASH-ARCHIVE.md`
 
-Do not default to Chrome/profile/extension automation. Use Chrome only when Stephen explicitly asks for Chrome or the task requires a logged-in Chrome profile.
+Never use or attach to Stephen's visible Chrome, Brave, Safari, desktop, or remote-desktop session for agent browser work. If Camoufox cannot complete a rendered-page task, report the exact blocker instead of falling back to a user-owned browser.
 
-For logged-in Brave profile work, use the dev-department lane:
-
-```bash
-CODEX_ROOT="${CODEX_ROOT:-$HOME/CodeX}"
-"$CODEX_ROOT/bin/codex-brave-dev" setup
-"$CODEX_ROOT/bin/codex-brave-dev" status
-"$CODEX_ROOT/bin/codex-brave-dev" open https://chatgpt.com/ --debug --restart
-"$CODEX_ROOT/bin/codex-brave-dev" tabs
-"$CODEX_ROOT/bin/codex-brave-dev" cdp-js 'document.title' --url-contains chatgpt.com
-```
-
-Use this for Stephen-authorized account pages that need the real Brave profile.
 Keep raw secrets out of terminal output, notes, and commits.
 
 ## Venice
