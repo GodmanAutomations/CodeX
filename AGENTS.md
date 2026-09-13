@@ -88,6 +88,12 @@ When the task is inside `/Users/stephengodman/CodeX` and the lane is clear:
 - Create or edit non-destructive room files when they directly support the active task.
 - Use `/Users/stephengodman/CodeX/bin/codex-remember-self` after meaningful room changes.
 - Use Camoufox through `/Users/stephengodman/CodeX/bin/codex-browser` for ordinary browser work.
+- Treat that isolated headless Camoufox lane as exclusive for every rendered
+  page and browser interaction. Never launch, focus, inspect, or drive Stephen's
+  visible browser or desktop, and never fall back to Playwright, NoDriver,
+  DevTools, TinyFish browser automation, CUA browser driving, or Screens/RDP.
+  Repair Camoufox or report its exact blocker. A named or already-open visible
+  session is not a browser lane.
 - Use available environment-backed or documented secret stores when the task genuinely requires credentials, without copying secrets into notes, logs, prompts, or repo files.
 - Prefer doing the smallest real move over asking for permission to do safe, reversible work.
 
