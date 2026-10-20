@@ -309,6 +309,8 @@ ensure_npx_link() {
 }
 
 check_mcp_config_commands() {
+  local command_rows
+  local enabled
   local command_cwd
   local command_path
   local name
@@ -321,7 +323,43 @@ check_mcp_config_commands() {
 
   pass "Codex config exists: $CONFIG"
 
-  while IFS=$'\t' read -r name command_path command_cwd; do
+  # Parse before checking so malformed TOML cannot silently pass in a subshell.
+  if ! command_rows="$(python3 - "$CONFIG" <<'PY_MCP'
+import sys
+try:
+    import tomllib
+    with open(sys.argv[1], "rb") as source:
+        servers = tomllib.load(source).get("mcp_servers", {})
+    rows = []
+    for name, server in servers.items():
+        enabled = server.get("enabled", True)
+        if not isinstance(enabled, bool):
+            raise ValueError()
+        command = server.get("command", "")
+        cwd = server.get("cwd", "")
+        if enabled is False:
+            command, cwd = "", ""
+        for value in (name, command, cwd):
+            if not isinstance(value, str) or any(c in value for c in "\t\r\n"):
+                raise ValueError()
+        if enabled is False or command:
+            rows.append("\t".join((name, str(enabled).lower(), command, cwd)))
+    print("\n".join(rows))
+except Exception:
+    # Parser errors may contain credential-bearing config lines; keep them private.
+    sys.exit(1)
+PY_MCP
+)"; then
+    fail "Cannot parse MCP command configuration (requires valid TOML and Python tomllib)"
+    return
+  fi
+
+  [[ -n "$command_rows" ]] || return 0
+  while IFS=$'\t' read -r name enabled command_path command_cwd; do
+    if [[ "$enabled" == "false" ]]; then
+      pass "MCP command check skipped for disabled server: $name"
+      continue
+    fi
     if [[ "$command_path" = /* ]]; then
       if [[ -x "$command_path" ]]; then
         pass "MCP command path works for $name: $command_path"
@@ -349,46 +387,7 @@ check_mcp_config_commands() {
     else
       warn "MCP command path for $name is relative without an absolute cwd: $command_path"
     fi
-  done < <(awk '
-    function emit_server() {
-      if (in_server && command != "") {
-        print name "\t" command "\t" cwd
-      }
-    }
-    /^\[mcp_servers\./ {
-      emit_server()
-      name = $0
-      sub(/^\[mcp_servers\./, "", name)
-      sub(/\]$/, "", name)
-      in_server = 1
-      command = ""
-      cwd = ""
-      next
-    }
-    /^\[/ {
-      emit_server()
-      in_server = 0
-      name = ""
-      command = ""
-      cwd = ""
-      next
-    }
-    in_server && /^[[:space:]]*command[[:space:]]*=/ {
-      command = $0
-      sub(/^[^=]+=[[:space:]]*"/, "", command)
-      sub(/".*$/, "", command)
-      next
-    }
-    in_server && /^[[:space:]]*cwd[[:space:]]*=/ {
-      cwd = $0
-      sub(/^[^=]+=[[:space:]]*"/, "", cwd)
-      sub(/".*$/, "", cwd)
-      next
-    }
-    END {
-      emit_server()
-    }
-  ' "$CONFIG")
+  done <<< "$command_rows"
 }
 
 check_room_files() {
