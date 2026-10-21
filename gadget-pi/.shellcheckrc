@@ -1,0 +1,6 @@
+# Gadget-Pi shellcheck configuration.
+shell=bash
+
+# SC1091: don't follow sourced files that only exist at runtime on the target
+# (e.g. ../config/gadget.env, /etc/os-release).
+disable=SC1091

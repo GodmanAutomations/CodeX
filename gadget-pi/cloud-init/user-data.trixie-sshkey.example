@@ -1,0 +1,24 @@
+#cloud-config
+# Trixie USB gadget + SSH, public-key authentication (recommended).
+# Copy to the boot partition as `user-data`. The `#cloud-config` header on line 1
+# is MANDATORY. Password login is disabled (ssh_pwauth: false).
+#
+# Placeholders to replace: HOSTNAME, USERNAME, TIMEZONE, and the ssh-ed25519 key.
+hostname: HOSTNAME
+manage_etc_hosts: true
+timezone: TIMEZONE
+
+users:
+  - name: USERNAME
+    groups: users,adm,dialout,audio,netdev,video,plugdev,cdrom,games,input,gpio,spi,i2c,render,sudo
+    shell: /bin/bash
+    lock_passwd: true
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAA_REPLACE_WITH_REAL_PUBLIC_KEY user@host
+    sudo: ALL=(ALL) NOPASSWD:ALL
+
+rpi:
+  enable_usb_gadget: true
+
+enable_ssh: true
+ssh_pwauth: false
